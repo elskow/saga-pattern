@@ -1,0 +1,14 @@
+package com.thesis.common.dto;
+
+public enum OrderStatus {
+    PENDING,
+    PAYMENT_PENDING,
+    PAYMENT_COMPLETED,
+    PAYMENT_FAILED,
+    INVENTORY_RESERVED,
+    INVENTORY_FAILED,
+    SHIPPING_SCHEDULED,
+    SHIPPING_FAILED,
+    COMPLETED,
+    CANCELLED
+}

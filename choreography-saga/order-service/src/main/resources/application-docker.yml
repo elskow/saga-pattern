@@ -1,0 +1,11 @@
+# Docker profile - used when running in Docker Compose
+spring:
+  datasource:
+    url: jdbc:postgresql://order-db:5432/order_db
+
+  kafka:
+    bootstrap-servers: kafka:29092
+
+logging:
+  level:
+    com.thesis: INFO

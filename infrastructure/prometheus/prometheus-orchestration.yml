@@ -1,0 +1,42 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: /metrics
+
+  # Axon Server metrics
+  - job_name: 'axon-server'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['axon-server:8024']
+    scrape_interval: 5s
+
+  # Orchestration Saga Services
+  - job_name: 'orchestration-order-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['order-service:8085']
+    scrape_interval: 5s
+
+  - job_name: 'orchestration-payment-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['payment-service:8086']
+    scrape_interval: 5s
+
+  - job_name: 'orchestration-inventory-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['inventory-service:8087']
+    scrape_interval: 5s
+
+  - job_name: 'orchestration-shipping-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['shipping-service:8088']
+    scrape_interval: 5s

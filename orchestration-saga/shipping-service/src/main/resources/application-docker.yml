@@ -1,0 +1,20 @@
+# Docker profile - used when running in Docker Compose
+spring:
+  datasource:
+    url: jdbc:postgresql://shipping-db:5432/shipping_db
+
+  kafka:
+    bootstrap-servers: kafka:9092
+
+eventuatelocal:
+  kafka:
+    bootstrap:
+      servers: kafka:9092
+  zookeeper:
+    connection:
+      string: zookeeper:2181
+
+logging:
+  level:
+    com.thesis.orchestration: INFO
+    io.eventuate: WARN
