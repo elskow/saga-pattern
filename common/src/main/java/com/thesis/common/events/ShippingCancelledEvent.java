@@ -15,4 +15,6 @@ public class ShippingCancelledEvent {
     private String shippingId;
     private String orderId;
     private Instant cancelledAt;
+    @Builder.Default
+    private Instant createdAt = Instant.now();
 }

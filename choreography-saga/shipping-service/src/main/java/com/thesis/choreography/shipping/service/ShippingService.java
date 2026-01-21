@@ -8,13 +8,17 @@ import com.thesis.common.events.InventoryReservedEvent;
 import com.thesis.common.events.ShippingCancelledEvent;
 import com.thesis.common.events.ShippingFailedEvent;
 import com.thesis.common.events.ShippingScheduledEvent;
+import com.thesis.common.metrics.SagaMetrics;
+import com.thesis.common.metrics.SagaMetricsHelper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.observation.annotation.Observed;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -28,6 +32,12 @@ public class ShippingService {
     private final Counter shippingSuccessCounter;
     private final Counter shippingFailedCounter;
     private final Timer shippingTimer;
+    private final Timer stepShippingDurationTimer;
+    private final Counter compensationShippingCounter;
+    private final Timer compensationDurationTimer;
+    private final Counter sagaStepsExecutedCounter;
+    private final Counter sagaStepsFailedCounter;
+    private final SagaMetricsHelper metricsHelper;
 
     public ShippingService(ShipmentRepository shipmentRepository,
                            ShippingEventPublisher eventPublisher,
@@ -35,15 +45,40 @@ public class ShippingService {
         this.shipmentRepository = shipmentRepository;
         this.eventPublisher = eventPublisher;
         
-        this.shippingSuccessCounter = meterRegistry.counter("shipping.success", "service", "choreography");
-        this.shippingFailedCounter = meterRegistry.counter("shipping.failed", "service", "choreography");
-        this.shippingTimer = meterRegistry.timer("shipping.processing.time", "service", "choreography");
+        this.shippingSuccessCounter = meterRegistry.counter(SagaMetrics.SHIPPING_SUCCESS, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.shippingFailedCounter = meterRegistry.counter(SagaMetrics.SHIPPING_FAILED, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.shippingTimer = meterRegistry.timer(SagaMetrics.SHIPPING_PROCESSING_TIME, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.stepShippingDurationTimer = meterRegistry.timer(SagaMetrics.STEP_SHIPPING_DURATION, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.compensationShippingCounter = meterRegistry.counter(SagaMetrics.COMPENSATIONS_SHIPPING, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.compensationDurationTimer = meterRegistry.timer(SagaMetrics.COMPENSATION_DURATION, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
+                SagaMetrics.TAG_STEP, SagaMetrics.STEP_SHIPPING);
+        this.sagaStepsExecutedCounter = meterRegistry.counter(SagaMetrics.SAGA_STEPS_EXECUTED,
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
+                SagaMetrics.TAG_STEP, SagaMetrics.STEP_SHIPPING);
+        this.sagaStepsFailedCounter = meterRegistry.counter(SagaMetrics.SAGA_STEPS_FAILED,
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
+                SagaMetrics.TAG_STEP, SagaMetrics.STEP_SHIPPING);
+        this.metricsHelper = new SagaMetricsHelper(meterRegistry, SagaMetrics.SERVICE_CHOREOGRAPHY);
     }
 
     @Transactional
+    @Observed(name = "shipping.schedule", contextualName = "schedule-shipping")
     public void scheduleShipping(InventoryReservedEvent inventoryEvent, String shippingAddress) {
-        shippingTimer.record(() -> {
+        stepShippingDurationTimer.record(() -> {
             log.info("Scheduling shipping for order: {}", inventoryEvent.getOrderId());
+            
+            // Record received message and latency
+            metricsHelper.recordMessageReceived(inventoryEvent.getOrderId(), SagaMetrics.TYPE_EVENT);
+            if (inventoryEvent.getCreatedAt() != null) {
+                Duration latency = Duration.between(inventoryEvent.getCreatedAt(), Instant.now());
+                metricsHelper.recordMessageLatency("inventory", "shipping", latency);
+            }
             
             String shippingId = UUID.randomUUID().toString();
             String trackingNumber = "TRK-" + UUID.randomUUID().toString().substring(0, 10).toUpperCase();
@@ -58,11 +93,13 @@ public class ShippingService {
                     .build();
             
             shipmentRepository.save(shipment);
+            metricsHelper.recordDbInsert(inventoryEvent.getOrderId(), SagaMetrics.ENTITY_SHIPMENT);
 
             try {
                 // Schedule shipping
                 shipment.setStatus(Shipment.ShippingStatus.SCHEDULED);
                 shipmentRepository.save(shipment);
+                metricsHelper.recordDbUpdate(inventoryEvent.getOrderId(), SagaMetrics.ENTITY_SHIPMENT);
 
                 ShippingScheduledEvent event = ShippingScheduledEvent.builder()
                         .shippingId(shippingId)
@@ -71,31 +108,40 @@ public class ShippingService {
                         .address(shipment.getShippingAddress())
                         .estimatedDelivery(shipment.getEstimatedDelivery())
                         .scheduledAt(Instant.now())
+                        .createdAt(Instant.now())
                         .build();
 
                 eventPublisher.publishShippingScheduled(event);
+                metricsHelper.recordMessageSent(inventoryEvent.getOrderId(), SagaMetrics.TYPE_EVENT);
                 shippingSuccessCounter.increment();
+                sagaStepsExecutedCounter.increment();
                 log.info("Shipping scheduled for order: {} with tracking: {}", 
                         inventoryEvent.getOrderId(), trackingNumber);
             } catch (Exception e) {
                 shipment.setStatus(Shipment.ShippingStatus.FAILED);
                 shipmentRepository.save(shipment);
+                metricsHelper.recordDbUpdate(inventoryEvent.getOrderId(), SagaMetrics.ENTITY_SHIPMENT);
 
                 ShippingFailedEvent failedEvent = ShippingFailedEvent.builder()
                         .orderId(inventoryEvent.getOrderId())
                         .reason(e.getMessage())
                         .failedAt(Instant.now())
+                        .createdAt(Instant.now())
                         .build();
 
                 eventPublisher.publishShippingFailed(failedEvent);
+                metricsHelper.recordMessageSent(inventoryEvent.getOrderId(), SagaMetrics.TYPE_EVENT);
                 shippingFailedCounter.increment();
+                sagaStepsFailedCounter.increment();
                 log.error("Shipping failed for order: {}", inventoryEvent.getOrderId(), e);
             }
         });
     }
 
     @Transactional
+    @Observed(name = "shipping.cancel", contextualName = "cancel-shipping")
     public void cancelShipping(String orderId) {
+        long startTime = System.currentTimeMillis();
         log.info("Cancelling shipping for order: {}", orderId);
         
         Shipment shipment = shipmentRepository.findByOrderId(orderId)
@@ -105,15 +151,26 @@ public class ShippingService {
             shipment.getStatus() == Shipment.ShippingStatus.PENDING) {
             shipment.setStatus(Shipment.ShippingStatus.CANCELLED);
             shipmentRepository.save(shipment);
+            metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_SHIPMENT);
 
             ShippingCancelledEvent event = ShippingCancelledEvent.builder()
                     .shippingId(shipment.getShippingId())
                     .orderId(orderId)
                     .cancelledAt(Instant.now())
+                    .createdAt(Instant.now())
                     .build();
 
             eventPublisher.publishShippingCancelled(event);
+            metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
+            
+            compensationShippingCounter.increment();
+            compensationDurationTimer.record(java.time.Duration.ofMillis(System.currentTimeMillis() - startTime));
+            
             log.info("Shipping cancelled for order: {}", orderId);
         }
+    }
+
+    public SagaMetricsHelper getMetricsHelper() {
+        return metricsHelper;
     }
 }

@@ -1,0 +1,168 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eventuate-cdc
+  namespace: saga-test
+  labels:
+    app: eventuate-cdc
+    pattern: orchestration
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app: eventuate-cdc
+    pattern: orchestration
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eventuate-cdc
+  namespace: saga-test
+  labels:
+    app: eventuate-cdc
+    pattern: orchestration
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eventuate-cdc
+      pattern: orchestration
+  template:
+    metadata:
+      labels:
+        app: eventuate-cdc
+        pattern: orchestration
+    spec:
+      containers:
+        - name: eventuate-cdc
+          image: eventuateio/eventuate-cdc-service:0.16.0.RELEASE
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "PostgresPolling"
+            - name: EVENTUATELOCAL_KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka.saga-infra.svc.cluster.local:9092"
+            - name: EVENTUATELOCAL_ZOOKEEPER_CONNECTION_STRING
+              value: "zookeeper.saga-infra.svc.cluster.local:2181"
+            # Reader 1: Order DB
+            - name: EVENTUATE_CDC_READER_READER1_TYPE
+              value: "polling"
+            - name: EVENTUATE_CDC_READER_READER1_DATASOURCEURL
+              value: "jdbc:postgresql://order-db.saga-infra.svc.cluster.local:5432/order_db"
+            - name: EVENTUATE_CDC_READER_READER1_DATASOURCEUSERNAME
+              value: "postgres"
+            - name: EVENTUATE_CDC_READER_READER1_DATASOURCEPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: EVENTUATE_CDC_READER_READER1_DATASOURCEDRIVERCLASSNAME
+              value: "org.postgresql.Driver"
+            - name: EVENTUATE_CDC_READER_READER1_LEADERSHIPLOCKPATH
+              value: "/eventuate/cdc/leader/order"
+            - name: EVENTUATE_CDC_READER_READER1_OUTBOXID
+              value: "1"
+            - name: EVENTUATE_CDC_READER_READER1_POLLINGINTERVALINMILLISECONDS
+              value: "500"
+            # Reader 2: Payment DB
+            - name: EVENTUATE_CDC_READER_READER2_TYPE
+              value: "polling"
+            - name: EVENTUATE_CDC_READER_READER2_DATASOURCEURL
+              value: "jdbc:postgresql://payment-db.saga-infra.svc.cluster.local:5432/payment_db"
+            - name: EVENTUATE_CDC_READER_READER2_DATASOURCEUSERNAME
+              value: "postgres"
+            - name: EVENTUATE_CDC_READER_READER2_DATASOURCEPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: EVENTUATE_CDC_READER_READER2_DATASOURCEDRIVERCLASSNAME
+              value: "org.postgresql.Driver"
+            - name: EVENTUATE_CDC_READER_READER2_LEADERSHIPLOCKPATH
+              value: "/eventuate/cdc/leader/payment"
+            - name: EVENTUATE_CDC_READER_READER2_OUTBOXID
+              value: "2"
+            - name: EVENTUATE_CDC_READER_READER2_POLLINGINTERVALINMILLISECONDS
+              value: "500"
+            # Reader 3: Inventory DB
+            - name: EVENTUATE_CDC_READER_READER3_TYPE
+              value: "polling"
+            - name: EVENTUATE_CDC_READER_READER3_DATASOURCEURL
+              value: "jdbc:postgresql://inventory-db.saga-infra.svc.cluster.local:5432/inventory_db"
+            - name: EVENTUATE_CDC_READER_READER3_DATASOURCEUSERNAME
+              value: "postgres"
+            - name: EVENTUATE_CDC_READER_READER3_DATASOURCEPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: EVENTUATE_CDC_READER_READER3_DATASOURCEDRIVERCLASSNAME
+              value: "org.postgresql.Driver"
+            - name: EVENTUATE_CDC_READER_READER3_LEADERSHIPLOCKPATH
+              value: "/eventuate/cdc/leader/inventory"
+            - name: EVENTUATE_CDC_READER_READER3_OUTBOXID
+              value: "3"
+            - name: EVENTUATE_CDC_READER_READER3_POLLINGINTERVALINMILLISECONDS
+              value: "500"
+            # Reader 4: Shipping DB
+            - name: EVENTUATE_CDC_READER_READER4_TYPE
+              value: "polling"
+            - name: EVENTUATE_CDC_READER_READER4_DATASOURCEURL
+              value: "jdbc:postgresql://shipping-db.saga-infra.svc.cluster.local:5432/shipping_db"
+            - name: EVENTUATE_CDC_READER_READER4_DATASOURCEUSERNAME
+              value: "postgres"
+            - name: EVENTUATE_CDC_READER_READER4_DATASOURCEPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: EVENTUATE_CDC_READER_READER4_DATASOURCEDRIVERCLASSNAME
+              value: "org.postgresql.Driver"
+            - name: EVENTUATE_CDC_READER_READER4_LEADERSHIPLOCKPATH
+              value: "/eventuate/cdc/leader/shipping"
+            - name: EVENTUATE_CDC_READER_READER4_OUTBOXID
+              value: "4"
+            - name: EVENTUATE_CDC_READER_READER4_POLLINGINTERVALINMILLISECONDS
+              value: "500"
+            # Pipeline configurations
+            - name: EVENTUATE_CDC_PIPELINE_PIPELINE1_TYPE
+              value: "eventuate-tram"
+            - name: EVENTUATE_CDC_PIPELINE_PIPELINE1_READER
+              value: "reader1"
+            - name: EVENTUATE_CDC_PIPELINE_PIPELINE1_EVENTUATEDATABASESCHEMA
+              value: "eventuate"
+            - name: EVENTUATE_CDC_PIPELINE_PIPELINE2_TYPE
+              value: "eventuate-tram"
+            - name: EVENTUATE_CDC_PIPELINE_PIPELINE2_READER
+              value: "reader2"
+            - name: EVENTUATE_CDC_PIPELINE_PIPELINE2_EVENTUATEDATABASESCHEMA
+              value: "eventuate"
+            - name: EVENTUATE_CDC_PIPELINE_PIPELINE3_TYPE
+              value: "eventuate-tram"
+            - name: EVENTUATE_CDC_PIPELINE_PIPELINE3_READER
+              value: "reader3"
+            - name: EVENTUATE_CDC_PIPELINE_PIPELINE3_EVENTUATEDATABASESCHEMA
+              value: "eventuate"
+            - name: EVENTUATE_CDC_PIPELINE_PIPELINE4_TYPE
+              value: "eventuate-tram"
+            - name: EVENTUATE_CDC_PIPELINE_PIPELINE4_READER
+              value: "reader4"
+            - name: EVENTUATE_CDC_PIPELINE_PIPELINE4_EVENTUATEDATABASESCHEMA
+              value: "eventuate"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10

@@ -9,13 +9,6 @@ scrape_configs:
       - targets: ['localhost:9090']
     metrics_path: /metrics
 
-  # Axon Server metrics
-  - job_name: 'axon-server'
-    metrics_path: /actuator/prometheus
-    static_configs:
-      - targets: ['axon-server:8024']
-    scrape_interval: 5s
-
   # Orchestration Saga Services
   - job_name: 'orchestration-order-service'
     metrics_path: /actuator/prometheus
@@ -40,3 +33,9 @@ scrape_configs:
     static_configs:
       - targets: ['shipping-service:8088']
     scrape_interval: 5s
+
+  # Kafka metrics via kafka-exporter
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+    scrape_interval: 15s

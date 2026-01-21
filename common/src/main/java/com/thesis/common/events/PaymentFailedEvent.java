@@ -16,4 +16,6 @@ public class PaymentFailedEvent {
     private String orderId;
     private String reason;
     private Instant failedAt;
+    @Builder.Default
+    private Instant createdAt = Instant.now();
 }

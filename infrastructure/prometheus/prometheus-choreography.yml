@@ -34,7 +34,8 @@ scrape_configs:
       - targets: ['shipping-service:8084']
     scrape_interval: 5s
 
-  # Kafka metrics (if JMX exporter is configured)
-  # - job_name: 'kafka'
-  #   static_configs:
-  #     - targets: ['kafka:9101']
+  # Kafka metrics via kafka-exporter
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+    scrape_interval: 15s

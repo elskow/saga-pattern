@@ -1,15 +1,26 @@
 server:
-  port: 8084
+  port: ${SERVER_PORT:8084}
+  shutdown: graceful
 
 spring:
   application:
     name: shipping-service-choreography
 
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
+
   datasource:
-    url: jdbc:postgresql://localhost:5435/shipping_db
-    username: postgres
-    password: postgres
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5435}/${DB_NAME:shipping_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      minimum-idle: ${DB_POOL_MIN:5}
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      idle-timeout: ${DB_POOL_IDLE_TIMEOUT:30000}
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT:30000}
+      max-lifetime: ${DB_POOL_MAX_LIFETIME:1800000}
+      pool-name: ${spring.application.name}-pool
 
   jpa:
     hibernate:
@@ -21,7 +32,7 @@ spring:
         format_sql: true
 
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -35,23 +46,42 @@ spring:
       properties:
         spring.json.trusted.packages: com.thesis.common.events
         spring.json.use.type.headers: true
+    listener:
+      observation-enabled: true
+    template:
+      observation-enabled: true
 
 management:
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        startup:
+          include: readinessState,db,kafka
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
   endpoints:
     web:
       exposure:
         include: health,info,prometheus,metrics
   tracing:
     sampling:
-      probability: 1.0
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
   observations:
     key-values:
       application: ${spring.application.name}
   zipkin:
     tracing:
-      endpoint: http://localhost:9411/api/v2/spans
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
 
 logging:
   level:
-    com.thesis: DEBUG
-    org.springframework.kafka: INFO
+    com.thesis: ${LOG_LEVEL:DEBUG}
+    org.springframework.kafka: ${KAFKA_LOG_LEVEL:INFO}
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"

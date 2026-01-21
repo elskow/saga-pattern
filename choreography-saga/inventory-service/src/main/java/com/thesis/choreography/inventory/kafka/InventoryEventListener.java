@@ -4,7 +4,7 @@ import com.thesis.choreography.inventory.model.PendingOrderItem;
 import com.thesis.choreography.inventory.repository.PendingOrderItemRepository;
 import com.thesis.choreography.inventory.service.IdempotencyService;
 import com.thesis.choreography.inventory.service.InventoryService;
-import com.thesis.common.dto.KafkaTopics;
+import static com.thesis.common.dto.KafkaTopics.*;
 import com.thesis.common.events.OrderCreatedEvent;
 import com.thesis.common.events.PaymentCompletedEvent;
 import com.thesis.common.events.PaymentFailedEvent;
@@ -28,7 +28,7 @@ public class InventoryEventListener {
     private final PendingOrderItemRepository pendingOrderItemRepository;
     private final IdempotencyService idempotencyService;
 
-    @KafkaListener(topics = KafkaTopics.ORDER_EVENTS, groupId = "inventory-service")
+    @KafkaListener(topics = ORDER_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:inventory-service}")
     @Transactional
     public void handleOrderEvents(ConsumerRecord<String, Object> record) {
         Object event = record.value();
@@ -52,7 +52,7 @@ public class InventoryEventListener {
         }
     }
 
-    @KafkaListener(topics = KafkaTopics.PAYMENT_EVENTS, groupId = "inventory-service")
+    @KafkaListener(topics = PAYMENT_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:inventory-service}")
     @Transactional
     public void handlePaymentEvents(ConsumerRecord<String, Object> record) {
         Object event = record.value();
@@ -85,7 +85,7 @@ public class InventoryEventListener {
         }
     }
 
-    @KafkaListener(topics = KafkaTopics.SHIPPING_EVENTS, groupId = "inventory-service")
+    @KafkaListener(topics = SHIPPING_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:inventory-service}")
     @Transactional
     public void handleShippingEvents(ConsumerRecord<String, Object> record) {
         Object event = record.value();

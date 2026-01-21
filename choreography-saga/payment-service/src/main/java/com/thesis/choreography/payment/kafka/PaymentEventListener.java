@@ -2,7 +2,7 @@ package com.thesis.choreography.payment.kafka;
 
 import com.thesis.choreography.payment.service.IdempotencyService;
 import com.thesis.choreography.payment.service.PaymentService;
-import com.thesis.common.dto.KafkaTopics;
+import static com.thesis.common.dto.KafkaTopics.*;
 import com.thesis.common.events.InventoryReservationFailedEvent;
 import com.thesis.common.events.OrderCreatedEvent;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +20,7 @@ public class PaymentEventListener {
     private final PaymentService paymentService;
     private final IdempotencyService idempotencyService;
 
-    @KafkaListener(topics = KafkaTopics.ORDER_EVENTS, groupId = "payment-service")
+    @KafkaListener(topics = ORDER_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:payment-service}")
     @Transactional
     public void handleOrderEvents(ConsumerRecord<String, Object> record) {
         Object event = record.value();
@@ -38,7 +38,7 @@ public class PaymentEventListener {
         }
     }
 
-    @KafkaListener(topics = KafkaTopics.INVENTORY_EVENTS, groupId = "payment-service")
+    @KafkaListener(topics = INVENTORY_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:payment-service}")
     @Transactional
     public void handleInventoryEvents(ConsumerRecord<String, Object> record) {
         Object event = record.value();

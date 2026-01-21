@@ -17,6 +17,8 @@ public class InventoryReservedEvent {
     private String orderId;
     private List<ReservedItem> reservedItems;
     private Instant reservedAt;
+    @Builder.Default
+    private Instant createdAt = Instant.now();
 
     @Data
     @Builder

@@ -8,9 +8,12 @@ import com.thesis.common.dto.CreateOrderRequest;
 import com.thesis.common.dto.OrderResponse;
 import com.thesis.common.events.OrderCreatedEvent;
 import com.thesis.common.exception.OrderNotFoundException;
+import com.thesis.common.metrics.SagaMetrics;
+import com.thesis.common.metrics.SagaMetricsHelper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.observation.annotation.Observed;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +34,9 @@ public class OrderService {
     private final Counter orderCompletedCounter;
     private final Counter orderFailedCounter;
     private final Timer orderProcessingTimer;
+    private final Timer sagaTotalDurationTimer;
+    private final Counter compensationsTotalCounter;
+    private final SagaMetricsHelper metricsHelper;
 
     public OrderService(OrderRepository orderRepository, 
                         OrderEventPublisher eventPublisher,
@@ -39,13 +45,23 @@ public class OrderService {
         this.eventPublisher = eventPublisher;
         
         // Metrics
-        this.orderCreatedCounter = meterRegistry.counter("orders.created", "service", "choreography");
-        this.orderCompletedCounter = meterRegistry.counter("orders.completed", "service", "choreography");
-        this.orderFailedCounter = meterRegistry.counter("orders.failed", "service", "choreography");
-        this.orderProcessingTimer = meterRegistry.timer("order.processing.time", "service", "choreography");
+        this.orderCreatedCounter = meterRegistry.counter(SagaMetrics.ORDERS_CREATED, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.orderCompletedCounter = meterRegistry.counter(SagaMetrics.ORDERS_COMPLETED, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.orderFailedCounter = meterRegistry.counter(SagaMetrics.ORDERS_FAILED, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.orderProcessingTimer = meterRegistry.timer(SagaMetrics.ORDER_PROCESSING_TIME, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.sagaTotalDurationTimer = meterRegistry.timer(SagaMetrics.SAGA_TOTAL_DURATION, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.compensationsTotalCounter = meterRegistry.counter(SagaMetrics.COMPENSATIONS_TOTAL, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.metricsHelper = new SagaMetricsHelper(meterRegistry, SagaMetrics.SERVICE_CHOREOGRAPHY);
     }
 
     @Transactional
+    @Observed(name = "order.create", contextualName = "create-order")
     public OrderResponse createOrder(CreateOrderRequest request) {
         return orderProcessingTimer.record(() -> {
             log.info("Creating order for customer: {}", request.getCustomerId());
@@ -74,6 +90,7 @@ public class OrderService {
             order.setTotalAmount(total);
             
             Order savedOrder = orderRepository.save(order);
+            metricsHelper.recordDbInsert(orderId, SagaMetrics.ENTITY_ORDER);
             log.info("Order created with ID: {}", savedOrder.getOrderId());
 
             // Publish OrderCreatedEvent
@@ -94,6 +111,7 @@ public class OrderService {
                     .build();
 
             eventPublisher.publishOrderCreated(event);
+            metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
             orderCreatedCounter.increment();
             
             return mapToResponse(savedOrder);
@@ -107,6 +125,7 @@ public class OrderService {
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
         order.setStatus(status);
         orderRepository.save(order);
+        metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
     }
 
     @Transactional
@@ -117,6 +136,7 @@ public class OrderService {
         order.setPaymentId(paymentId);
         order.setStatus(Order.OrderStatus.PAYMENT_COMPLETED);
         orderRepository.save(order);
+        metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
     }
 
     @Transactional
@@ -127,6 +147,7 @@ public class OrderService {
         order.setReservationId(reservationId);
         order.setStatus(Order.OrderStatus.INVENTORY_RESERVED);
         orderRepository.save(order);
+        metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
     }
 
     @Transactional
@@ -138,6 +159,7 @@ public class OrderService {
         order.setTrackingNumber(trackingNumber);
         order.setStatus(Order.OrderStatus.SHIPPING_SCHEDULED);
         orderRepository.save(order);
+        metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
     }
 
     @Transactional
@@ -147,7 +169,15 @@ public class OrderService {
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
         order.setStatus(Order.OrderStatus.COMPLETED);
         orderRepository.save(order);
+        metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
+        metricsHelper.recordSagaSuccess(orderId);
         orderCompletedCounter.increment();
+        
+        // Record saga duration
+        if (order.getCreatedAt() != null) {
+            long durationMs = Instant.now().toEpochMilli() - order.getCreatedAt().toEpochMilli();
+            sagaTotalDurationTimer.record(java.time.Duration.ofMillis(durationMs));
+        }
     }
 
     @Transactional
@@ -158,7 +188,16 @@ public class OrderService {
         order.setStatus(Order.OrderStatus.CANCELLED);
         order.setFailureReason(reason);
         orderRepository.save(order);
+        metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
+        metricsHelper.recordSagaFailure(orderId);
         orderFailedCounter.increment();
+        compensationsTotalCounter.increment();
+        
+        // Record saga duration
+        if (order.getCreatedAt() != null) {
+            long durationMs = Instant.now().toEpochMilli() - order.getCreatedAt().toEpochMilli();
+            sagaTotalDurationTimer.record(java.time.Duration.ofMillis(durationMs));
+        }
     }
 
     public OrderResponse getOrder(String orderId) {
@@ -171,6 +210,10 @@ public class OrderService {
         return orderRepository.findByCustomerId(customerId).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
+    }
+
+    public SagaMetricsHelper getMetricsHelper() {
+        return metricsHelper;
     }
 
     private OrderResponse mapToResponse(Order order) {

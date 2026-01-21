@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: saga-test
+
+resources:
+  - eventuate-cdc.yaml
+  - order-service.yaml
+  - payment-service.yaml
+  - inventory-service.yaml
+  - shipping-service.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: saga-pattern
+  app.kubernetes.io/component: orchestration

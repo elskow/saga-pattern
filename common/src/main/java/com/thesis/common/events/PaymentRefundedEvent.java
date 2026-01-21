@@ -17,4 +17,6 @@ public class PaymentRefundedEvent {
     private String orderId;
     private BigDecimal refundAmount;
     private Instant refundedAt;
+    @Builder.Default
+    private Instant createdAt = Instant.now();
 }

@@ -1,6 +1,6 @@
 package com.thesis.choreography.inventory.kafka;
 
-import com.thesis.common.dto.KafkaTopics;
+import com.thesis.common.config.KafkaTopicsConfig;
 import com.thesis.common.events.InventoryReleasedEvent;
 import com.thesis.common.events.InventoryReservationFailedEvent;
 import com.thesis.common.events.InventoryReservedEvent;
@@ -15,19 +15,20 @@ import org.springframework.stereotype.Component;
 public class InventoryEventPublisher {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final KafkaTopicsConfig topicsConfig;
 
     public void publishInventoryReserved(InventoryReservedEvent event) {
         log.info("Publishing InventoryReservedEvent for order: {}", event.getOrderId());
-        kafkaTemplate.send(KafkaTopics.INVENTORY_EVENTS, event.getOrderId(), event);
+        kafkaTemplate.send(topicsConfig.getInventoryEvents(), event.getOrderId(), event);
     }
 
     public void publishInventoryReservationFailed(InventoryReservationFailedEvent event) {
         log.info("Publishing InventoryReservationFailedEvent for order: {}", event.getOrderId());
-        kafkaTemplate.send(KafkaTopics.INVENTORY_EVENTS, event.getOrderId(), event);
+        kafkaTemplate.send(topicsConfig.getInventoryEvents(), event.getOrderId(), event);
     }
 
     public void publishInventoryReleased(InventoryReleasedEvent event) {
         log.info("Publishing InventoryReleasedEvent for order: {}", event.getOrderId());
-        kafkaTemplate.send(KafkaTopics.INVENTORY_EVENTS, event.getOrderId(), event);
+        kafkaTemplate.send(topicsConfig.getInventoryEvents(), event.getOrderId(), event);
     }
 }

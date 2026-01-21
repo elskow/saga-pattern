@@ -18,4 +18,6 @@ public class PaymentCompletedEvent {
     private BigDecimal amount;
     private String transactionId;
     private Instant completedAt;
+    @Builder.Default
+    private Instant createdAt = Instant.now();
 }

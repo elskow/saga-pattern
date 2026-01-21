@@ -1,0 +1,52 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+  labels:
+    app: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      # Prometheus self-monitoring
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+        metrics_path: /metrics
+
+      # Orchestration Saga Services
+      - job_name: 'orchestration-order-service'
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['order-service.saga-test.svc.cluster.local:8085']
+        scrape_interval: 5s
+
+      - job_name: 'orchestration-payment-service'
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['payment-service.saga-test.svc.cluster.local:8086']
+        scrape_interval: 5s
+
+      - job_name: 'orchestration-inventory-service'
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['inventory-service.saga-test.svc.cluster.local:8087']
+        scrape_interval: 5s
+
+      - job_name: 'orchestration-shipping-service'
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['shipping-service.saga-test.svc.cluster.local:8088']
+        scrape_interval: 5s
+
+      # Eventuate CDC Service
+      - job_name: 'eventuate-cdc'
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['eventuate-cdc.saga-test.svc.cluster.local:8080']
+        scrape_interval: 5s

@@ -43,6 +43,12 @@
             <artifactId>spring-kafka</artifactId>
         </dependency>
 
+        <!-- AOP (for @Observed annotation) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
         <!-- Database -->
         <dependency>
             <groupId>org.postgresql</groupId>

@@ -15,4 +15,6 @@ public class InventoryReleasedEvent {
     private String reservationId;
     private String orderId;
     private Instant releasedAt;
+    @Builder.Default
+    private Instant createdAt = Instant.now();
 }

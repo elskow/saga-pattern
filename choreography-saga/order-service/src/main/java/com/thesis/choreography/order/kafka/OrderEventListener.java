@@ -2,14 +2,18 @@ package com.thesis.choreography.order.kafka;
 
 import com.thesis.choreography.order.service.IdempotencyService;
 import com.thesis.choreography.order.service.OrderService;
-import com.thesis.common.dto.KafkaTopics;
+import static com.thesis.common.dto.KafkaTopics.*;
 import com.thesis.common.events.*;
+import com.thesis.common.metrics.SagaMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Duration;
+import java.time.Instant;
 
 @Component
 @RequiredArgsConstructor
@@ -19,7 +23,7 @@ public class OrderEventListener {
     private final OrderService orderService;
     private final IdempotencyService idempotencyService;
 
-    @KafkaListener(topics = KafkaTopics.PAYMENT_EVENTS, groupId = "order-service")
+    @KafkaListener(topics = PAYMENT_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:order-service}")
     @Transactional
     public void handlePaymentEvents(ConsumerRecord<String, Object> record) {
         Object event = record.value();
@@ -30,6 +34,7 @@ public class OrderEventListener {
                 return;
             }
             log.info("Received PaymentCompletedEvent for order: {}", paymentEvent.getOrderId());
+            recordMessageReceived(paymentEvent.getOrderId(), paymentEvent.getCreatedAt(), "payment");
             orderService.updateOrderPayment(paymentEvent.getOrderId(), paymentEvent.getPaymentId());
         } else if (event instanceof PaymentFailedEvent paymentEvent) {
             String eventId = "payment-failed:" + paymentEvent.getOrderId();
@@ -38,6 +43,7 @@ public class OrderEventListener {
                 return;
             }
             log.info("Received PaymentFailedEvent for order: {}", paymentEvent.getOrderId());
+            recordMessageReceived(paymentEvent.getOrderId(), paymentEvent.getCreatedAt(), "payment");
             orderService.cancelOrder(paymentEvent.getOrderId(), "Payment failed: " + paymentEvent.getReason());
         } else if (event instanceof PaymentRefundedEvent paymentEvent) {
             String eventId = "payment-refunded:" + paymentEvent.getOrderId();
@@ -46,11 +52,12 @@ public class OrderEventListener {
                 return;
             }
             log.info("Received PaymentRefundedEvent for order: {}", paymentEvent.getOrderId());
+            recordMessageReceived(paymentEvent.getOrderId(), paymentEvent.getCreatedAt(), "payment");
             // Payment was refunded, order should already be cancelled
         }
     }
 
-    @KafkaListener(topics = KafkaTopics.INVENTORY_EVENTS, groupId = "order-service")
+    @KafkaListener(topics = INVENTORY_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:order-service}")
     @Transactional
     public void handleInventoryEvents(ConsumerRecord<String, Object> record) {
         Object event = record.value();
@@ -61,6 +68,7 @@ public class OrderEventListener {
                 return;
             }
             log.info("Received InventoryReservedEvent for order: {}", inventoryEvent.getOrderId());
+            recordMessageReceived(inventoryEvent.getOrderId(), inventoryEvent.getCreatedAt(), "inventory");
             orderService.updateOrderInventory(inventoryEvent.getOrderId(), inventoryEvent.getReservationId());
         } else if (event instanceof InventoryReservationFailedEvent inventoryEvent) {
             String eventId = "inventory-failed:" + inventoryEvent.getOrderId();
@@ -69,11 +77,12 @@ public class OrderEventListener {
                 return;
             }
             log.info("Received InventoryReservationFailedEvent for order: {}", inventoryEvent.getOrderId());
+            recordMessageReceived(inventoryEvent.getOrderId(), inventoryEvent.getCreatedAt(), "inventory");
             orderService.cancelOrder(inventoryEvent.getOrderId(), "Inventory reservation failed: " + inventoryEvent.getReason());
         }
     }
 
-    @KafkaListener(topics = KafkaTopics.SHIPPING_EVENTS, groupId = "order-service")
+    @KafkaListener(topics = SHIPPING_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:order-service}")
     @Transactional
     public void handleShippingEvents(ConsumerRecord<String, Object> record) {
         Object event = record.value();
@@ -84,6 +93,7 @@ public class OrderEventListener {
                 return;
             }
             log.info("Received ShippingScheduledEvent for order: {}", shippingEvent.getOrderId());
+            recordMessageReceived(shippingEvent.getOrderId(), shippingEvent.getCreatedAt(), "shipping");
             orderService.updateOrderShipping(
                     shippingEvent.getOrderId(), 
                     shippingEvent.getShippingId(), 
@@ -97,7 +107,16 @@ public class OrderEventListener {
                 return;
             }
             log.info("Received ShippingFailedEvent for order: {}", shippingEvent.getOrderId());
+            recordMessageReceived(shippingEvent.getOrderId(), shippingEvent.getCreatedAt(), "shipping");
             orderService.cancelOrder(shippingEvent.getOrderId(), "Shipping failed: " + shippingEvent.getReason());
+        }
+    }
+
+    private void recordMessageReceived(String orderId, Instant eventCreatedAt, String fromService) {
+        orderService.getMetricsHelper().recordMessageReceived(orderId, SagaMetrics.TYPE_EVENT);
+        if (eventCreatedAt != null) {
+            Duration latency = Duration.between(eventCreatedAt, Instant.now());
+            orderService.getMetricsHelper().recordMessageLatency(fromService, "order", latency);
         }
     }
 }

@@ -5,6 +5,8 @@ import com.thesis.common.events.OrderCreatedEvent;
 import com.thesis.common.exception.OrderNotFoundException;
 import com.thesis.orchestration.order.model.OrderEntity;
 import com.thesis.orchestration.order.repository.OrderRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,12 +32,14 @@ class OrderServiceTest {
     private OrderRepository orderRepository;
 
     private ObjectMapper objectMapper;
+    private MeterRegistry meterRegistry;
     private OrderService orderService;
 
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        orderService = new OrderService(orderRepository, objectMapper);
+        meterRegistry = new SimpleMeterRegistry();
+        orderService = new OrderService(orderRepository, objectMapper, meterRegistry);
     }
 
     @Test

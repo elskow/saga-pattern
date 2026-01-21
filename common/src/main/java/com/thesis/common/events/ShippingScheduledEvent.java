@@ -18,4 +18,6 @@ public class ShippingScheduledEvent {
     private String address;
     private Instant estimatedDelivery;
     private Instant scheduledAt;
+    @Builder.Default
+    private Instant createdAt = Instant.now();
 }

@@ -16,4 +16,6 @@ public class InventoryReservationFailedEvent {
     private String productId;
     private String reason;
     private Instant failedAt;
+    @Builder.Default
+    private Instant createdAt = Instant.now();
 }

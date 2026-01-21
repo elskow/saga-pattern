@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base/namespaces
+  - ../../base/infrastructure
+  - ../../base/monitoring
+  - ../../base/orchestration
+
+# Patch Prometheus config for orchestration targets
+patches:
+  - path: prometheus-patch.yaml
+
+# Create GHCR secret in saga-test namespace  
+# Note: Run setup-ghcr-secret.sh before applying this overlay
+
+# Create postgres-credentials secret in saga-test namespace for service access
+generatorOptions:
+  disableNameSuffixHash: true
+
+secretGenerator:
+  - name: postgres-credentials
+    namespace: saga-test
+    literals:
+      - username=postgres
+      - password=postgres

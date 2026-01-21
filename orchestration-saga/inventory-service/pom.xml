@@ -49,6 +49,18 @@
             <artifactId>eventuate-tram-sagas-spring-participant-starter</artifactId>
         </dependency>
 
+        <!-- Spring Kafka (for KafkaAdmin health checks) -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
+        <!-- AOP (for @Observed annotation) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
         <!-- Eventuate Tram Kafka Messaging -->
         <dependency>
             <groupId>io.eventuate.tram.core</groupId>

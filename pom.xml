@@ -32,7 +32,7 @@
 
         <!-- Dependency versions -->
         <spring-boot.version>3.2.0</spring-boot.version>
-        <lombok.version>1.18.30</lombok.version>
+        <lombok.version>1.18.36</lombok.version>
         <jackson.version>2.15.2</jackson.version>
         <eventuate.platform.version>2025.0.RELEASE</eventuate.platform.version>
 
@@ -92,6 +92,13 @@
                     <configuration>
                         <source>${java.version}</source>
                         <target>${java.version}</target>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>${lombok.version}</version>
+                            </path>
+                        </annotationProcessorPaths>
                     </configuration>
                 </plugin>
 
@@ -126,14 +133,24 @@
                             </tags>
                         </to>
                         <container>
+                            <user>1000:1000</user>
                             <jvmFlags>
-                                <jvmFlag>-Xms256m</jvmFlag>
-                                <jvmFlag>-Xmx512m</jvmFlag>
+                                <jvmFlag>-XX:+UseContainerSupport</jvmFlag>
+                                <jvmFlag>-XX:MaxRAMPercentage=75.0</jvmFlag>
+                                <jvmFlag>-XX:InitialRAMPercentage=50.0</jvmFlag>
+                                <jvmFlag>-XX:+ExitOnOutOfMemoryError</jvmFlag>
+                                <jvmFlag>-Djava.security.egd=file:/dev/./urandom</jvmFlag>
                             </jvmFlags>
                             <ports>
                                 <port>8080</port>
                             </ports>
                             <creationTime>USE_CURRENT_TIMESTAMP</creationTime>
+                            <labels>
+                                <app.name>${project.artifactId}</app.name>
+                                <app.version>${project.version}</app.version>
+                                <app.part-of>saga-pattern</app.part-of>
+                                <app.managed-by>jib</app.managed-by>
+                            </labels>
                         </container>
                     </configuration>
                 </plugin>

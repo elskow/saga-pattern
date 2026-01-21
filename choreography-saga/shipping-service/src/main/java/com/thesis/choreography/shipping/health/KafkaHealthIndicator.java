@@ -1,9 +1,9 @@
 package com.thesis.choreography.shipping.health;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.DescribeClusterOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.kafka.core.KafkaAdmin;
@@ -12,26 +12,31 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.TimeUnit;
 
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class KafkaHealthIndicator implements HealthIndicator {
 
     private final KafkaAdmin kafkaAdmin;
-    private static final int TIMEOUT_MS = 5000;
+    private final int timeoutMs;
+
+    public KafkaHealthIndicator(KafkaAdmin kafkaAdmin, 
+                                @Value("${app.health.kafka.timeout-ms:5000}") int timeoutMs) {
+        this.kafkaAdmin = kafkaAdmin;
+        this.timeoutMs = timeoutMs;
+    }
 
     @Override
     public Health health() {
         try (AdminClient adminClient = AdminClient.create(kafkaAdmin.getConfigurationProperties())) {
             DescribeClusterOptions options = new DescribeClusterOptions()
-                    .timeoutMs(TIMEOUT_MS);
+                    .timeoutMs(timeoutMs);
             
             String clusterId = adminClient.describeCluster(options)
                     .clusterId()
-                    .get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                    .get(timeoutMs, TimeUnit.MILLISECONDS);
             
             int nodeCount = adminClient.describeCluster(options)
                     .nodes()
-                    .get(TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                    .get(timeoutMs, TimeUnit.MILLISECONDS)
                     .size();
 
             return Health.up()

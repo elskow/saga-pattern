@@ -129,8 +129,40 @@ services:
       retries: 5
 
   # ============================================
-  # MONITORING
+  # MONITORING & TRACING
   # ============================================
+
+  zipkin:
+    image: openzipkin/zipkin:2.24
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - saga-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9411/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: kafka-exporter
+    command:
+      - '--kafka.server=kafka:29092'
+      - '--web.listen-address=:9308'
+    ports:
+      - "9308:9308"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - saga-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9308/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   prometheus:
     image: prom/prometheus:v2.47.0

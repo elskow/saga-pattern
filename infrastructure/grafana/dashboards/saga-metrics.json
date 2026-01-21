@@ -4,7 +4,7 @@
   },
   "editable": true,
   "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
+  "graphTooltip": 1,
   "id": null,
   "links": [],
   "liveNow": false,
@@ -12,29 +12,29 @@
     {
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "id": 1,
-      "title": "Saga Overview",
+      "title": "Saga Overview - All Services",
       "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
+          "color": { "mode": "thresholds" },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null }
+              { "color": "blue", "value": null }
             ]
           },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
       "id": 2,
       "options": {
-        "colorMode": "value",
+        "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -48,11 +48,11 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "sum(orders_created_total) + sum(orchestration_orders_created_total) or sum(orders_created_total) or sum(orchestration_orders_created_total) or vector(0)",
+          "expr": "sum(saga_orders_created_total) or vector(0)",
           "refId": "A"
         }
       ],
-      "title": "Total Sagas Started",
+      "title": "Total Orders Created",
       "type": "stat"
     },
     {
@@ -71,10 +71,10 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
       "id": 3,
       "options": {
-        "colorMode": "value",
+        "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -88,11 +88,11 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "sum(orders_completed_total) or vector(0)",
+          "expr": "sum(saga_orders_completed_total) or vector(0)",
           "refId": "A"
         }
       ],
-      "title": "Total Sagas Completed",
+      "title": "Total Orders Completed",
       "type": "stat"
     },
     {
@@ -111,10 +111,10 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 1 },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
       "id": 4,
       "options": {
-        "colorMode": "value",
+        "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -128,11 +128,11 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "sum(orders_failed_total) or vector(0)",
+          "expr": "sum(saga_orders_failed_total) or vector(0)",
           "refId": "A"
         }
       ],
-      "title": "Total Sagas Failed",
+      "title": "Total Orders Failed",
       "type": "stat"
     },
     {
@@ -141,46 +141,46 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "mappings": [],
+          "max": 1,
+          "min": 0,
           "thresholds": {
-            "mode": "absolute",
+            "mode": "percentage",
             "steps": [
-              { "color": "green", "value": null },
+              { "color": "red", "value": null },
               { "color": "yellow", "value": 80 },
-              { "color": "red", "value": 90 }
+              { "color": "green", "value": 95 }
             ]
           },
           "unit": "percentunit"
         },
         "overrides": []
       },
-      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 1 },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
       "id": 5,
       "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
       },
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "(sum(orders_completed_total) or vector(0)) / ((sum(orders_created_total) + sum(orchestration_orders_created_total)) or sum(orders_created_total) or sum(orchestration_orders_created_total) or vector(1))",
+          "expr": "(sum(saga_orders_completed_total) or vector(0)) / (sum(saga_orders_created_total) or vector(1))",
           "refId": "A"
         }
       ],
-      "title": "Success Rate",
-      "type": "stat"
+      "title": "Overall Success Rate",
+      "type": "gauge"
     },
     {
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
       "id": 6,
-      "title": "Saga Throughput",
+      "title": "Saga Duration & Throughput",
       "type": "row"
     },
     {
@@ -191,19 +191,91 @@
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "Latency",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
-            "spanNulls": false,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "s"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "p99" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "p95" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "p50" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "id": 7,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "sum(saga_total_duration_seconds_sum) / sum(saga_total_duration_seconds_count)",
+          "legendFormat": "Average Duration",
+          "refId": "A"
+        },
+        {
+          "expr": "max(saga_total_duration_seconds_max)",
+          "legendFormat": "Max Duration",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(saga_total_duration_seconds_sum[1m])) / sum(rate(saga_total_duration_seconds_count[1m]))",
+          "legendFormat": "Recent Avg (1m rate)",
+          "refId": "C"
+        }
+      ],
+      "title": "End-to-End Saga Duration (All Services)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Orders/sec",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
           },
@@ -216,31 +288,37 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-      "id": 7,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "id": 8,
       "options": {
-        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "single", "sort": "none" }
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
         {
-          "expr": "sum(rate(orders_created_total[1m])) + sum(rate(orchestration_orders_created_total[1m])) or sum(rate(orders_created_total[1m])) or sum(rate(orchestration_orders_created_total[1m]))",
-          "legendFormat": "Started",
+          "expr": "sum(rate(saga_orders_created_total[1m]))",
+          "legendFormat": "Orders Created",
           "refId": "A"
         },
         {
-          "expr": "sum(rate(orders_completed_total[1m]))",
-          "legendFormat": "Completed",
+          "expr": "sum(rate(saga_orders_completed_total[1m]))",
+          "legendFormat": "Orders Completed",
           "refId": "B"
         },
         {
-          "expr": "sum(rate(orders_failed_total[1m]))",
-          "legendFormat": "Failed",
+          "expr": "sum(rate(saga_orders_failed_total[1m]))",
+          "legendFormat": "Orders Failed",
           "refId": "C"
         }
       ],
-      "title": "Saga Rate (per second)",
+      "title": "Saga Throughput (Orders/sec)",
       "type": "timeseries"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "id": 9,
+      "title": "Step-by-Step Duration",
+      "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -250,19 +328,19 @@
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "Latency",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
-            "spanNulls": false,
+            "showPoints": "never",
+            "spanNulls": true,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
           },
@@ -275,100 +353,25 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-      "id": 8,
-      "options": {
-        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "single", "sort": "none" }
-      },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.50, sum(rate(order_processing_time_seconds_bucket[5m])) by (le))",
-          "legendFormat": "p50",
-          "refId": "A"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(order_processing_time_seconds_bucket[5m])) by (le))",
-          "legendFormat": "p95",
-          "refId": "B"
-        },
-        {
-          "expr": "histogram_quantile(0.99, sum(rate(order_processing_time_seconds_bucket[5m])) by (le))",
-          "legendFormat": "p99",
-          "refId": "C"
-        }
-      ],
-      "title": "Order Processing Duration Percentiles",
-      "type": "timeseries"
-    },
-    {
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
-      "id": 9,
-      "title": "Service Metrics - Choreography vs Orchestration",
-      "type": "row"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
-          },
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 17 },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
       "id": 10,
       "options": {
-        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "single", "sort": "none" }
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
         {
-          "expr": "rate(payments_success_total{service=\"choreography\"}[1m])",
-          "legendFormat": "Choreography Success",
+          "expr": "saga_step_payment_duration_seconds_sum / saga_step_payment_duration_seconds_count",
+          "legendFormat": "{{service}} avg",
           "refId": "A"
         },
         {
-          "expr": "rate(payments_success_total{service=\"orchestration\"}[1m])",
-          "legendFormat": "Orchestration Success",
+          "expr": "saga_step_payment_duration_seconds_max",
+          "legendFormat": "{{service}} max",
           "refId": "B"
-        },
-        {
-          "expr": "rate(payments_failed_total{service=\"choreography\"}[1m])",
-          "legendFormat": "Choreography Failed",
-          "refId": "C"
-        },
-        {
-          "expr": "rate(payments_failed_total{service=\"orchestration\"}[1m])",
-          "legendFormat": "Orchestration Failed",
-          "refId": "D"
         }
       ],
-      "title": "Payment Service",
+      "title": "Payment Step Duration (Avg/Max)",
       "type": "timeseries"
     },
     {
@@ -379,19 +382,19 @@
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "Latency",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
-            "spanNulls": false,
+            "showPoints": "never",
+            "spanNulls": true,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
           },
@@ -400,39 +403,29 @@
             "mode": "absolute",
             "steps": [{ "color": "green", "value": null }]
           },
-          "unit": "ops"
+          "unit": "s"
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 17 },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
       "id": 11,
       "options": {
-        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "single", "sort": "none" }
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
         {
-          "expr": "rate(inventory_reservations_success_total{service=\"choreography\"}[1m])",
-          "legendFormat": "Choreography Success",
+          "expr": "saga_step_inventory_duration_seconds_sum / saga_step_inventory_duration_seconds_count",
+          "legendFormat": "{{service}} avg",
           "refId": "A"
         },
         {
-          "expr": "rate(inventory_reservations_success_total{service=\"orchestration\"}[1m])",
-          "legendFormat": "Orchestration Success",
+          "expr": "saga_step_inventory_duration_seconds_max",
+          "legendFormat": "{{service}} max",
           "refId": "B"
-        },
-        {
-          "expr": "rate(inventory_reservations_failed_total{service=\"choreography\"}[1m])",
-          "legendFormat": "Choreography Failed",
-          "refId": "C"
-        },
-        {
-          "expr": "rate(inventory_reservations_failed_total{service=\"orchestration\"}[1m])",
-          "legendFormat": "Orchestration Failed",
-          "refId": "D"
         }
       ],
-      "title": "Inventory Service",
+      "title": "Inventory Step Duration (Avg/Max)",
       "type": "timeseries"
     },
     {
@@ -443,19 +436,301 @@
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "Latency",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
-            "spanNulls": false,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "id": 12,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "saga_step_shipping_duration_seconds_sum / saga_step_shipping_duration_seconds_count",
+          "legendFormat": "{{service}} avg",
+          "refId": "A"
+        },
+        {
+          "expr": "saga_step_shipping_duration_seconds_max",
+          "legendFormat": "{{service}} max",
+          "refId": "B"
+        }
+      ],
+      "title": "Shipping Step Duration (Avg/Max)",
+      "type": "timeseries"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 13,
+      "title": "Compensations & Recovery",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 25 },
+      "id": 14,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_compensations_total_total) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Compensations",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 25 },
+      "id": 15,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_compensations_payment_total) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "title": "Payment Refunds",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 25 },
+      "id": 16,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_compensations_inventory_total) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "title": "Inventory Releases",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 25 },
+      "id": 17,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_compensations_shipping_total) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "title": "Shipping Cancels",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Latency",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "id": 18,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "saga_compensation_duration_seconds_sum / saga_compensation_duration_seconds_count",
+          "legendFormat": "{{step}} avg",
+          "refId": "A"
+        },
+        {
+          "expr": "saga_compensation_duration_seconds_max",
+          "legendFormat": "{{step}} max",
+          "refId": "B"
+        }
+      ],
+      "title": "Compensation Duration by Step (Avg/Max)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Compensations/sec",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
           },
@@ -468,41 +743,36 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 17 },
-      "id": 12,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "id": 19,
       "options": {
-        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "single", "sort": "none" }
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
         {
-          "expr": "rate(shipping_success_total{service=\"choreography\"}[1m])",
-          "legendFormat": "Choreography Success",
+          "expr": "sum(rate(saga_compensations_payment_total[1m])) by (service)",
+          "legendFormat": "{{service}} - Payment",
           "refId": "A"
         },
         {
-          "expr": "rate(shipping_success_total{service=\"orchestration\"}[1m])",
-          "legendFormat": "Orchestration Success",
+          "expr": "sum(rate(saga_compensations_inventory_total[1m])) by (service)",
+          "legendFormat": "{{service}} - Inventory",
           "refId": "B"
         },
         {
-          "expr": "rate(shipping_failed_total{service=\"choreography\"}[1m])",
-          "legendFormat": "Choreography Failed",
+          "expr": "sum(rate(saga_compensations_shipping_total[1m])) by (service)",
+          "legendFormat": "{{service}} - Shipping",
           "refId": "C"
-        },
-        {
-          "expr": "rate(shipping_failed_total{service=\"orchestration\"}[1m])",
-          "legendFormat": "Orchestration Failed",
-          "refId": "D"
         }
       ],
-      "title": "Shipping Service",
+      "title": "Compensation Rate by Step",
       "type": "timeseries"
     },
     {
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
-      "id": 13,
-      "title": "JVM Metrics",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+      "id": 20,
+      "title": "Kafka Metrics",
       "type": "row"
     },
     {
@@ -513,19 +783,123 @@
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "Lag",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
-            "spanNulls": false,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 39 },
+      "id": 21,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "sum(kafka_consumergroup_lag) by (consumergroup)",
+          "legendFormat": "{{consumergroup}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Consumer Group Lag",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Messages/sec",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 39 },
+      "id": 22,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(kafka_topic_partition_current_offset[1m])) by (topic)",
+          "legendFormat": "{{topic}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Topic Message Rate",
+      "type": "timeseries"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 47 },
+      "id": 23,
+      "title": "JVM & System Metrics",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Memory",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
           },
@@ -538,15 +912,15 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
-      "id": 14,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "id": 24,
       "options": {
-        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "single", "sort": "none" }
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
         {
-          "expr": "jvm_memory_used_bytes{job=~\".*order.*\", area=\"heap\"}",
+          "expr": "sum(jvm_memory_used_bytes{area=\"heap\"}) by (job)",
           "legendFormat": "{{job}}",
           "refId": "A"
         }
@@ -562,19 +936,19 @@
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "Threads",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
-            "spanNulls": false,
+            "showPoints": "never",
+            "spanNulls": true,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
           },
@@ -587,11 +961,11 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
-      "id": 15,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+      "id": 25,
       "options": {
-        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "single", "sort": "none" }
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
         {
@@ -600,20 +974,20 @@
           "refId": "A"
         }
       ],
-      "title": "JVM Threads",
+      "title": "JVM Live Threads",
       "type": "timeseries"
     }
   ],
   "refresh": "5s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["saga", "microservices", "thesis"],
+  "tags": ["saga", "microservices", "thesis", "operations"],
   "templating": { "list": [] },
   "time": { "from": "now-15m", "to": "now" },
   "timepicker": {},
   "timezone": "",
   "title": "Saga Pattern Metrics",
   "uid": "saga-pattern-metrics",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

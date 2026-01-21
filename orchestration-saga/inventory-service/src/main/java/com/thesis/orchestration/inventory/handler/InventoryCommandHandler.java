@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.thesis.common.command.ReleaseInventoryCommand;
 import com.thesis.common.command.ReserveInventoryCommand;
 import com.thesis.common.events.OrderCreatedEvent;
+import com.thesis.common.metrics.SagaMetrics;
+import com.thesis.common.metrics.SagaMetricsHelper;
 import com.thesis.common.replies.InventoryFailedReply;
 import com.thesis.common.replies.InventoryReservedReply;
 import com.thesis.orchestration.inventory.model.ProductEntity;
@@ -18,6 +20,7 @@ import io.eventuate.tram.sagas.participant.SagaCommandHandlersBuilder;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.observation.annotation.Observed;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +42,11 @@ public class InventoryCommandHandler {
     private final Counter reservationSuccessCounter;
     private final Counter reservationFailedCounter;
     private final Timer reservationTimer;
+    private final Counter compensationInventoryCounter;
+    private final Timer compensationDurationTimer;
+    private final Counter sagaStepsExecutedCounter;
+    private final Counter sagaStepsFailedCounter;
+    private final SagaMetricsHelper metricsHelper;
 
     public InventoryCommandHandler(ReservationRepository reservationRepository,
                                    ProductRepository productRepository,
@@ -47,9 +55,24 @@ public class InventoryCommandHandler {
         this.reservationRepository = reservationRepository;
         this.productRepository = productRepository;
         this.objectMapper = objectMapper;
-        this.reservationSuccessCounter = meterRegistry.counter("inventory.reservations.success", "service", "orchestration");
-        this.reservationFailedCounter = meterRegistry.counter("inventory.reservations.failed", "service", "orchestration");
-        this.reservationTimer = meterRegistry.timer("inventory.reservation.time", "service", "orchestration");
+        this.reservationSuccessCounter = meterRegistry.counter(SagaMetrics.INVENTORY_RESERVATIONS_SUCCESS, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
+        this.reservationFailedCounter = meterRegistry.counter(SagaMetrics.INVENTORY_RESERVATIONS_FAILED, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
+        this.reservationTimer = meterRegistry.timer(SagaMetrics.STEP_INVENTORY_DURATION, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
+        this.compensationInventoryCounter = meterRegistry.counter(SagaMetrics.COMPENSATIONS_INVENTORY, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
+        this.compensationDurationTimer = meterRegistry.timer(SagaMetrics.COMPENSATION_DURATION, 
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
+                SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
+        this.sagaStepsExecutedCounter = meterRegistry.counter(SagaMetrics.SAGA_STEPS_EXECUTED,
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
+                SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
+        this.sagaStepsFailedCounter = meterRegistry.counter(SagaMetrics.SAGA_STEPS_FAILED,
+                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
+                SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
+        this.metricsHelper = new SagaMetricsHelper(meterRegistry, SagaMetrics.SERVICE_ORCHESTRATION);
     }
 
     public CommandHandlers commandHandlers() {
@@ -61,11 +84,15 @@ public class InventoryCommandHandler {
     }
 
     @Transactional
+    @Observed(name = "inventory.reserve", contextualName = "reserve-inventory")
     protected Message handleReserveInventory(CommandMessage<ReserveInventoryCommand> cm) {
         return reservationTimer.record(() -> {
             ReserveInventoryCommand command = cm.getCommand();
             log.info("Reserving inventory {} for order {}",
                 command.getReservationId(), command.getOrderId());
+
+            // Record command received
+            metricsHelper.recordMessageReceived(command.getOrderId(), SagaMetrics.TYPE_COMMAND);
 
             List<OrderCreatedEvent.OrderItemEvent> items = command.getItems();
 
@@ -88,6 +115,7 @@ public class InventoryCommandHandler {
                 int currentReserved = product.getReservedQuantity() != null ? product.getReservedQuantity() : 0;
                 product.setReservedQuantity(currentReserved + item.getQuantity());
                 productRepository.save(product);
+                metricsHelper.recordDbUpdate(command.getOrderId(), SagaMetrics.ENTITY_INVENTORY);
             }
 
             // Create reservation record
@@ -100,8 +128,11 @@ public class InventoryCommandHandler {
                 .reservedAt(Instant.now())
                 .build();
             reservationRepository.save(reservation);
+            metricsHelper.recordDbInsert(command.getOrderId(), SagaMetrics.ENTITY_INVENTORY);
 
             reservationSuccessCounter.increment();
+            sagaStepsExecutedCounter.increment();
+            metricsHelper.recordMessageSent(command.getOrderId(), SagaMetrics.TYPE_REPLY);
             log.info("Inventory {} reserved successfully", command.getReservationId());
             return withSuccess(InventoryReservedReply.builder()
                 .reservationId(command.getReservationId())
@@ -111,9 +142,14 @@ public class InventoryCommandHandler {
     }
 
     @Transactional
+    @Observed(name = "inventory.release", contextualName = "release-inventory")
     protected Message handleReleaseInventory(CommandMessage<ReleaseInventoryCommand> cm) {
+        long startTime = System.currentTimeMillis();
         ReleaseInventoryCommand command = cm.getCommand();
         log.info("Releasing inventory {} for order {}", command.getReservationId(), command.getOrderId());
+
+        // Record command received
+        metricsHelper.recordMessageReceived(command.getOrderId(), SagaMetrics.TYPE_COMMAND);
 
         reservationRepository.findById(command.getReservationId()).ifPresent(reservation -> {
             // Parse items and release stock
@@ -124,6 +160,7 @@ public class InventoryCommandHandler {
                         int currentReserved = product.getReservedQuantity() != null ? product.getReservedQuantity() : 0;
                         product.setReservedQuantity(Math.max(0, currentReserved - item.getQuantity()));
                         productRepository.save(product);
+                        metricsHelper.recordDbUpdate(command.getOrderId(), SagaMetrics.ENTITY_INVENTORY);
                     });
                 }
             }
@@ -133,9 +170,14 @@ public class InventoryCommandHandler {
             reservation.setReleasedAt(Instant.now());
             reservation.setReleaseReason("Order cancelled - saga compensation");
             reservationRepository.save(reservation);
+            metricsHelper.recordDbUpdate(command.getOrderId(), SagaMetrics.ENTITY_INVENTORY);
             log.info("Inventory {} released successfully", command.getReservationId());
         });
 
+        compensationInventoryCounter.increment();
+        compensationDurationTimer.record(java.time.Duration.ofMillis(System.currentTimeMillis() - startTime));
+        metricsHelper.recordMessageSent(command.getOrderId(), SagaMetrics.TYPE_REPLY);
+        
         return withSuccess();
     }
 
@@ -149,8 +191,11 @@ public class InventoryCommandHandler {
             .failureReason(reason)
             .build();
         reservationRepository.save(reservation);
+        metricsHelper.recordDbInsert(command.getOrderId(), SagaMetrics.ENTITY_INVENTORY);
 
         reservationFailedCounter.increment();
+        sagaStepsFailedCounter.increment();
+        metricsHelper.recordMessageSent(command.getOrderId(), SagaMetrics.TYPE_REPLY);
         log.error("Inventory {} reservation failed: {}", command.getReservationId(), reason);
         return withFailure(InventoryFailedReply.builder()
             .reservationId(command.getReservationId())
@@ -176,5 +221,9 @@ public class InventoryCommandHandler {
             log.error("Failed to deserialize items: {}", e.getMessage());
             return java.util.Collections.emptyList();
         }
+    }
+
+    public SagaMetricsHelper getMetricsHelper() {
+        return metricsHelper;
     }
 }

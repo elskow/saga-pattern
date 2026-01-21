@@ -138,3 +138,25 @@ load-testing/*.csv
 # ================================
 *.orig
 *.rej
+results/
+.terraform
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+.terraformrc
+
+# ================================
+# OpenTofu
+# ================================
+*.tfstate
+*.tfstate.*
+.tofu/
+
+# ================================
+# Kubernetes secrets
+# ================================
+# Never commit actual secrets
+infrastructure/k8s/**/secret*.yaml
+!infrastructure/k8s/**/secret*.yaml.example
+*-secret.yaml
+**/ghcr-credentials.yaml
