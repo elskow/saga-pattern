@@ -37,13 +37,14 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- Eventuate Tram Saga Orchestration Starter -->
+        <!-- Spring State Machine for Saga Orchestration -->
         <dependency>
-            <groupId>io.eventuate.tram.sagas</groupId>
-            <artifactId>eventuate-tram-sagas-spring-orchestration-simple-dsl-starter</artifactId>
+            <groupId>org.springframework.statemachine</groupId>
+            <artifactId>spring-statemachine-core</artifactId>
+            <version>4.0.0</version>
         </dependency>
 
-        <!-- Spring Kafka (for KafkaAdmin health checks) -->
+        <!-- Spring Kafka for messaging -->
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>
@@ -53,20 +54,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-aop</artifactId>
-        </dependency>
-
-        <!-- Eventuate Tram Kafka Messaging -->
-        <dependency>
-            <groupId>io.eventuate.tram.core</groupId>
-            <artifactId>eventuate-tram-spring-consumer-kafka</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.eventuate.tram.core</groupId>
-            <artifactId>eventuate-tram-spring-producer-jdbc</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.eventuate.tram.core</groupId>
-            <artifactId>eventuate-tram-spring-consumer-jdbc</artifactId>
         </dependency>
 
         <!-- Database -->
@@ -126,20 +113,6 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-            <plugin>
-                <groupId>com.google.cloud.tools</groupId>
-                <artifactId>jib-maven-plugin</artifactId>
-                <configuration>
-                    <to>
-                        <image>saga-pattern/orchestration-order-service</image>
-                    </to>
-                    <container>
-                        <ports>
-                            <port>8085</port>
-                        </ports>
-                    </container>
-                </configuration>
             </plugin>
         </plugins>
     </build>

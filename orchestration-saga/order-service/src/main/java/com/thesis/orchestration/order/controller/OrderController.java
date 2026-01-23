@@ -2,7 +2,7 @@ package com.thesis.orchestration.order.controller;
 
 import com.thesis.orchestration.order.dto.CreateOrderRequest;
 import com.thesis.orchestration.order.model.OrderEntity;
-import com.thesis.orchestration.order.saga.OrderSagaManager;
+import com.thesis.orchestration.order.statemachine.OrderSagaOrchestrator;
 import com.thesis.orchestration.order.service.OrderService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -21,7 +21,7 @@ import java.util.Map;
 @Slf4j
 public class OrderController {
 
-    private final OrderSagaManager orderSagaManager;
+    private final OrderSagaOrchestrator orderSagaOrchestrator;
     private final OrderService orderService;
     private final MeterRegistry meterRegistry;
 
@@ -34,7 +34,7 @@ public class OrderController {
                 .register(meterRegistry)
                 .increment();
 
-        String orderId = orderSagaManager.createOrder(request);
+        String orderId = orderSagaOrchestrator.createOrder(request);
 
         return ResponseEntity.accepted().body(Map.of(
                 "orderId", orderId,

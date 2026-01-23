@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ShippingFailedReply {
+public class ShippingFailedReply implements SagaReply {
     private String shipmentId;
     private String orderId;
     private String reason;

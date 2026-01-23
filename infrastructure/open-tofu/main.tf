@@ -4,7 +4,7 @@
 
 locals {
   ssh_public_key = var.ssh_public_key
-  k3s_server_ip  = var.nodes["k3s-server"].ip_address
+  saga_node_ip   = var.nodes["saga-node"].ip_address
 }
 
 #------------------------------------------------------------------------------
@@ -107,126 +107,84 @@ resource "lxd_instance" "node" {
 }
 
 #------------------------------------------------------------------------------
-# K3s Server Setup
+# Saga Node Setup (Docker + Docker Compose)
 #------------------------------------------------------------------------------
 
-resource "null_resource" "k3s_server" {
+resource "null_resource" "saga_node" {
   depends_on = [lxd_instance.node]
 
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    host        = var.nodes["k3s-server"].ip_address
+    host        = var.nodes["saga-node"].ip_address
     private_key = file(var.ssh_private_key_path)
     agent       = false
-    timeout     = "5m"
+    timeout     = "10m"
   }
 
   # Wait for cloud-init to complete
   provisioner "remote-exec" {
     inline = [
       "cloud-init status --wait",
-      "echo 'Cloud-init completed on k3s-server'"
+      "echo 'Cloud-init completed on saga-node'"
     ]
   }
 
-  # Install K3s server
+  # Install Docker
   provisioner "remote-exec" {
     inline = [
-      "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='server --disable=traefik --write-kubeconfig-mode=644' sh -",
-      "sudo systemctl enable k3s",
-      "sleep 10",
-      "sudo kubectl wait --for=condition=Ready node --all --timeout=300s || true",
-      "echo 'K3s server installed successfully'"
+      "curl -fsSL https://get.docker.com | sh",
+      "sudo usermod -aG docker ubuntu",
+      "sudo systemctl enable docker",
+      "sudo systemctl start docker",
+      "docker --version",
+      "echo 'Docker installed successfully'"
     ]
   }
 
-  # Install Helm
+  # Create saga directory structure
   provisioner "remote-exec" {
     inline = [
-      "curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash",
-      "echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml' >> ~/.bashrc",
-      "helm version",
-      "echo 'Helm installed successfully'"
+      "mkdir -p ~/saga/data/postgres",
+      "mkdir -p ~/saga/data/kafka",
+      "mkdir -p ~/saga/data/zookeeper",
+      "mkdir -p ~/saga/logs"
     ]
   }
 
-  # Get K3s token for agents
-  provisioner "remote-exec" {
-    inline = [
-      "sudo cat /var/lib/rancher/k3s/server/node-token > /tmp/k3s-token",
-      "sudo chmod 644 /tmp/k3s-token"
-    ]
-  }
-}
-
-# Fetch K3s token from server
-data "external" "k3s_token" {
-  depends_on = [null_resource.k3s_server]
-
-  program = ["bash", "-c", <<-EOF
-    TOKEN=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} ubuntu@${var.nodes["k3s-server"].ip_address} 'sudo cat /var/lib/rancher/k3s/server/node-token' 2>/dev/null)
-    echo "{\"token\": \"$TOKEN\"}"
-  EOF
-  ]
-}
-
-#------------------------------------------------------------------------------
-# K3s Agent Setup
-#------------------------------------------------------------------------------
-
-resource "null_resource" "k3s_agent_1" {
-  depends_on = [null_resource.k3s_server, data.external.k3s_token]
-
-  connection {
-    type        = "ssh"
-    user        = "ubuntu"
-    host        = var.nodes["k3s-agent-1"].ip_address
-    private_key = file(var.ssh_private_key_path)
-    agent       = false
-    timeout     = "5m"
+  # Copy docker-compose files
+  provisioner "file" {
+    source      = "${path.module}/saga/"
+    destination = "/home/ubuntu/saga"
   }
 
+  # Login to GHCR (uses environment variable for token)
   provisioner "remote-exec" {
     inline = [
-      "cloud-init status --wait",
-      "echo 'Cloud-init completed on k3s-agent-1'"
+      "echo '${var.ghcr_token}' | sudo docker login ghcr.io -u ${var.ghcr_username} --password-stdin",
+      "echo 'GHCR login successful'"
     ]
   }
 
+  # Pull images ahead of time
   provisioner "remote-exec" {
     inline = [
-      "curl -sfL https://get.k3s.io | K3S_URL=https://${local.k3s_server_ip}:6443 K3S_TOKEN=${data.external.k3s_token.result.token} sh -",
-      "sudo systemctl enable k3s-agent",
-      "echo 'K3s agent installed on k3s-agent-1'"
-    ]
-  }
-}
-
-resource "null_resource" "k3s_agent_2" {
-  depends_on = [null_resource.k3s_server, data.external.k3s_token]
-
-  connection {
-    type        = "ssh"
-    user        = "ubuntu"
-    host        = var.nodes["k3s-agent-2"].ip_address
-    private_key = file(var.ssh_private_key_path)
-    agent       = false
-    timeout     = "5m"
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "cloud-init status --wait",
-      "echo 'Cloud-init completed on k3s-agent-2'"
+      "sudo docker compose -f ~/saga/docker-compose.infra.yml pull",
+      "sudo docker compose -f ~/saga/docker-compose.choreography.yml pull",
+      "sudo docker compose -f ~/saga/docker-compose.orchestration.yml pull",
+      "echo 'All images pulled successfully'"
     ]
   }
 
+  # Start infrastructure services
   provisioner "remote-exec" {
     inline = [
-      "curl -sfL https://get.k3s.io | K3S_URL=https://${local.k3s_server_ip}:6443 K3S_TOKEN=${data.external.k3s_token.result.token} sh -",
-      "sudo systemctl enable k3s-agent",
-      "echo 'K3s agent installed on k3s-agent-2'"
+      "cd ~/saga && sudo docker compose -f docker-compose.infra.yml up -d",
+      "sleep 30",
+      "sudo docker compose -f ~/saga/docker-compose.infra.yml ps",
+      "echo 'Infrastructure services started'",
+      "echo 'Kafka: ${var.nodes["saga-node"].ip_address}:9092'",
+      "echo 'PostgreSQL: ${var.nodes["saga-node"].ip_address}:5432'"
     ]
   }
 }
@@ -269,31 +227,68 @@ resource "null_resource" "k6_runner" {
 }
 
 #------------------------------------------------------------------------------
-# Verify K3s Cluster
+# Observability Node Setup (Prometheus, Grafana, Zipkin)
 #------------------------------------------------------------------------------
 
-resource "null_resource" "verify_cluster" {
-  depends_on = [
-    null_resource.k3s_server,
-    null_resource.k3s_agent_1,
-    null_resource.k3s_agent_2
-  ]
+resource "null_resource" "observability_node" {
+  depends_on = [lxd_instance.node]
 
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    host        = var.nodes["k3s-server"].ip_address
+    host        = var.nodes["observability-node"].ip_address
     private_key = file(var.ssh_private_key_path)
     agent       = false
-    timeout     = "5m"
+    timeout     = "10m"
   }
 
+  # Wait for cloud-init to complete
   provisioner "remote-exec" {
     inline = [
-      "sleep 30",
-      "sudo kubectl get nodes -o wide",
-      "sudo kubectl get pods -A",
-      "echo 'K3s cluster verification complete'"
+      "cloud-init status --wait",
+      "echo 'Cloud-init completed on observability-node'"
+    ]
+  }
+
+  # Install Docker
+  provisioner "remote-exec" {
+    inline = [
+      "curl -fsSL https://get.docker.com | sh",
+      "sudo usermod -aG docker ubuntu",
+      "sudo systemctl enable docker",
+      "sudo systemctl start docker",
+      "docker --version",
+      "echo 'Docker installed successfully'"
+    ]
+  }
+
+  # Create observability directory structure
+  provisioner "remote-exec" {
+    inline = [
+      "mkdir -p ~/observability/prometheus",
+      "mkdir -p ~/observability/grafana/provisioning/datasources",
+      "mkdir -p ~/observability/grafana/provisioning/dashboards",
+      "mkdir -p ~/observability/grafana/dashboards",
+      "mkdir -p ~/observability/zipkin"
+    ]
+  }
+
+  # Copy configuration files
+  provisioner "file" {
+    source      = "${path.module}/observability/"
+    destination = "/home/ubuntu/observability"
+  }
+
+  # Start observability stack
+  provisioner "remote-exec" {
+    inline = [
+      "cd ~/observability && sudo docker compose up -d",
+      "sleep 15",
+      "sudo docker compose -f ~/observability/docker-compose.yml ps",
+      "echo 'Observability stack started successfully'",
+      "echo 'Prometheus: http://${var.nodes["observability-node"].ip_address}:9090'",
+      "echo 'Grafana: http://${var.nodes["observability-node"].ip_address}:3000 (admin/admin)'",
+      "echo 'Zipkin: http://${var.nodes["observability-node"].ip_address}:9411'"
     ]
   }
 }

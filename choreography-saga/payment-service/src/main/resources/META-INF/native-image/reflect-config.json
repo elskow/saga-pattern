@@ -1,0 +1,20 @@
+[
+  {
+    "name": "com.thesis.choreography.payment.model.Payment",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.thesis.choreography.payment.model.Payment$PaymentStatus",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.thesis.choreography.payment.model.ProcessedEvent",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  }
+]

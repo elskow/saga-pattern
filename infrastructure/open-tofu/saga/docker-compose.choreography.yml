@@ -1,0 +1,110 @@
+# Choreography Pattern Services
+# Uses event-driven communication via Kafka
+
+services:
+  # ============================================
+  # Order Service (Entry point - port 8081)
+  # ============================================
+  order-service:
+    image: ghcr.io/elskow/saga-pattern/choreography-order-service:latest
+    container_name: choreography-order-service
+    ports:
+      - "8081:8081"
+    environment:
+      SERVER_PORT: 8081
+      DB_HOST: order-db
+      DB_PORT: 5432
+      DB_NAME: order_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ZIPKIN_ENDPOINT: http://192.168.11.160:9411/api/v2/spans
+      LOG_LEVEL: INFO
+      SPRING_PROFILES_ACTIVE: docker
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # ============================================
+  # Payment Service
+  # ============================================
+  payment-service:
+    image: ghcr.io/elskow/saga-pattern/choreography-payment-service:latest
+    container_name: choreography-payment-service
+    environment:
+      SERVER_PORT: 8082
+      DB_HOST: payment-db
+      DB_PORT: 5432
+      DB_NAME: payment_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ZIPKIN_ENDPOINT: http://192.168.11.160:9411/api/v2/spans
+      LOG_LEVEL: INFO
+      SPRING_PROFILES_ACTIVE: docker
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # ============================================
+  # Inventory Service
+  # ============================================
+  inventory-service:
+    image: ghcr.io/elskow/saga-pattern/choreography-inventory-service:latest
+    container_name: choreography-inventory-service
+    environment:
+      SERVER_PORT: 8083
+      DB_HOST: inventory-db
+      DB_PORT: 5432
+      DB_NAME: inventory_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ZIPKIN_ENDPOINT: http://192.168.11.160:9411/api/v2/spans
+      LOG_LEVEL: INFO
+      SPRING_PROFILES_ACTIVE: docker
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # ============================================
+  # Shipping Service
+  # ============================================
+  shipping-service:
+    image: ghcr.io/elskow/saga-pattern/choreography-shipping-service:latest
+    container_name: choreography-shipping-service
+    environment:
+      SERVER_PORT: 8084
+      DB_HOST: shipping-db
+      DB_PORT: 5432
+      DB_NAME: shipping_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ZIPKIN_ENDPOINT: http://192.168.11.160:9411/api/v2/spans
+      LOG_LEVEL: INFO
+      SPRING_PROFILES_ACTIVE: docker
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+networks:
+  default:
+    name: saga-network
+    external: true

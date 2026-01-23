@@ -51,15 +51,6 @@ spring:
     template:
       observation-enabled: true
 
-# Eventuate Tram Configuration
-eventuatelocal:
-  kafka:
-    bootstrap:
-      servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
-  zookeeper:
-    connection:
-      string: ${ZOOKEEPER_CONNECTION_STRING:localhost:2181}
-
 management:
   endpoint:
     health:
@@ -95,7 +86,6 @@ management:
 logging:
   level:
     com.thesis.orchestration: ${LOG_LEVEL:DEBUG}
-    io.eventuate: ${EVENTUATE_LOG_LEVEL:INFO}
     org.springframework.kafka: ${KAFKA_LOG_LEVEL:INFO}
   pattern:
     level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"

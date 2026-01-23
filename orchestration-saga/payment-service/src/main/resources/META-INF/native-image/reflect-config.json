@@ -1,0 +1,14 @@
+[
+  {
+    "name": "com.thesis.orchestration.payment.model.PaymentEntity",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.thesis.orchestration.payment.model.PaymentEntity$PaymentStatus",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  }
+]

@@ -1,6 +1,5 @@
 package com.thesis.common.command;
 
-import io.eventuate.tram.commands.common.Command;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -10,7 +9,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ReleaseInventoryCommand implements Command {
+public class ReleaseInventoryCommand {
     private String reservationId;
     private String orderId;
 }

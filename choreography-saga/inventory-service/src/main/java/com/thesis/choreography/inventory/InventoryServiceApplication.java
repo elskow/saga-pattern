@@ -1,11 +1,14 @@
 package com.thesis.choreography.inventory;
 
+import com.thesis.choreography.inventory.aot.InventoryRuntimeHints;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {"com.thesis.choreography.inventory", "com.thesis.common"})
 @EnableScheduling
+@ImportRuntimeHints(InventoryRuntimeHints.class)
 public class InventoryServiceApplication {
 
     public static void main(String[] args) {

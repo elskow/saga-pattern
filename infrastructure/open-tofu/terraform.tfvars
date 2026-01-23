@@ -17,31 +17,30 @@ storage_pool   = "ssd03"
 
 #------------------------------------------------------------------------------
 # Node Specifications
+# 
+# Architecture:
+#   - saga-node: Main application node (Docker Compose for Saga services)
+#   - k6-runner: Load testing node (k6)
+#   - observability-node: Monitoring (Prometheus, Grafana, Zipkin)
 #------------------------------------------------------------------------------
 
 nodes = {
-  "k3s-server" = {
-    vcpu       = 6
-    memory     = "8GB"
-    storage    = "60GB"
+  "saga-node" = {
+    vcpu       = 22
+    memory     = "40GB"
+    storage    = "260GB"
     ip_address = "192.168.11.152"
-  }
-  "k3s-agent-1" = {
-    vcpu       = 8
-    memory     = "16GB"
-    storage    = "100GB"
-    ip_address = "192.168.11.154"
-  }
-  "k3s-agent-2" = {
-    vcpu       = 8
-    memory     = "16GB"
-    storage    = "100GB"
-    ip_address = "192.168.11.156"
   }
   "k6-runner" = {
     vcpu       = 4
     memory     = "4GB"
     storage    = "20GB"
     ip_address = "192.168.11.158"
+  }
+  "observability-node" = {
+    vcpu       = 4
+    memory     = "6GB"
+    storage    = "120GB"
+    ip_address = "192.168.11.160"
   }
 }

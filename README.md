@@ -293,12 +293,16 @@ saga-pattern/
 │   └── shipping-service/                # Port 8088
 │
 ├── infrastructure/
-│   ├── docker-compose.choreography.yml        # Full stack
-│   ├── docker-compose.orchestration.yml       # Full stack
-│   ├── docker-compose.choreography-infra.yml  # Infra only
-│   ├── docker-compose.orchestration-infra.yml # Infra only
-│   ├── prometheus/                            # Prometheus configs
-│   └── grafana/                               # Grafana dashboards
+│   └── open-tofu/                             # VM deployment (OpenTofu/Terraform)
+│       ├── main.tf                            # Infrastructure provisioning
+│       ├── saga/                              # Service compose files
+│       │   ├── docker-compose.infra.yml       # Databases, Kafka, Zookeeper
+│       │   ├── docker-compose.choreography.yml
+│       │   └── docker-compose.orchestration.yml
+│       └── observability/                     # Monitoring stack
+│           ├── docker-compose.yml             # Prometheus, Grafana, Zipkin
+│           ├── prometheus/prometheus.yml
+│           └── grafana/
 │
 └── load-testing/k6/
     ├── happy-path-test.js               # Basic success testing
@@ -317,35 +321,42 @@ saga-pattern/
 - Docker & Docker Compose
 - (Optional) k6 for load testing
 
-### Option 1: Run with Docker Compose (Recommended)
+### Option 1: Run on VMs (Recommended for thesis testing)
+
+This project uses a 3-VM setup deployed via OpenTofu. See [docs/SETUP-GUIDE.md](docs/SETUP-GUIDE.md) for full details.
+
+```bash
+# 1. Provision infrastructure with OpenTofu
+cd infrastructure/open-tofu
+tofu init && tofu apply
+
+# 2. SSH to saga-node and start services
+ssh ubuntu@<saga-node-ip>
+cd ~/saga
+
+# Start infrastructure (databases, Kafka)
+sudo docker compose -f docker-compose.infra.yml up -d
+
+# Start Choreography services
+sudo docker compose -f docker-compose.choreography.yml up -d
+
+# OR Start Orchestration services
+sudo docker compose -f docker-compose.orchestration.yml up -d
+
+# Check services are healthy
+sudo docker compose -f docker-compose.choreography.yml ps
+```
+
+### Option 2: Run Locally (for development)
 
 ```bash
 # Build all services
 mvn clean package -DskipTests
 
-# Run Choreography Pattern
-cd infrastructure
+# Use the VM compose files locally (requires Docker)
+cd infrastructure/open-tofu/saga
+docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.choreography.yml up -d
-
-# OR Run Orchestration Pattern
-docker compose -f docker-compose.orchestration.yml up -d
-
-# Check services are healthy
-docker compose -f docker-compose.choreography.yml ps
-```
-
-### Option 2: Run Locally (for debugging)
-
-```bash
-# Start infrastructure only
-cd infrastructure
-docker compose -f docker-compose.choreography-infra.yml up -d
-
-# Run services locally (in separate terminals)
-cd choreography-saga/order-service && mvn spring-boot:run
-cd choreography-saga/payment-service && mvn spring-boot:run
-cd choreography-saga/inventory-service && mvn spring-boot:run
-cd choreography-saga/shipping-service && mvn spring-boot:run
 ```
 
 ---
@@ -523,22 +534,33 @@ k6 run failure-scenarios-test.js
 ### Running the Comparison
 
 ```bash
-# 1. Start both systems
-cd infrastructure
-docker compose -f docker-compose.choreography.yml up -d
-docker compose -f docker-compose.orchestration.yml up -d
+# 1. SSH to saga-node and start choreography services
+ssh ubuntu@<saga-node-ip>
+cd ~/saga
+sudo docker compose -f docker-compose.infra.yml up -d
+sudo docker compose -f docker-compose.choreography.yml up -d
 
-# 2. Wait for services to be healthy (check Grafana)
-
-# 3. Run comparison load test
-cd ../load-testing/k6
+# 2. Run choreography load test from k6-runner
+ssh ubuntu@<k6-runner-ip>
+cd ~/k6
 k6 run comparison-test.js
 
-# 4. Collect results from:
+# 3. Stop choreography, start orchestration
+ssh ubuntu@<saga-node-ip>
+cd ~/saga
+sudo docker compose -f docker-compose.choreography.yml down
+sudo docker compose -f docker-compose.orchestration.yml up -d
+
+# 4. Run orchestration load test
+ssh ubuntu@<k6-runner-ip>
+cd ~/k6
+k6 run comparison-test.js
+
+# 5. Collect results from:
 #    - k6 output (console)
-#    - Grafana dashboards (screenshots)
-#    - Zipkin traces (example traces)
-#    - Prometheus queries (raw data)
+#    - Grafana dashboards at http://<observability-ip>:3000
+#    - Zipkin traces at http://<observability-ip>:9411
+#    - Prometheus queries at http://<observability-ip>:9090
 ```
 
 ---
@@ -546,17 +568,21 @@ k6 run comparison-test.js
 ## Stopping Services
 
 ```bash
-cd infrastructure
+# SSH to saga-node
+ssh ubuntu@<saga-node-ip>
+cd ~/saga
 
-# Stop choreography
-docker compose -f docker-compose.choreography.yml down
+# Stop choreography services
+sudo docker compose -f docker-compose.choreography.yml down
 
-# Stop orchestration
-docker compose -f docker-compose.orchestration.yml down
+# Stop orchestration services
+sudo docker compose -f docker-compose.orchestration.yml down
+
+# Stop infrastructure (databases, Kafka)
+sudo docker compose -f docker-compose.infra.yml down
 
 # Remove all data (clean start)
-docker compose -f docker-compose.choreography.yml down -v
-docker compose -f docker-compose.orchestration.yml down -v
+sudo docker compose -f docker-compose.infra.yml down -v
 ```
 
 ---

@@ -1,0 +1,14 @@
+[
+  {
+    "name": "com.thesis.orchestration.shipping.model.ShipmentEntity",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.thesis.orchestration.shipping.model.ShipmentEntity$ShipmentStatus",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  }
+]

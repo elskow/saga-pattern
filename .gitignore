@@ -153,10 +153,8 @@ terraform.tfstate.backup
 .tofu/
 
 # ================================
-# Kubernetes secrets
+# Secrets
 # ================================
 # Never commit actual secrets
-infrastructure/k8s/**/secret*.yaml
-!infrastructure/k8s/**/secret*.yaml.example
 *-secret.yaml
 **/ghcr-credentials.yaml

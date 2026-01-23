@@ -26,22 +26,38 @@ output "instance_ips" {
   }
 }
 
-output "k3s_server_ip" {
-  description = "IP address of the K3s control plane node"
-  value       = lxd_instance.node["k3s-server"].ipv4_address
-}
-
-output "k3s_agent_ips" {
-  description = "IP addresses of the K3s agent nodes"
-  value = [
-    lxd_instance.node["k3s-agent-1"].ipv4_address,
-    lxd_instance.node["k3s-agent-2"].ipv4_address,
-  ]
+output "saga_node_ip" {
+  description = "IP address of the Saga application node"
+  value       = lxd_instance.node["saga-node"].ipv4_address
 }
 
 output "k6_runner_ip" {
   description = "IP address of the K6 load testing node"
   value       = lxd_instance.node["k6-runner"].ipv4_address
+}
+
+output "observability_node_ip" {
+  description = "IP address of the observability node"
+  value       = lxd_instance.node["observability-node"].ipv4_address
+}
+
+output "observability_urls" {
+  description = "URLs for observability services"
+  value = {
+    prometheus = "http://${var.nodes["observability-node"].ip_address}:9090"
+    grafana    = "http://${var.nodes["observability-node"].ip_address}:3000"
+    zipkin     = "http://${var.nodes["observability-node"].ip_address}:9411"
+  }
+}
+
+output "saga_urls" {
+  description = "URLs for Saga services (when running)"
+  value = {
+    choreography_order_api  = "http://${var.nodes["saga-node"].ip_address}:8081/api/orders"
+    orchestration_order_api = "http://${var.nodes["saga-node"].ip_address}:8081/api/orders"
+    kafka                   = "${var.nodes["saga-node"].ip_address}:9092"
+    postgres                = "${var.nodes["saga-node"].ip_address}:5432"
+  }
 }
 
 #------------------------------------------------------------------------------
@@ -62,42 +78,26 @@ output "ssh_config" {
 }
 
 #------------------------------------------------------------------------------
-# Ansible Inventory Output
+# Test Commands
 #------------------------------------------------------------------------------
 
-output "ansible_inventory" {
-  description = "Ansible inventory in INI format"
+output "test_commands" {
+  description = "Useful commands for running tests"
   value       = <<-EOT
-[k3s_server]
-${lxd_instance.node["k3s-server"].ipv4_address} ansible_user=ubuntu
+# Start Choreography pattern:
+ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/saga && sudo docker compose -f docker-compose.choreography.yml up -d"
 
-[k3s_agents]
-${lxd_instance.node["k3s-agent-1"].ipv4_address} ansible_user=ubuntu
-${lxd_instance.node["k3s-agent-2"].ipv4_address} ansible_user=ubuntu
+# Start Orchestration pattern:
+ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/saga && sudo docker compose -f docker-compose.orchestration.yml up -d"
 
-[k6_runners]
-${lxd_instance.node["k6-runner"].ipv4_address} ansible_user=ubuntu
+# Stop services (before switching patterns):
+ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/saga && sudo docker compose -f docker-compose.choreography.yml down"
+ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/saga && sudo docker compose -f docker-compose.orchestration.yml down"
 
-[k3s_cluster:children]
-k3s_server
-k3s_agents
+# Run k6 test from k6-runner:
+ssh ubuntu@${var.nodes["k6-runner"].ip_address} "BASE_URL=http://${var.nodes["saga-node"].ip_address}:8081 k6 run -"
 
-[all:vars]
-ansible_python_interpreter=/usr/bin/python3
+# View logs:
+ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/saga && sudo docker compose -f docker-compose.choreography.yml logs -f"
 EOT
-}
-
-#------------------------------------------------------------------------------
-# K3s Cluster Outputs
-#------------------------------------------------------------------------------
-
-output "k3s_kubeconfig_command" {
-  description = "Command to fetch kubeconfig from K3s server"
-  value       = "ssh ubuntu@${lxd_instance.node["k3s-server"].ipv4_address} 'sudo cat /etc/rancher/k3s/k3s.yaml' | sed 's/127.0.0.1/${lxd_instance.node["k3s-server"].ipv4_address}/g' > ~/.kube/k3s-config"
-}
-
-output "k3s_token" {
-  description = "K3s join token (sensitive)"
-  value       = try(data.external.k3s_token.result.token, "Token not yet available - run apply first")
-  sensitive   = true
 }

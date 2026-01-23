@@ -1,6 +1,5 @@
 package com.thesis.common.command;
 
-import io.eventuate.tram.commands.common.Command;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,7 +11,7 @@ import java.math.BigDecimal;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ProcessPaymentCommand implements Command {
+public class ProcessPaymentCommand {
     private String paymentId;
     private String orderId;
     private String customerId;
