@@ -38,6 +38,7 @@ spring:
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       properties:
         spring.json.add.type.headers: true
+        enable.idempotence: true
     consumer:
       group-id: order-service
       auto-offset-reset: earliest
@@ -46,10 +47,12 @@ spring:
       properties:
         spring.json.trusted.packages: com.thesis.common.events
         spring.json.use.type.headers: true
+      ack-mode: manual_immediate
     listener:
       observation-enabled: true
     template:
       observation-enabled: true
+      dlt-enabled: true
 
 management:
   endpoint:
@@ -78,6 +81,19 @@ management:
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      kafka-publisher:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
 
 logging:
   level:

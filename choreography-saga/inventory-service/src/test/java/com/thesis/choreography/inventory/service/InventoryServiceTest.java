@@ -23,6 +23,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -69,14 +70,14 @@ class InventoryServiceTest {
                 new InventoryService.ItemToReserve("PROD-001", 5)
         );
 
-        when(productRepository.findByProductId("PROD-001")).thenReturn(Optional.of(product));
+        when(productRepository.findAllByProductIdIn(Arrays.asList("PROD-001"))).thenReturn(Arrays.asList(product));
 
         // When
         inventoryService.reserveInventory(paymentEvent, items);
 
         // Then
-        verify(productRepository).save(any(Product.class));
-        verify(reservationRepository).save(any(InventoryReservation.class));
+        verify(productRepository).saveAll(anyList());
+        verify(reservationRepository).saveAll(anyList());
         verify(eventPublisher).publishInventoryReserved(any(InventoryReservedEvent.class));
     }
 
@@ -100,16 +101,16 @@ class InventoryServiceTest {
                 new InventoryService.ItemToReserve("PROD-001", 5)
         );
 
-        when(productRepository.findByProductId("PROD-001")).thenReturn(Optional.of(product));
+        when(productRepository.findAllByProductIdIn(Arrays.asList("PROD-001"))).thenReturn(Arrays.asList(product));
 
         // When
         inventoryService.reserveInventory(paymentEvent, items);
 
         // Then
-        ArgumentCaptor<Product> productCaptor = ArgumentCaptor.forClass(Product.class);
-        verify(productRepository).save(productCaptor.capture());
+        ArgumentCaptor<List<Product>> productCaptor = ArgumentCaptor.forClass(List.class);
+        verify(productRepository).saveAll(productCaptor.capture());
 
-        Product savedProduct = productCaptor.getValue();
+        Product savedProduct = productCaptor.getValue().get(0);
         // After reserve(5): quantityAvailable goes from 100 to 95, quantityReserved goes from 10 to 15
         assertThat(savedProduct.getQuantityReserved()).isEqualTo(15);
         assertThat(savedProduct.getQuantityAvailable()).isEqualTo(95);
@@ -128,7 +129,7 @@ class InventoryServiceTest {
                 new InventoryService.ItemToReserve("NON-EXISTENT", 5)
         );
 
-        when(productRepository.findByProductId("NON-EXISTENT")).thenReturn(Optional.empty());
+        when(productRepository.findAllByProductIdIn(Arrays.asList("NON-EXISTENT"))).thenReturn(java.util.Collections.emptyList());
 
         // When
         inventoryService.reserveInventory(paymentEvent, items);
@@ -157,14 +158,14 @@ class InventoryServiceTest {
                 .build();
 
         when(reservationRepository.findByOrderId(orderId)).thenReturn(Arrays.asList(reservation));
-        when(productRepository.findByProductId("PROD-001")).thenReturn(Optional.of(product));
+        when(productRepository.findAllByProductIdIn(Arrays.asList("PROD-001"))).thenReturn(Arrays.asList(product));
 
         // When
         inventoryService.releaseInventory(orderId);
 
         // Then
-        verify(productRepository).save(any(Product.class));
-        verify(reservationRepository).save(any(InventoryReservation.class));
+        verify(productRepository).saveAll(anyList());
+        verify(reservationRepository).saveAll(anyList());
         verify(eventPublisher).publishInventoryReleased(any());
     }
 
@@ -188,7 +189,7 @@ class InventoryServiceTest {
                 .build();
 
         when(reservationRepository.findByOrderId(orderId)).thenReturn(Arrays.asList(reservation));
-        when(productRepository.findByProductId("PROD-001")).thenReturn(Optional.of(product));
+        when(productRepository.findAllByProductIdIn(Arrays.asList("PROD-001"))).thenReturn(Arrays.asList(product));
 
         // When
         inventoryService.releaseInventory(orderId);
@@ -239,7 +240,7 @@ class InventoryServiceTest {
                 new InventoryService.ItemToReserve("PROD-001", 10) // Requesting 10
         );
 
-        when(productRepository.findByProductId("PROD-001")).thenReturn(Optional.of(product));
+        when(productRepository.findAllByProductIdIn(Arrays.asList("PROD-001"))).thenReturn(Arrays.asList(product));
 
         // When
         inventoryService.reserveInventory(paymentEvent, items);

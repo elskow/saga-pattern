@@ -39,6 +39,7 @@ spring:
       properties:
         spring.json.add.type.headers: true
     consumer:
+      ack-mode: manual_immediate
       group-id: payment-service
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -51,7 +52,7 @@ spring:
     template:
       observation-enabled: true
 
-management:
+      dlt-enabled: truemanagement:
   endpoint:
     health:
       show-details: always
@@ -78,6 +79,19 @@ management:
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      kafka-publisher:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
 
 logging:
   level:

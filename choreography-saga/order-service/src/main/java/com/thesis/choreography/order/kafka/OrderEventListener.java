@@ -2,18 +2,22 @@ package com.thesis.choreography.order.kafka;
 
 import com.thesis.choreography.order.service.IdempotencyService;
 import com.thesis.choreography.order.service.OrderService;
-import static com.thesis.common.dto.KafkaTopics.*;
+import com.thesis.common.dto.KafkaTopics;
 import com.thesis.common.events.*;
 import com.thesis.common.metrics.SagaMetrics;
+import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.slf4j.MDC;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Set;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -22,93 +26,155 @@ public class OrderEventListener {
 
     private final OrderService orderService;
     private final IdempotencyService idempotencyService;
+    private final Validator validator;
 
-    @KafkaListener(topics = PAYMENT_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:order-service}")
+    @KafkaListener(topics = KafkaTopics.PAYMENT_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:order-service}")
     @Transactional
     public void handlePaymentEvents(ConsumerRecord<String, Object> record) {
-        Object event = record.value();
-        if (event instanceof PaymentCompletedEvent paymentEvent) {
-            String eventId = "payment-completed:" + paymentEvent.getPaymentId();
-            if (!idempotencyService.markProcessed(eventId, "PaymentCompletedEvent")) {
-                log.info("Skipping duplicate PaymentCompletedEvent for order: {}", paymentEvent.getOrderId());
-                return;
-            }
-            log.info("Received PaymentCompletedEvent for order: {}", paymentEvent.getOrderId());
-            recordMessageReceived(paymentEvent.getOrderId(), paymentEvent.getCreatedAt(), "payment");
-            orderService.updateOrderPayment(paymentEvent.getOrderId(), paymentEvent.getPaymentId());
-        } else if (event instanceof PaymentFailedEvent paymentEvent) {
-            String eventId = "payment-failed:" + paymentEvent.getOrderId();
-            if (!idempotencyService.markProcessed(eventId, "PaymentFailedEvent")) {
-                log.info("Skipping duplicate PaymentFailedEvent for order: {}", paymentEvent.getOrderId());
-                return;
-            }
-            log.info("Received PaymentFailedEvent for order: {}", paymentEvent.getOrderId());
-            recordMessageReceived(paymentEvent.getOrderId(), paymentEvent.getCreatedAt(), "payment");
-            orderService.cancelOrder(paymentEvent.getOrderId(), "Payment failed: " + paymentEvent.getReason());
-        } else if (event instanceof PaymentRefundedEvent paymentEvent) {
-            String eventId = "payment-refunded:" + paymentEvent.getOrderId();
-            if (!idempotencyService.markProcessed(eventId, "PaymentRefundedEvent")) {
-                log.info("Skipping duplicate PaymentRefundedEvent for order: {}", paymentEvent.getOrderId());
-                return;
-            }
-            log.info("Received PaymentRefundedEvent for order: {}", paymentEvent.getOrderId());
-            recordMessageReceived(paymentEvent.getOrderId(), paymentEvent.getCreatedAt(), "payment");
-            // Payment was refunded, order should already be cancelled
+        if (record.value() instanceof PaymentCompletedEvent event) {
+            handlePaymentEvent(record, event, "PaymentCompletedEvent", 
+                () -> !idempotencyService.markProcessed("payment-completed:" + event.getPaymentId(), "PaymentCompletedEvent"),
+                () -> {
+                    log.info("Received PaymentCompletedEvent for order: {}", event.getOrderId());
+                    recordMessageReceived(event.getOrderId(), event.getCreatedAt(), "payment");
+                    orderService.updateOrderPayment(event.getOrderId(), event.getPaymentId());
+                });
+        } else if (record.value() instanceof PaymentFailedEvent event) {
+            handlePaymentEvent(record, event, "PaymentFailedEvent",
+                () -> !idempotencyService.markProcessed("payment-failed:" + event.getOrderId(), "PaymentFailedEvent"),
+                () -> {
+                    log.info("Received PaymentFailedEvent for order: {}", event.getOrderId());
+                    recordMessageReceived(event.getOrderId(), event.getCreatedAt(), "payment");
+                    orderService.cancelOrder(event.getOrderId(), "Payment failed: " + event.getReason());
+                });
+        } else if (record.value() instanceof PaymentRefundedEvent event) {
+            handlePaymentEvent(record, event, "PaymentRefundedEvent",
+                () -> !idempotencyService.markProcessed("payment-refunded:" + event.getOrderId(), "PaymentRefundedEvent"),
+                () -> {
+                    log.info("Received PaymentRefundedEvent for order: {}", event.getOrderId());
+                    recordMessageReceived(event.getOrderId(), event.getCreatedAt(), "payment");
+                });
         }
     }
 
-    @KafkaListener(topics = INVENTORY_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:order-service}")
+    @KafkaListener(topics = KafkaTopics.INVENTORY_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:order-service}")
     @Transactional
     public void handleInventoryEvents(ConsumerRecord<String, Object> record) {
-        Object event = record.value();
-        if (event instanceof InventoryReservedEvent inventoryEvent) {
-            String eventId = "inventory-reserved:" + inventoryEvent.getReservationId();
-            if (!idempotencyService.markProcessed(eventId, "InventoryReservedEvent")) {
-                log.info("Skipping duplicate InventoryReservedEvent for order: {}", inventoryEvent.getOrderId());
-                return;
-            }
-            log.info("Received InventoryReservedEvent for order: {}", inventoryEvent.getOrderId());
-            recordMessageReceived(inventoryEvent.getOrderId(), inventoryEvent.getCreatedAt(), "inventory");
-            orderService.updateOrderInventory(inventoryEvent.getOrderId(), inventoryEvent.getReservationId());
-        } else if (event instanceof InventoryReservationFailedEvent inventoryEvent) {
-            String eventId = "inventory-failed:" + inventoryEvent.getOrderId();
-            if (!idempotencyService.markProcessed(eventId, "InventoryReservationFailedEvent")) {
-                log.info("Skipping duplicate InventoryReservationFailedEvent for order: {}", inventoryEvent.getOrderId());
-                return;
-            }
-            log.info("Received InventoryReservationFailedEvent for order: {}", inventoryEvent.getOrderId());
-            recordMessageReceived(inventoryEvent.getOrderId(), inventoryEvent.getCreatedAt(), "inventory");
-            orderService.cancelOrder(inventoryEvent.getOrderId(), "Inventory reservation failed: " + inventoryEvent.getReason());
+        if (record.value() instanceof InventoryReservedEvent event) {
+            handleInventoryEvent(record, event, "InventoryReservedEvent",
+                () -> !idempotencyService.markProcessed("inventory-reserved:" + event.getReservationId(), "InventoryReservedEvent"),
+                () -> {
+                    log.info("Received InventoryReservedEvent for order: {}", event.getOrderId());
+                    recordMessageReceived(event.getOrderId(), event.getCreatedAt(), "inventory");
+                    orderService.updateOrderInventory(event.getOrderId(), event.getReservationId());
+                });
+        } else if (record.value() instanceof InventoryReservationFailedEvent event) {
+            handleInventoryEvent(record, event, "InventoryReservationFailedEvent",
+                () -> !idempotencyService.markProcessed("inventory-failed:" + event.getOrderId(), "InventoryReservationFailedEvent"),
+                () -> {
+                    log.info("Received InventoryReservationFailedEvent for order: {}", event.getOrderId());
+                    recordMessageReceived(event.getOrderId(), event.getCreatedAt(), "inventory");
+                    orderService.cancelOrder(event.getOrderId(), "Inventory reservation failed: " + event.getReason());
+                });
         }
     }
 
-    @KafkaListener(topics = SHIPPING_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:order-service}")
+    @KafkaListener(topics = KafkaTopics.SHIPPING_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:order-service}")
     @Transactional
     public void handleShippingEvents(ConsumerRecord<String, Object> record) {
-        Object event = record.value();
-        if (event instanceof ShippingScheduledEvent shippingEvent) {
-            String eventId = "shipping-scheduled:" + shippingEvent.getShippingId();
-            if (!idempotencyService.markProcessed(eventId, "ShippingScheduledEvent")) {
-                log.info("Skipping duplicate ShippingScheduledEvent for order: {}", shippingEvent.getOrderId());
+        if (record.value() instanceof ShippingScheduledEvent event) {
+            handleShippingEvent(record, event, "ShippingScheduledEvent",
+                () -> !idempotencyService.markProcessed("shipping-scheduled:" + event.getShippingId(), "ShippingScheduledEvent"),
+                () -> {
+                    log.info("Received ShippingScheduledEvent for order: {}", event.getOrderId());
+                    recordMessageReceived(event.getOrderId(), event.getCreatedAt(), "shipping");
+                    orderService.updateOrderShipping(event.getOrderId(), event.getShippingId(), event.getTrackingNumber());
+                    orderService.completeOrder(event.getOrderId());
+                });
+        } else if (record.value() instanceof ShippingFailedEvent event) {
+            handleShippingEvent(record, event, "ShippingFailedEvent",
+                () -> !idempotencyService.markProcessed("shipping-failed:" + event.getOrderId(), "ShippingFailedEvent"),
+                () -> {
+                    log.info("Received ShippingFailedEvent for order: {}", event.getOrderId());
+                    recordMessageReceived(event.getOrderId(), event.getCreatedAt(), "shipping");
+                    orderService.cancelOrder(event.getOrderId(), "Shipping failed: " + event.getReason());
+                });
+        }
+    }
+
+    private <T> void handlePaymentEvent(ConsumerRecord<String, Object> record, T event, String eventType,
+                                         java.util.function.Supplier<Boolean> idempotencyCheck,
+                                         Runnable handler) {
+        handleEvent(record, event, eventType, "payment", idempotencyCheck, handler);
+    }
+
+    private <T> void handleInventoryEvent(ConsumerRecord<String, Object> record, T event, String eventType,
+                                          java.util.function.Supplier<Boolean> idempotencyCheck,
+                                          Runnable handler) {
+        handleEvent(record, event, eventType, "inventory", idempotencyCheck, handler);
+    }
+
+    private <T> void handleShippingEvent(ConsumerRecord<String, Object> record, T event, String eventType,
+                                          java.util.function.Supplier<Boolean> idempotencyCheck,
+                                          Runnable handler) {
+        handleEvent(record, event, eventType, "shipping", idempotencyCheck, handler);
+    }
+
+    private <T> void handleEvent(ConsumerRecord<String, Object> record, T event, String eventType,
+                                   String fromService, java.util.function.Supplier<Boolean> idempotencyCheck,
+                                   Runnable handler) {
+        String correlationId = UUID.randomUUID().toString();
+        try {
+            String orderId = getOrderId(event);
+            String eventCorrelationId = getCorrelationId(event, correlationId);
+
+            setupMdc(orderId, eventCorrelationId);
+
+            Set<?> violations = validator.validate(event);
+            if (!violations.isEmpty()) {
+                log.error("Invalid {} received for order: {}. Violations: {}", eventType, orderId, violations);
                 return;
             }
-            log.info("Received ShippingScheduledEvent for order: {}", shippingEvent.getOrderId());
-            recordMessageReceived(shippingEvent.getOrderId(), shippingEvent.getCreatedAt(), "shipping");
-            orderService.updateOrderShipping(
-                    shippingEvent.getOrderId(), 
-                    shippingEvent.getShippingId(), 
-                    shippingEvent.getTrackingNumber());
-            // Mark order as completed
-            orderService.completeOrder(shippingEvent.getOrderId());
-        } else if (event instanceof ShippingFailedEvent shippingEvent) {
-            String eventId = "shipping-failed:" + shippingEvent.getOrderId();
-            if (!idempotencyService.markProcessed(eventId, "ShippingFailedEvent")) {
-                log.info("Skipping duplicate ShippingFailedEvent for order: {}", shippingEvent.getOrderId());
+
+            if (idempotencyCheck.get()) {
+                log.info("Skipping duplicate {} for order: {}", eventType, orderId);
                 return;
             }
-            log.info("Received ShippingFailedEvent for order: {}", shippingEvent.getOrderId());
-            recordMessageReceived(shippingEvent.getOrderId(), shippingEvent.getCreatedAt(), "shipping");
-            orderService.cancelOrder(shippingEvent.getOrderId(), "Shipping failed: " + shippingEvent.getReason());
+
+            handler.run();
+        } catch (Exception e) {
+            log.error("Error processing event {}: {}", eventType, e.getMessage(), e);
+            throw e;
+        } finally {
+            MDC.clear();
+        }
+    }
+
+    private String getOrderId(Object event) {
+        if (event instanceof HasOrderId ho) {
+            return ho.getOrderId();
+        }
+        return "unknown";
+    }
+
+    private String getCorrelationId(Object event, String defaultCorrelationId) {
+        if (event instanceof HasCorrelationId hc) {
+            return hc.getCorrelationId() != null ? hc.getCorrelationId() : defaultCorrelationId;
+        }
+        return defaultCorrelationId;
+    }
+
+    private Instant getCreatedAt(Object event) {
+        if (event instanceof HasCreatedAt hc) {
+            return hc.getCreatedAt();
+        }
+        return null;
+    }
+
+    private void setupMdc(String orderId, String correlationId) {
+        MDC.put("orderId", orderId != null ? orderId : "unknown");
+        if (correlationId != null) {
+            MDC.put("correlationId", correlationId);
         }
     }
 
@@ -118,5 +184,17 @@ public class OrderEventListener {
             Duration latency = Duration.between(eventCreatedAt, Instant.now());
             orderService.getMetricsHelper().recordMessageLatency(fromService, "order", latency);
         }
+    }
+
+    private interface HasOrderId {
+        String getOrderId();
+    }
+
+    private interface HasCorrelationId {
+        String getCorrelationId();
+    }
+
+    private interface HasCreatedAt {
+        Instant getCreatedAt();
     }
 }

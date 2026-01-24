@@ -1,7 +1,11 @@
 package com.thesis.orchestration.order.aot;
 
 import com.thesis.common.aot.CommonRuntimeHints;
+import com.thesis.orchestration.order.controller.GlobalExceptionHandler;
 import com.thesis.orchestration.order.model.OrderEntity;
+import com.thesis.orchestration.order.model.ProcessedCommand;
+import com.thesis.orchestration.order.model.SagaInstance;
+import com.thesis.orchestration.order.scheduler.SagaTimeoutScheduler;
 import com.thesis.orchestration.order.statemachine.OrderEvents;
 import com.thesis.orchestration.order.statemachine.OrderSagaOrchestrator;
 import com.thesis.orchestration.order.statemachine.OrderStateMachineConfig;
@@ -36,6 +40,8 @@ public class OrderRuntimeHints implements RuntimeHintsRegistrar {
         // JPA Entities
         hints.reflection().registerType(OrderEntity.class, ENTITY_CATEGORIES);
         hints.reflection().registerType(OrderEntity.OrderStatus.class, ENTITY_CATEGORIES);
+        hints.reflection().registerType(SagaInstance.class, ENTITY_CATEGORIES);
+        hints.reflection().registerType(ProcessedCommand.class, ENTITY_CATEGORIES);
 
         // State Machine enums and application classes
         hints.reflection().registerType(OrderStates.class, ENTITY_CATEGORIES);
@@ -45,5 +51,9 @@ public class OrderRuntimeHints implements RuntimeHintsRegistrar {
         hints.reflection().registerType(OrderStateMachineConfig.OrderStateMachineFactory.class, ENTITY_CATEGORIES);
         hints.reflection().registerType(SagaData.class, ENTITY_CATEGORIES);
         hints.reflection().registerType(SagaData.SagaStep.class, ENTITY_CATEGORIES);
+
+        // Controller and Scheduler
+        hints.reflection().registerType(GlobalExceptionHandler.class, ENTITY_CATEGORIES);
+        hints.reflection().registerType(SagaTimeoutScheduler.class, ENTITY_CATEGORIES);
     }
 }

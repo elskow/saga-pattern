@@ -4,10 +4,12 @@ import com.thesis.choreography.shipping.aot.ShippingRuntimeHints;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ImportRuntimeHints;
+import org.springframework.retry.annotation.EnableRetry;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication(scanBasePackages = {"com.thesis.choreography.shipping", "com.thesis.common"})
 @EnableScheduling
+@EnableRetry
 @ImportRuntimeHints(ShippingRuntimeHints.class)
 public class ShippingServiceApplication {
 

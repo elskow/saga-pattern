@@ -39,6 +39,7 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
     consumer:
+      ack-mode: manual_immediate
       group-id: orchestration-shipping-service
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -51,7 +52,7 @@ spring:
     template:
       observation-enabled: true
 
-management:
+      dlt-enabled: truemanagement:
   endpoint:
     health:
       show-details: always

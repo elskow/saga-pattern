@@ -79,6 +79,28 @@ public final class SagaMetrics {
     /** Counter: Saga steps failed */
     public static final String SAGA_STEPS_FAILED = "saga.steps.failed";
 
+    // ========== COMMAND RETRY METRICS ==========
+    /** Counter: Retry attempts for pending commands */
+    public static final String COMMANDS_RETRY_ATTEMPTS = "saga.commands.retry.attempts";
+    /** Counter: Retry skipped due to terminal saga */
+    public static final String COMMANDS_RETRY_SKIPPED = "saga.commands.retry.skipped";
+
+    // ========== OUTBOX METRICS ==========
+    /** Counter: Outbox publish attempts */
+    public static final String OUTBOX_PUBLISH_ATTEMPTS = "saga.outbox.publish.attempts";
+    /** Counter: Outbox publish successes */
+    public static final String OUTBOX_PUBLISH_SUCCESS = "saga.outbox.publish.success";
+    /** Counter: Outbox publish failures */
+    public static final String OUTBOX_PUBLISH_FAILURE = "saga.outbox.publish.failure";
+    /** Counter: Outbox cleanup deletions */
+    public static final String OUTBOX_CLEANUP_DELETIONS = "saga.outbox.cleanup.deletions";
+    /** Counter: Outbox entries exceeding max attempts */
+    public static final String OUTBOX_MAX_ATTEMPTS_EXCEEDED = "saga.outbox.max.attempts.exceeded";
+    /** Gauge: Pending outbox count */
+    public static final String OUTBOX_PENDING_COUNT = "saga.outbox.pending.count";
+    /** Gauge: Failed outbox count */
+    public static final String OUTBOX_FAILED_COUNT = "saga.outbox.failed.count";
+
     // ========== STEP NAMES (for tagging) ==========
     public static final String STEP_PAYMENT = "payment";
     public static final String STEP_INVENTORY = "inventory";
@@ -153,4 +175,12 @@ public final class SagaMetrics {
     // ========== SERVICE NAME TAGS (for message routing) ==========
     public static final String TAG_FROM_SERVICE = "from_service";
     public static final String TAG_TO_SERVICE = "to_service";
+    
+    // ========== KAFKA SEND FAILURE METRICS ==========
+    /** Counter: Kafka event send failures */
+    public static final String KAFKA_EVENT_SEND_FAILURE = "saga.kafka.event.send.failure";
+    /** Counter: Kafka event send successes */
+    public static final String KAFKA_EVENT_SEND_SUCCESS = "saga.kafka.event.send.success";
+    /** Tag: Event type for Kafka send metrics */
+    public static final String TAG_EVENT_TYPE = "event_type";
 }

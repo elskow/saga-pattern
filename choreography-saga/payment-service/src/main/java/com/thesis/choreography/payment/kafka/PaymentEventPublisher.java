@@ -4,31 +4,43 @@ import com.thesis.common.config.KafkaTopicsConfig;
 import com.thesis.common.events.PaymentCompletedEvent;
 import com.thesis.common.events.PaymentFailedEvent;
 import com.thesis.common.events.PaymentRefundedEvent;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import com.thesis.common.kafka.AbstractEventPublisher;
+import com.thesis.common.metrics.SagaMetrics;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
-@RequiredArgsConstructor
-@Slf4j
-public class PaymentEventPublisher {
+public class PaymentEventPublisher extends AbstractEventPublisher {
 
-    private final KafkaTemplate<String, Object> kafkaTemplate;
     private final KafkaTopicsConfig topicsConfig;
 
+    public PaymentEventPublisher(KafkaTemplate<String, Object> kafkaTemplate,
+                               KafkaTopicsConfig topicsConfig,
+                               MeterRegistry meterRegistry) {
+        super(kafkaTemplate, topicsConfig, meterRegistry, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.topicsConfig = topicsConfig;
+    }
+
+    @Override
+    protected String getTopic() {
+        return topicsConfig.getPaymentEvents();
+    }
+
+    @Override
+    protected String getServiceName() {
+        return SagaMetrics.SERVICE_CHOREOGRAPHY;
+    }
+
     public void publishPaymentCompleted(PaymentCompletedEvent event) {
-        log.info("Publishing PaymentCompletedEvent for order: {}", event.getOrderId());
-        kafkaTemplate.send(topicsConfig.getPaymentEvents(), event.getOrderId(), event);
+        publishEvent("PaymentCompletedEvent", event, event.getOrderId());
     }
 
     public void publishPaymentFailed(PaymentFailedEvent event) {
-        log.info("Publishing PaymentFailedEvent for order: {}", event.getOrderId());
-        kafkaTemplate.send(topicsConfig.getPaymentEvents(), event.getOrderId(), event);
+        publishEvent("PaymentFailedEvent", event, event.getOrderId());
     }
 
     public void publishPaymentRefunded(PaymentRefundedEvent event) {
-        log.info("Publishing PaymentRefundedEvent for order: {}", event.getOrderId());
-        kafkaTemplate.send(topicsConfig.getPaymentEvents(), event.getOrderId(), event);
+        publishEvent("PaymentRefundedEvent", event, event.getOrderId());
     }
 }

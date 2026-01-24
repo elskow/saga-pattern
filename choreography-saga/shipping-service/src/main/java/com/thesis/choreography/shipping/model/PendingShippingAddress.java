@@ -14,7 +14,10 @@ import java.time.Instant;
  * across service restarts and for reliable saga execution during load testing.
  */
 @Entity
-@Table(name = "pending_shipping_addresses")
+@Table(name = "pending_shipping_addresses", indexes = {
+        @Index(name = "idx_pending_shipping_addresses_order_id", columnList = "order_id"),
+        @Index(name = "idx_pending_shipping_addresses_created_at", columnList = "created_at")
+})
 @Data
 @Builder
 @NoArgsConstructor

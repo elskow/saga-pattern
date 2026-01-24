@@ -23,10 +23,13 @@ import com.thesis.common.events.ShippingCancelledEvent;
 import com.thesis.common.events.ShippingFailedEvent;
 import com.thesis.common.events.ShippingScheduledEvent;
 import com.thesis.common.replies.InventoryFailedReply;
+import com.thesis.common.replies.InventoryReleasedReply;
 import com.thesis.common.replies.InventoryReservedReply;
 import com.thesis.common.replies.PaymentCompletedReply;
 import com.thesis.common.replies.PaymentFailedReply;
+import com.thesis.common.replies.PaymentRefundedReply;
 import com.thesis.common.replies.SagaReply;
+import com.thesis.common.replies.ShippingCancelledReply;
 import com.thesis.common.replies.ShippingFailedReply;
 import com.thesis.common.replies.ShippingScheduledReply;
 import org.springframework.aot.hint.MemberCategory;
@@ -99,14 +102,17 @@ public class CommonRuntimeHints implements RuntimeHintsRegistrar {
         // Payment replies
         hints.reflection().registerType(PaymentCompletedReply.class, SERIALIZATION_CATEGORIES);
         hints.reflection().registerType(PaymentFailedReply.class, SERIALIZATION_CATEGORIES);
+        hints.reflection().registerType(PaymentRefundedReply.class, SERIALIZATION_CATEGORIES);
 
         // Inventory replies
         hints.reflection().registerType(InventoryReservedReply.class, SERIALIZATION_CATEGORIES);
         hints.reflection().registerType(InventoryFailedReply.class, SERIALIZATION_CATEGORIES);
+        hints.reflection().registerType(InventoryReleasedReply.class, SERIALIZATION_CATEGORIES);
 
         // Shipping replies
         hints.reflection().registerType(ShippingScheduledReply.class, SERIALIZATION_CATEGORIES);
         hints.reflection().registerType(ShippingFailedReply.class, SERIALIZATION_CATEGORIES);
+        hints.reflection().registerType(ShippingCancelledReply.class, SERIALIZATION_CATEGORIES);
     }
 
     private void registerDtoHints(RuntimeHints hints) {

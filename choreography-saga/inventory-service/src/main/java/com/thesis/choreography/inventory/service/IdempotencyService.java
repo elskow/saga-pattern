@@ -2,6 +2,7 @@ package com.thesis.choreography.inventory.service;
 
 import com.thesis.choreography.inventory.model.ProcessedEvent;
 import com.thesis.choreography.inventory.repository.ProcessedEventRepository;
+import io.micrometer.core.instrument.Counter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -22,6 +23,7 @@ import java.time.temporal.ChronoUnit;
 public class IdempotencyService {
 
     private final ProcessedEventRepository processedEventRepository;
+    private final Counter duplicateEventCounter;
     private static final int RETENTION_DAYS = 7;
 
     /**
@@ -47,6 +49,7 @@ public class IdempotencyService {
         try {
             if (isProcessed(eventId)) {
                 log.debug("Event {} of type {} was already processed", eventId, eventType);
+                duplicateEventCounter.increment();
                 return false;
             }
             ProcessedEvent processedEvent = ProcessedEvent.builder()
@@ -57,7 +60,7 @@ public class IdempotencyService {
             log.debug("Marked event {} of type {} as processed", eventId, eventType);
             return true;
         } catch (DataIntegrityViolationException e) {
-            // Race condition: another thread/instance already processed this event
+            duplicateEventCounter.increment();
             log.debug("Event {} was already processed (concurrent processing)", eventId);
             return false;
         }

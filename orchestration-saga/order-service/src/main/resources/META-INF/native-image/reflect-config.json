@@ -12,6 +12,18 @@
     "allDeclaredFields": true
   },
   {
+    "name": "com.thesis.orchestration.order.model.SagaInstance",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.thesis.orchestration.order.model.ProcessedCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
     "name": "com.thesis.orchestration.order.statemachine.OrderStates",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,
@@ -49,6 +61,36 @@
   },
   {
     "name": "com.thesis.orchestration.order.statemachine.OrderStateMachineConfig$OrderStateMachineFactory",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.thesis.orchestration.order.controller.GlobalExceptionHandler",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.thesis.orchestration.order.scheduler.SagaTimeoutScheduler",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.thesis.common.replies.PaymentRefundedReply",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.thesis.common.replies.InventoryReleasedReply",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.thesis.common.replies.ShippingCancelledReply",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,
     "allDeclaredFields": true

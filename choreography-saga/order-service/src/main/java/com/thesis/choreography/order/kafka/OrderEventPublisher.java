@@ -2,21 +2,35 @@ package com.thesis.choreography.order.kafka;
 
 import com.thesis.common.config.KafkaTopicsConfig;
 import com.thesis.common.events.OrderCreatedEvent;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import com.thesis.common.kafka.AbstractEventPublisher;
+import com.thesis.common.metrics.SagaMetrics;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
-@RequiredArgsConstructor
-@Slf4j
-public class OrderEventPublisher {
+public class OrderEventPublisher extends AbstractEventPublisher {
 
-    private final KafkaTemplate<String, Object> kafkaTemplate;
     private final KafkaTopicsConfig topicsConfig;
 
+    public OrderEventPublisher(KafkaTemplate<String, Object> kafkaTemplate,
+                              KafkaTopicsConfig topicsConfig,
+                              MeterRegistry meterRegistry) {
+        super(kafkaTemplate, topicsConfig, meterRegistry, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.topicsConfig = topicsConfig;
+    }
+
+    @Override
+    protected String getTopic() {
+        return topicsConfig.getOrderEvents();
+    }
+
+    @Override
+    protected String getServiceName() {
+        return SagaMetrics.SERVICE_CHOREOGRAPHY;
+    }
+
     public void publishOrderCreated(OrderCreatedEvent event) {
-        log.info("Publishing OrderCreatedEvent for order: {}", event.getOrderId());
-        kafkaTemplate.send(topicsConfig.getOrderEvents(), event.getOrderId(), event);
+        publishEvent("OrderCreatedEvent", event, event.getOrderId());
     }
 }

@@ -2,8 +2,11 @@ package com.thesis.choreography.order.service;
 
 import com.thesis.choreography.order.model.ProcessedEvent;
 import com.thesis.choreography.order.repository.ProcessedEventRepository;
+import com.thesis.common.metrics.SagaMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -12,41 +15,36 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
-/**
- * Service to ensure idempotent processing of Kafka events.
- * Uses database storage to track processed events and prevent duplicates.
- */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class IdempotencyService {
 
     private final ProcessedEventRepository processedEventRepository;
+    private final Counter duplicateEventCounter;
     private static final int RETENTION_DAYS = 7;
 
-    /**
-     * Check if an event has already been processed.
-     *
-     * @param eventId the unique event identifier
-     * @return true if the event was already processed, false otherwise
-     */
+    public IdempotencyService(ProcessedEventRepository processedEventRepository, MeterRegistry meterRegistry) {
+        this.processedEventRepository = processedEventRepository;
+        this.duplicateEventCounter = meterRegistry.counter(
+                SagaMetrics.SAGA_MESSAGES_TOTAL,
+                "service", "choreography",
+                "direction", "received",
+                "type", "event",
+                "outcome", "duplicate"
+        );
+    }
+
     public boolean isProcessed(String eventId) {
         return processedEventRepository.existsByEventId(eventId);
     }
 
-    /**
-     * Mark an event as processed. This should be called within the same transaction
-     * as the event processing to ensure atomicity.
-     *
-     * @param eventId   the unique event identifier
-     * @param eventType the type of the event
-     * @return true if the event was marked as processed, false if it was already processed
-     */
     @Transactional
     public boolean markProcessed(String eventId, String eventType) {
         try {
             if (isProcessed(eventId)) {
                 log.debug("Event {} of type {} was already processed", eventId, eventType);
+                duplicateEventCounter.increment();
                 return false;
             }
             ProcessedEvent processedEvent = ProcessedEvent.builder()
@@ -57,16 +55,12 @@ public class IdempotencyService {
             log.debug("Marked event {} of type {} as processed", eventId, eventType);
             return true;
         } catch (DataIntegrityViolationException e) {
-            // Race condition: another thread/instance already processed this event
+            duplicateEventCounter.increment();
             log.debug("Event {} was already processed (concurrent processing)", eventId);
             return false;
         }
     }
 
-    /**
-     * Scheduled cleanup job to remove processed events older than retention period.
-     * Runs daily at 2 AM.
-     */
     @Scheduled(cron = "0 0 2 * * *")
     @Transactional
     public void cleanupOldProcessedEvents() {

@@ -65,6 +65,11 @@ management:
       enabled: true
     readinessstate:
       enabled: true
+    group:
+      startup:
+        include: readinessState,db,kafka,stuckSaga
+      custom:
+        include: kafka,stuckSaga
   endpoints:
     web:
       exposure:
@@ -89,3 +94,17 @@ logging:
     org.springframework.kafka: ${KAFKA_LOG_LEVEL:INFO}
   pattern:
     level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+
+saga:
+  orchestrator:
+    pending-command-retry-interval: ${SAGA_PENDING_RETRY_INTERVAL:10s}
+    pending-command-retry-delay: ${SAGA_PENDING_RETRY_DELAY:10s}
+    in-memory-saga-ttl: ${SAGA_IN_MEMORY_TTL:1h}
+    in-memory-cleanup-interval: ${SAGA_IN_MEMORY_CLEANUP_INTERVAL:1m}
+    saga-timeout: ${SAGA_TIMEOUT:30s}
+    saga-timeout-check-interval: ${SAGA_TIMEOUT_CHECK_INTERVAL:10s}
+    outbox-poll-interval: ${SAGA_OUTBOX_POLL_INTERVAL:5s}
+    outbox-retry-delay: ${SAGA_OUTBOX_RETRY_DELAY:10s}
+    outbox-max-attempts: ${SAGA_OUTBOX_MAX_ATTEMPTS:10}
+    outbox-cleanup-interval: ${SAGA_OUTBOX_CLEANUP_INTERVAL:5m}
+    outbox-retention: ${SAGA_OUTBOX_RETENTION:24h}
