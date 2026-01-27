@@ -26,6 +26,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Component;
 
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.concurrent.CompletableFuture;
 
 import java.time.Instant;
@@ -111,7 +113,11 @@ public class PaymentCommandListener {
                         MDC.put("orderId", command.getOrderId());
                     }
                     MDC.put("correlationId", correlationId);
-                    if (validateCommand(command)) {
+                    String validationError = validateCommandWithReason(command);
+                    if (validationError != null) {
+                        // Send failure reply so orchestrator doesn't wait forever
+                        sendValidationFailureReply(command.getPaymentId(), command.getOrderId(), validationError);
+                    } else {
                         handleProcessPayment(command);
                     }
                 }
@@ -121,7 +127,17 @@ public class PaymentCommandListener {
                         MDC.put("orderId", command.getOrderId());
                     }
                     MDC.put("correlationId", correlationId);
-                    if (validateCommand(command)) {
+                    String validationError = validateCommandWithReason(command);
+                    if (validationError != null) {
+                        // Send compensation reply with failure so orchestrator doesn't wait forever
+                        PaymentRefundedReply reply = PaymentRefundedReply.builder()
+                                .paymentId(command.getPaymentId())
+                                .orderId(command.getOrderId())
+                                .success(false)
+                                .reason("Validation failed: " + validationError)
+                                .build();
+                        sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
+                    } else {
                         handleRefundPayment(command);
                     }
                 }
@@ -136,13 +152,68 @@ public class PaymentCommandListener {
         }
     }
 
+    /**
+     * Sends a failure reply when validation fails, so orchestrator doesn't wait forever.
+     */
+    private void sendValidationFailureReply(String paymentId, String orderId, String validationError) {
+        paymentFailedCounter.increment();
+        sagaStepsFailedCounter.increment();
+        
+        PaymentFailedReply reply = PaymentFailedReply.builder()
+                .paymentId(paymentId)
+                .orderId(orderId)
+                .reason("Validation failed: " + validationError)
+                .build();
+        
+        sendReplySafely(REPLY_TOPIC, orderId, reply, orderId);
+        log.error("Payment command validation failed for order {}: {}", orderId, validationError);
+    }
+
+    @Transactional
     @Observed(name = "payment.process", contextualName = "process-payment")
-    private void handleProcessPayment(ProcessPaymentCommand command) {
+    protected void handleProcessPayment(ProcessPaymentCommand command) {
         paymentProcessingTimer.record(() -> {
             log.info("Processing payment {} for order {}, amount: {}",
                     command.getPaymentId(), command.getOrderId(), command.getAmount());
 
             metricsHelper.recordMessageReceived(command.getOrderId(), SagaMetrics.TYPE_COMMAND);
+
+            // Idempotency check: if payment already exists and is completed/pending, send success reply
+            var existingPayment = paymentRepository.findById(command.getPaymentId());
+            if (existingPayment.isPresent()) {
+                PaymentEntity existing = existingPayment.get();
+                if (existing.getStatus() == PaymentEntity.PaymentStatus.COMPLETED ||
+                    existing.getStatus() == PaymentEntity.PaymentStatus.PENDING) {
+                    log.info("Payment {} already exists with status {}, sending idempotent success reply",
+                            command.getPaymentId(), existing.getStatus());
+                    PaymentCompletedReply reply = PaymentCompletedReply.builder()
+                            .paymentId(command.getPaymentId())
+                            .orderId(command.getOrderId())
+                            .build();
+                    sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
+                    return;
+                } else if (existing.getStatus() == PaymentEntity.PaymentStatus.FAILED) {
+                    log.info("Payment {} already exists with FAILED status, sending idempotent failure reply",
+                            command.getPaymentId());
+                    PaymentFailedReply reply = PaymentFailedReply.builder()
+                            .paymentId(command.getPaymentId())
+                            .orderId(command.getOrderId())
+                            .reason("Payment previously failed: " + existing.getFailureReason())
+                            .build();
+                    sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
+                    return;
+                }
+                // REFUNDED status - treat as already processed, send failure
+                log.info("Payment {} already exists with REFUNDED status, sending idempotent failure reply",
+                        command.getPaymentId());
+                PaymentFailedReply reply = PaymentFailedReply.builder()
+                        .paymentId(command.getPaymentId())
+                        .orderId(command.getOrderId())
+                        .reason("Payment was already refunded")
+                        .build();
+                sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
+                return;
+            }
 
             PaymentEntity payment = PaymentEntity.builder()
                     .paymentId(command.getPaymentId())
@@ -207,12 +278,32 @@ public class PaymentCommandListener {
         });
     }
 
+    @Transactional
     @Observed(name = "payment.refund", contextualName = "refund-payment")
-    private void handleRefundPayment(RefundPaymentCommand command) {
+    protected void handleRefundPayment(RefundPaymentCommand command) {
         long startTime = System.currentTimeMillis();
         log.info("Refunding payment {} for order {}", command.getPaymentId(), command.getOrderId());
 
         metricsHelper.recordMessageReceived(command.getOrderId(), SagaMetrics.TYPE_COMMAND);
+
+        // Idempotency check: if payment already refunded, send idempotent success reply
+        var existingPayment = paymentRepository.findById(command.getPaymentId());
+        if (existingPayment.isPresent()) {
+            PaymentEntity existing = existingPayment.get();
+            if (existing.getStatus() == PaymentEntity.PaymentStatus.REFUNDED) {
+                log.info("Payment {} already refunded, sending idempotent success reply", command.getPaymentId());
+                PaymentRefundedReply reply = PaymentRefundedReply.builder()
+                        .paymentId(command.getPaymentId())
+                        .orderId(command.getOrderId())
+                        .success(true)
+                        .reason("Already refunded: " + existing.getRefundReason())
+                        .build();
+                sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
+                compensationPaymentCounter.increment();
+                compensationDurationTimer.record(java.time.Duration.ofMillis(System.currentTimeMillis() - startTime));
+                return;
+            }
+        }
 
         boolean success = false;
         String reason = null;
@@ -229,8 +320,10 @@ public class PaymentCommandListener {
                 log.info("Payment {} refunded successfully", command.getPaymentId());
                 success = true;
             } else {
-                reason = "Payment not found: " + command.getPaymentId();
-                log.warn(reason);
+                // Payment not found - treat as success (nothing to refund)
+                log.info("Payment {} not found, treating refund as success", command.getPaymentId());
+                success = true;
+                reason = "Payment not found (nothing to refund): " + command.getPaymentId();
             }
         } catch (DataAccessException e) {
             reason = "Database operation failed: " + e.getMessage();
@@ -280,15 +373,19 @@ public class PaymentCommandListener {
         }
     }
 
-    private <T> boolean validateCommand(T command) {
+    /**
+     * Validates a command and returns the error message if validation fails, or null if valid.
+     */
+    private <T> String validateCommandWithReason(T command) {
         Set<ConstraintViolation<T>> violations = validator.validate(command);
         if (!violations.isEmpty()) {
-            log.error("Command validation failed: {}", violations.stream()
+            String errorMessage = violations.stream()
                     .map(v -> v.getPropertyPath() + ": " + v.getMessage())
                     .reduce((a, b) -> a + ", " + b)
-                    .orElse("Unknown validation error"));
-            return false;
+                    .orElse("Unknown validation error");
+            log.error("Command validation failed: {}", errorMessage);
+            return errorMessage;
         }
-        return true;
+        return null;
     }
 }

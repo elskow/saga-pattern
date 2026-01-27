@@ -7,8 +7,10 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -29,5 +31,7 @@ public class CreateOrderRequest {
     private String shippingAddress;
 
     @NotNull(message = "Items are required")
+    @NotEmpty(message = "Items list cannot be empty")
+    @Valid
     private List<OrderCreatedEvent.OrderItemEvent> items;
 }

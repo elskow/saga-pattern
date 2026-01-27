@@ -25,6 +25,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -111,7 +112,11 @@ public class ShippingCommandListener {
                         MDC.put("orderId", command.getOrderId());
                     }
                     MDC.put("correlationId", correlationId);
-                    if (validateCommand(command)) {
+                    String validationError = validateCommandWithReason(command);
+                    if (validationError != null) {
+                        // Send failure reply so orchestrator doesn't wait forever
+                        sendValidationFailureReply(command.getShipmentId(), command.getOrderId(), validationError);
+                    } else {
                         handleScheduleShipping(command);
                     }
                 }
@@ -121,7 +126,17 @@ public class ShippingCommandListener {
                         MDC.put("orderId", command.getOrderId());
                     }
                     MDC.put("correlationId", correlationId);
-                    if (validateCommand(command)) {
+                    String validationError = validateCommandWithReason(command);
+                    if (validationError != null) {
+                        // Send compensation reply with failure so orchestrator doesn't wait forever
+                        ShippingCancelledReply reply = ShippingCancelledReply.builder()
+                                .shipmentId(command.getShipmentId())
+                                .orderId(command.getOrderId())
+                                .success(false)
+                                .reason("Validation failed: " + validationError)
+                                .build();
+                        sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
+                    } else {
                         handleCancelShipping(command);
                     }
                 }
@@ -136,13 +151,69 @@ public class ShippingCommandListener {
         }
     }
 
+    /**
+     * Sends a failure reply when validation fails, so orchestrator doesn't wait forever.
+     */
+    private void sendValidationFailureReply(String shipmentId, String orderId, String validationError) {
+        shippingFailedCounter.increment();
+        sagaStepsFailedCounter.increment();
+        
+        ShippingFailedReply reply = ShippingFailedReply.builder()
+                .shipmentId(shipmentId)
+                .orderId(orderId)
+                .reason("Validation failed: " + validationError)
+                .build();
+        
+        sendReplySafely(REPLY_TOPIC, orderId, reply, orderId);
+        log.error("Shipping command validation failed for order {}: {}", orderId, validationError);
+    }
+
+    @Transactional
     @Observed(name = "shipping.schedule", contextualName = "schedule-shipping")
-    private void handleScheduleShipping(ScheduleShippingCommand command) {
+    protected void handleScheduleShipping(ScheduleShippingCommand command) {
         shippingProcessingTimer.record(() -> {
             log.info("Scheduling shipping {} for order {} to address: {}",
                     command.getShipmentId(), command.getOrderId(), command.getShippingAddress());
 
             metricsHelper.recordMessageReceived(command.getOrderId(), SagaMetrics.TYPE_COMMAND);
+
+            // Idempotency check: if shipment already exists, send appropriate reply
+            var existingShipment = shipmentRepository.findById(command.getShipmentId());
+            if (existingShipment.isPresent()) {
+                ShipmentEntity existing = existingShipment.get();
+                if (existing.getStatus() == ShipmentEntity.ShipmentStatus.SCHEDULED) {
+                    log.info("Shipment {} already exists with SCHEDULED status, sending idempotent success reply",
+                            command.getShipmentId());
+                    ShippingScheduledReply reply = ShippingScheduledReply.builder()
+                            .shipmentId(command.getShipmentId())
+                            .orderId(command.getOrderId())
+                            .build();
+                    sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
+                    return;
+                } else if (existing.getStatus() == ShipmentEntity.ShipmentStatus.FAILED) {
+                    log.info("Shipment {} already exists with FAILED status, sending idempotent failure reply",
+                            command.getShipmentId());
+                    ShippingFailedReply reply = ShippingFailedReply.builder()
+                            .shipmentId(command.getShipmentId())
+                            .orderId(command.getOrderId())
+                            .reason("Shipment previously failed: " + existing.getFailureReason())
+                            .build();
+                    sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
+                    return;
+                } else if (existing.getStatus() == ShipmentEntity.ShipmentStatus.CANCELLED) {
+                    log.info("Shipment {} already exists with CANCELLED status, sending idempotent failure reply",
+                            command.getShipmentId());
+                    ShippingFailedReply reply = ShippingFailedReply.builder()
+                            .shipmentId(command.getShipmentId())
+                            .orderId(command.getOrderId())
+                            .reason("Shipment was cancelled: " + existing.getCancellationReason())
+                            .build();
+                    sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
+                    return;
+                }
+                // PENDING status - proceed with scheduling
+                log.info("Shipment {} exists with PENDING status, proceeding with scheduling", command.getShipmentId());
+            }
 
             try {
                 String trackingNumber = "TRK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
@@ -217,12 +288,32 @@ public class ShippingCommandListener {
         });
     }
 
+    @Transactional
     @Observed(name = "shipping.cancel", contextualName = "cancel-shipping")
-    private void handleCancelShipping(CancelShippingCommand command) {
+    protected void handleCancelShipping(CancelShippingCommand command) {
         long startTime = System.currentTimeMillis();
         log.info("Cancelling shipping {} for order {}", command.getShipmentId(), command.getOrderId());
 
         metricsHelper.recordMessageReceived(command.getOrderId(), SagaMetrics.TYPE_COMMAND);
+
+        // Idempotency check: if shipment already cancelled, send idempotent success reply
+        var existingShipment = shipmentRepository.findById(command.getShipmentId());
+        if (existingShipment.isPresent()) {
+            ShipmentEntity existing = existingShipment.get();
+            if (existing.getStatus() == ShipmentEntity.ShipmentStatus.CANCELLED) {
+                log.info("Shipment {} already cancelled, sending idempotent success reply", command.getShipmentId());
+                ShippingCancelledReply reply = ShippingCancelledReply.builder()
+                        .shipmentId(command.getShipmentId())
+                        .orderId(command.getOrderId())
+                        .success(true)
+                        .reason("Already cancelled: " + existing.getCancellationReason())
+                        .build();
+                sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
+                compensationShippingCounter.increment();
+                compensationDurationTimer.record(java.time.Duration.ofMillis(System.currentTimeMillis() - startTime));
+                return;
+            }
+        }
 
         boolean success = false;
         String reason = null;
@@ -239,8 +330,10 @@ public class ShippingCommandListener {
                 log.info("Shipping {} cancelled successfully", command.getShipmentId());
                 success = true;
             } else {
-                reason = "Shipment not found: " + command.getShipmentId();
-                log.warn(reason);
+                // Shipment not found - treat as success (nothing to cancel)
+                log.info("Shipment {} not found, treating cancellation as success", command.getShipmentId());
+                success = true;
+                reason = "Shipment not found (nothing to cancel): " + command.getShipmentId();
             }
         } catch (DataAccessException e) {
             reason = "Database operation failed: " + e.getMessage();
@@ -300,5 +393,21 @@ public class ShippingCommandListener {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Validates a command and returns the error message if validation fails, or null if valid.
+     */
+    private <T> String validateCommandWithReason(T command) {
+        Set<ConstraintViolation<T>> violations = validator.validate(command);
+        if (!violations.isEmpty()) {
+            String errorMessage = violations.stream()
+                    .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                    .reduce((a, b) -> a + ", " + b)
+                    .orElse("Unknown validation error");
+            log.error("Command validation failed: {}", errorMessage);
+            return errorMessage;
+        }
+        return null;
     }
 }

@@ -3,8 +3,8 @@ package com.thesis.choreography.inventory.service;
 import com.thesis.choreography.inventory.repository.PendingOrderItemRepository;
 import com.thesis.common.metrics.SagaMetrics;
 import io.micrometer.core.instrument.MeterRegistry;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.repository.CrudRepository;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,13 +26,13 @@ public class PendingDataCleanupService {
     public PendingDataCleanupService(PendingOrderItemRepository pendingOrderItemRepository,
                                      MeterRegistry meterRegistry) {
         this.pendingOrderItemRepository = pendingOrderItemRepository;
-        
+
         // Register gauge metric for pending order items count
         meterRegistry.gauge(
                 "saga.pending.order.items.count",
                 java.util.List.of(io.micrometer.core.instrument.Tag.of(SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY)),
                 pendingOrderItemRepository,
-                repo -> repo.count()
+            CrudRepository::count
         );
     }
 
@@ -47,7 +47,7 @@ public class PendingDataCleanupService {
             Instant cutoff = Instant.now().minus(RETENTION_DAYS, ChronoUnit.DAYS);
             int deletedCount = pendingOrderItemRepository.deleteByCreatedAtBefore(cutoff);
             log.info("Cleaned up {} pending order items older than {} days", deletedCount, RETENTION_DAYS);
-            
+
             // Additional cleanup: Remove items for orders that are in terminal states
             // This would require integration with order service, but for now TTL cleanup is sufficient
         } catch (Exception e) {

@@ -16,22 +16,34 @@ import io.micrometer.core.instrument.Timer;
 import io.micrometer.observation.annotation.Observed;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
-import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * Order Service handling order lifecycle in choreography-based saga pattern.
+ * 
+ * <p>Uses Spring Retry's @Retryable to handle optimistic locking conflicts that can occur
+ * when multiple Kafka events (payment, inventory, shipping) arrive concurrently and 
+ * try to update the same order record.</p>
+ */
 @Service
 @Slf4j
 public class OrderService {
+
+    private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final long RETRY_DELAY_MS = 100;
 
     private final OrderRepository orderRepository;
     private final OrderEventPublisher eventPublisher;
@@ -77,275 +89,168 @@ public class OrderService {
                 String orderId = UUID.randomUUID().toString();
                 MDC.put("orderId", orderId);
             
-            Order order = Order.builder()
-                    .orderId(orderId)
-                    .customerId(request.getCustomerId())
-                    .shippingAddress(request.getShippingAddress())
-                    .status(Order.OrderStatus.PENDING)
-                    .build();
-
-            // Calculate total and add items with validation
-            BigDecimal total = BigDecimal.ZERO;
-            for (CreateOrderRequest.OrderItemRequest itemRequest : request.getItems()) {
-                // Validate item quantities and prices
-                if (itemRequest.getQuantity() <= 0) {
-                    throw new IllegalArgumentException(
-                            "Item quantity must be positive: " + itemRequest.getQuantity() + 
-                            " for product: " + itemRequest.getProductId());
-                }
-                if (itemRequest.getPrice() == null || itemRequest.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
-                    throw new IllegalArgumentException(
-                            "Item price must be positive: " + itemRequest.getPrice() + 
-                            " for product: " + itemRequest.getProductId());
-                }
-                
-                OrderItem item = OrderItem.builder()
-                        .productId(itemRequest.getProductId())
-                        .productName(itemRequest.getProductName())
-                        .quantity(itemRequest.getQuantity())
-                        .price(itemRequest.getPrice())
+                Order order = Order.builder()
+                        .orderId(orderId)
+                        .customerId(request.getCustomerId())
+                        .shippingAddress(request.getShippingAddress())
+                        .status(Order.OrderStatus.PENDING)
                         .build();
-                order.addItem(item);
-                total = total.add(itemRequest.getPrice().multiply(BigDecimal.valueOf(itemRequest.getQuantity())));
-            }
-            order.setTotalAmount(total);
-            
-            Order savedOrder = orderRepository.save(order);
-            metricsHelper.recordDbInsert(orderId, SagaMetrics.ENTITY_ORDER);
-            log.info("Order created with ID: {}", savedOrder.getOrderId());
 
-            // Build event
-            OrderCreatedEvent event = OrderCreatedEvent.builder()
-                    .orderId(savedOrder.getOrderId())
-                    .customerId(savedOrder.getCustomerId())
-                    .shippingAddress(savedOrder.getShippingAddress())
-                    .totalAmount(savedOrder.getTotalAmount())
-                    .correlationId(correlationId)
-                    .createdAt(Instant.now())
-                    .items(savedOrder.getItems().stream()
-                            .map(item -> OrderCreatedEvent.OrderItemEvent.builder()
-                                    .productId(item.getProductId())
-                                    .productName(item.getProductName())
-                                    .quantity(item.getQuantity())
-                                    .price(item.getPrice())
-                                    .build())
-                            .collect(Collectors.toList()))
-                    .build();
+                // Calculate total and add items with validation
+                BigDecimal total = BigDecimal.ZERO;
+                for (CreateOrderRequest.OrderItemRequest itemRequest : request.getItems()) {
+                    validateOrderItem(itemRequest);
+                    
+                    OrderItem item = OrderItem.builder()
+                            .productId(itemRequest.getProductId())
+                            .productName(itemRequest.getProductName())
+                            .quantity(itemRequest.getQuantity())
+                            .price(itemRequest.getPrice())
+                            .build();
+                    order.addItem(item);
+                    total = total.add(itemRequest.getPrice().multiply(BigDecimal.valueOf(itemRequest.getQuantity())));
+                }
+                order.setTotalAmount(total);
+                
+                Order savedOrder = orderRepository.save(order);
+                metricsHelper.recordDbInsert(orderId, SagaMetrics.ENTITY_ORDER);
+                log.info("Order created with ID: {}", savedOrder.getOrderId());
 
-            // Publish event after transaction commit using transaction synchronization
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(
-                        new TransactionSynchronization() {
-                            @Override
-                            public void afterCommit() {
-                                try {
-                                    MDC.put("orderId", orderId);
-                                    MDC.put("correlationId", correlationId);
-                                    eventPublisher.publishOrderCreated(event);
-                                    metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
-                                    orderCreatedCounter.increment();
-                                } catch (Exception e) {
-                                    log.error("Failed to publish OrderCreatedEvent after commit for order: {}", orderId, e);
-                                    // Event publish failure after commit - consider outbox pattern for guaranteed delivery
-                                } finally {
-                                    MDC.clear();
-                                }
-                            }
-                        }
-                );
-            } else {
-                // No active transaction (e.g., in tests), publish immediately
-                eventPublisher.publishOrderCreated(event);
-                metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
-                orderCreatedCounter.increment();
-            }
-            
-            return mapToResponse(savedOrder);
+                // Build and publish event after transaction commit
+                OrderCreatedEvent event = buildOrderCreatedEvent(savedOrder, correlationId);
+                publishEventAfterCommit(event, orderId, correlationId);
+                
+                return mapToResponse(savedOrder);
             });
         } finally {
             MDC.clear();
         }
     }
 
+    /**
+     * Updates order with payment information.
+     * Uses @Retryable to handle concurrent updates from parallel event processing.
+     */
     @Transactional
-    public void updateOrderStatus(String orderId, Order.OrderStatus status) {
-        // Input validation
-        if (orderId == null || orderId.isBlank()) {
-            throw new IllegalArgumentException("Order ID cannot be null or blank");
-        }
-        if (status == null) {
-            throw new IllegalArgumentException("Order status cannot be null");
-        }
-        
-        try {
-            MDC.put("orderId", orderId);
-            log.info("Updating order {} status to {}", orderId, status);
-            Order order = orderRepository.findById(orderId)
-                    .orElseThrow(() -> new OrderNotFoundException(orderId));
-            order.setStatus(status);
-            orderRepository.save(order);
-            metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
-        } finally {
-            MDC.clear();
-        }
-    }
-
-    @Transactional(isolation = Isolation.READ_COMMITTED)
+    @Retryable(
+        retryFor = ObjectOptimisticLockingFailureException.class,
+        maxAttempts = MAX_RETRY_ATTEMPTS,
+        backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = 2)
+    )
     public void updateOrderPayment(String orderId, String paymentId) {
-        // Input validation
-        if (orderId == null || orderId.isBlank()) {
-            throw new IllegalArgumentException("Order ID cannot be null or blank");
-        }
-        if (paymentId == null || paymentId.isBlank()) {
-            throw new IllegalArgumentException("Payment ID cannot be null or blank");
-        }
+        validateNotBlank(orderId, "Order ID");
+        validateNotBlank(paymentId, "Payment ID");
         
         try {
             MDC.put("orderId", orderId);
             log.info("Updating order {} with payment ID: {}", orderId, paymentId);
-            Order order = orderRepository.findById(orderId)
-                    .orElseThrow(() -> new OrderNotFoundException(orderId));
             
-            // Optimistic locking will be handled by JPA @Version
+            Order order = findOrderOrThrow(orderId);
             order.setPaymentId(paymentId);
             order.setStatus(Order.OrderStatus.PAYMENT_COMPLETED);
             
-            try {
-                orderRepository.save(order);
-                metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
-            } catch (OptimisticLockingFailureException e) {
-                log.warn("Optimistic lock failure updating order {} payment: {}", orderId, e.getMessage());
-                throw new IllegalStateException("Order was modified by another transaction. Please retry.", e);
-            }
+            orderRepository.save(order);
+            metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
         } finally {
             MDC.clear();
         }
     }
 
-    @Transactional(isolation = Isolation.READ_COMMITTED)
+    /**
+     * Updates order with inventory reservation information.
+     * Uses @Retryable to handle concurrent updates from parallel event processing.
+     */
+    @Transactional
+    @Retryable(
+        retryFor = ObjectOptimisticLockingFailureException.class,
+        maxAttempts = MAX_RETRY_ATTEMPTS,
+        backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = 2)
+    )
     public void updateOrderInventory(String orderId, String reservationId) {
-        // Input validation
-        if (orderId == null || orderId.isBlank()) {
-            throw new IllegalArgumentException("Order ID cannot be null or blank");
-        }
-        if (reservationId == null || reservationId.isBlank()) {
-            throw new IllegalArgumentException("Reservation ID cannot be null or blank");
-        }
+        validateNotBlank(orderId, "Order ID");
+        validateNotBlank(reservationId, "Reservation ID");
         
         try {
             MDC.put("orderId", orderId);
             log.info("Updating order {} with reservation ID: {}", orderId, reservationId);
-            Order order = orderRepository.findById(orderId)
-                    .orElseThrow(() -> new OrderNotFoundException(orderId));
             
-            // Optimistic locking will be handled by JPA @Version
+            Order order = findOrderOrThrow(orderId);
             order.setReservationId(reservationId);
             order.setStatus(Order.OrderStatus.INVENTORY_RESERVED);
             
-            try {
-                orderRepository.save(order);
-                metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
-            } catch (OptimisticLockingFailureException e) {
-                log.warn("Optimistic lock failure updating order {} inventory: {}", orderId, e.getMessage());
-                throw new IllegalStateException("Order was modified by another transaction. Please retry.", e);
-            }
-        } finally {
-            MDC.clear();
-        }
-    }
-
-    @Transactional(isolation = Isolation.READ_COMMITTED)
-    public void updateOrderShipping(String orderId, String shippingId, String trackingNumber) {
-        // Input validation
-        if (orderId == null || orderId.isBlank()) {
-            throw new IllegalArgumentException("Order ID cannot be null or blank");
-        }
-        if (shippingId == null || shippingId.isBlank()) {
-            throw new IllegalArgumentException("Shipping ID cannot be null or blank");
-        }
-        if (trackingNumber == null || trackingNumber.isBlank()) {
-            throw new IllegalArgumentException("Tracking number cannot be null or blank");
-        }
-        
-        try {
-            MDC.put("orderId", orderId);
-            log.info("Updating order {} with shipping ID: {} and tracking: {}", orderId, shippingId, trackingNumber);
-            Order order = orderRepository.findById(orderId)
-                    .orElseThrow(() -> new OrderNotFoundException(orderId));
-            
-            // Optimistic locking will be handled by JPA @Version
-            order.setShippingId(shippingId);
-            order.setTrackingNumber(trackingNumber);
-            order.setStatus(Order.OrderStatus.SHIPPING_SCHEDULED);
-            
-            try {
-                orderRepository.save(order);
-                metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
-            } catch (OptimisticLockingFailureException e) {
-                log.warn("Optimistic lock failure updating order {} shipping: {}", orderId, e.getMessage());
-                throw new IllegalStateException("Order was modified by another transaction. Please retry.", e);
-            }
-        } finally {
-            MDC.clear();
-        }
-    }
-
-    @Transactional
-    public void completeOrder(String orderId) {
-        // Input validation
-        if (orderId == null || orderId.isBlank()) {
-            throw new IllegalArgumentException("Order ID cannot be null or blank");
-        }
-        
-        try {
-            MDC.put("orderId", orderId);
-            log.info("Completing order: {}", orderId);
-            Order order = orderRepository.findById(orderId)
-                    .orElseThrow(() -> new OrderNotFoundException(orderId));
-            order.setStatus(Order.OrderStatus.COMPLETED);
             orderRepository.save(order);
             metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
-            metricsHelper.recordSagaSuccess(orderId);
-            orderCompletedCounter.increment();
-            
-            // Record saga duration
-            if (order.getCreatedAt() != null) {
-                long durationMs = Instant.now().toEpochMilli() - order.getCreatedAt().toEpochMilli();
-                sagaTotalDurationTimer.record(java.time.Duration.ofMillis(durationMs));
-            }
         } finally {
             MDC.clear();
         }
     }
 
+    /**
+     * Updates order with shipping information and completes the saga in a single atomic operation.
+     * This prevents race conditions when the shipping event arrives while other updates are in progress.
+     * Uses @Retryable to handle concurrent updates from parallel event processing.
+     */
     @Transactional
+    @Retryable(
+        retryFor = ObjectOptimisticLockingFailureException.class,
+        maxAttempts = MAX_RETRY_ATTEMPTS,
+        backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = 2)
+    )
+    public void completeOrderWithShipping(String orderId, String shippingId, String trackingNumber) {
+        validateNotBlank(orderId, "Order ID");
+        validateNotBlank(shippingId, "Shipping ID");
+        validateNotBlank(trackingNumber, "Tracking number");
+        
+        try {
+            MDC.put("orderId", orderId);
+            log.info("Completing order {} with shipping ID: {} and tracking: {}", orderId, shippingId, trackingNumber);
+            
+            Order order = findOrderOrThrow(orderId);
+            
+            // Update shipping info and complete in single operation
+            order.setShippingId(shippingId);
+            order.setTrackingNumber(trackingNumber);
+            order.setStatus(Order.OrderStatus.COMPLETED);
+            
+            orderRepository.save(order);
+            metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
+            
+            // Record completion metrics
+            recordSagaCompletion(order);
+            
+            log.info("Order {} completed successfully", orderId);
+        } finally {
+            MDC.clear();
+        }
+    }
+
+    /**
+     * Cancels an order with the given reason.
+     * Uses @Retryable to handle concurrent updates from parallel event processing.
+     */
+    @Transactional
+    @Retryable(
+        retryFor = ObjectOptimisticLockingFailureException.class,
+        maxAttempts = MAX_RETRY_ATTEMPTS,
+        backoff = @Backoff(delay = RETRY_DELAY_MS, multiplier = 2)
+    )
     public void cancelOrder(String orderId, String reason) {
-        // Input validation
-        if (orderId == null || orderId.isBlank()) {
-            throw new IllegalArgumentException("Order ID cannot be null or blank");
-        }
-        if (reason == null || reason.isBlank()) {
-            throw new IllegalArgumentException("Cancellation reason cannot be null or blank");
-        }
+        validateNotBlank(orderId, "Order ID");
+        validateNotBlank(reason, "Cancellation reason");
         
         try {
             MDC.put("orderId", orderId);
             log.info("Cancelling order {} due to: {}", orderId, reason);
-            Order order = orderRepository.findById(orderId)
-                    .orElseThrow(() -> new OrderNotFoundException(orderId));
+            
+            Order order = findOrderOrThrow(orderId);
             order.setStatus(Order.OrderStatus.CANCELLED);
             order.setFailureReason(reason);
+            
             orderRepository.save(order);
             metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
-            metricsHelper.recordSagaFailure(orderId);
-            orderFailedCounter.increment();
-            compensationsTotalCounter.increment();
             
-            // Record saga duration
-            if (order.getCreatedAt() != null) {
-                long durationMs = Instant.now().toEpochMilli() - order.getCreatedAt().toEpochMilli();
-                sagaTotalDurationTimer.record(java.time.Duration.ofMillis(durationMs));
-            }
+            // Record failure metrics
+            recordSagaFailure(order);
         } finally {
             MDC.clear();
         }
@@ -353,10 +258,7 @@ public class OrderService {
 
     @Transactional(readOnly = true)
     public OrderResponse getOrder(String orderId) {
-        // Input validation
-        if (orderId == null || orderId.isBlank()) {
-            throw new IllegalArgumentException("Order ID cannot be null or blank");
-        }
+        validateNotBlank(orderId, "Order ID");
         
         try {
             MDC.put("orderId", orderId);
@@ -370,10 +272,7 @@ public class OrderService {
 
     @Transactional(readOnly = true)
     public List<OrderResponse> getOrdersByCustomer(String customerId) {
-        // Input validation
-        if (customerId == null || customerId.isBlank()) {
-            throw new IllegalArgumentException("Customer ID cannot be null or blank");
-        }
+        validateNotBlank(customerId, "Customer ID");
         
         try {
             MDC.put("customerId", customerId);
@@ -387,6 +286,100 @@ public class OrderService {
 
     public SagaMetricsHelper getMetricsHelper() {
         return metricsHelper;
+    }
+
+    // ==================== Private Helper Methods ====================
+
+    private void validateOrderItem(CreateOrderRequest.OrderItemRequest item) {
+        if (item.getQuantity() <= 0) {
+            throw new IllegalArgumentException(
+                    "Item quantity must be positive: " + item.getQuantity() + 
+                    " for product: " + item.getProductId());
+        }
+        if (item.getPrice() == null || item.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException(
+                    "Item price must be positive: " + item.getPrice() + 
+                    " for product: " + item.getProductId());
+        }
+    }
+
+    private void validateNotBlank(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " cannot be null or blank");
+        }
+    }
+
+    private Order findOrderOrThrow(String orderId) {
+        return orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderNotFoundException(orderId));
+    }
+
+    private OrderCreatedEvent buildOrderCreatedEvent(Order order, String correlationId) {
+        return OrderCreatedEvent.builder()
+                .orderId(order.getOrderId())
+                .customerId(order.getCustomerId())
+                .shippingAddress(order.getShippingAddress())
+                .totalAmount(order.getTotalAmount())
+                .correlationId(correlationId)
+                .createdAt(Instant.now())
+                .items(order.getItems().stream()
+                        .map(item -> OrderCreatedEvent.OrderItemEvent.builder()
+                                .productId(item.getProductId())
+                                .productName(item.getProductName())
+                                .quantity(item.getQuantity())
+                                .price(item.getPrice())
+                                .build())
+                        .collect(Collectors.toList()))
+                .build();
+    }
+
+    private void publishEventAfterCommit(OrderCreatedEvent event, String orderId, String correlationId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            try {
+                                MDC.put("orderId", orderId);
+                                MDC.put("correlationId", correlationId);
+                                eventPublisher.publishOrderCreated(event);
+                                metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
+                                orderCreatedCounter.increment();
+                            } catch (Exception e) {
+                                log.error("Failed to publish OrderCreatedEvent after commit for order: {}", orderId, e);
+                            } finally {
+                                MDC.clear();
+                            }
+                        }
+                    }
+            );
+        } else {
+            // No active transaction (e.g., in tests), publish immediately
+            eventPublisher.publishOrderCreated(event);
+            metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
+            orderCreatedCounter.increment();
+        }
+    }
+
+    private void recordSagaCompletion(Order order) {
+        metricsHelper.recordSagaSuccess(order.getOrderId());
+        orderCompletedCounter.increment();
+        
+        if (order.getCreatedAt() != null) {
+            Duration duration = Duration.between(order.getCreatedAt(), Instant.now());
+            sagaTotalDurationTimer.record(duration);
+        }
+    }
+
+    private void recordSagaFailure(Order order) {
+        metricsHelper.recordSagaFailure(order.getOrderId());
+        orderFailedCounter.increment();
+        compensationsTotalCounter.increment();
+        
+        if (order.getCreatedAt() != null) {
+            Duration duration = Duration.between(order.getCreatedAt(), Instant.now());
+            sagaTotalDurationTimer.record(duration);
+        }
     }
 
     private OrderResponse mapToResponse(Order order) {

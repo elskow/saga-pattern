@@ -27,8 +27,7 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final ObjectMapper objectMapper;
-    
-    // Metrics
+
     private final Counter orderCreatedCounter;
     private final Counter orderCompletedCounter;
     private final Counter orderFailedCounter;
@@ -36,22 +35,22 @@ public class OrderService {
     private final Timer sagaTotalDurationTimer;
     private final SagaMetricsHelper metricsHelper;
 
-    public OrderService(OrderRepository orderRepository, 
+    public OrderService(OrderRepository orderRepository,
                         ObjectMapper objectMapper,
                         MeterRegistry meterRegistry) {
         this.orderRepository = orderRepository;
         this.objectMapper = objectMapper;
-        
+
         // Initialize metrics
-        this.orderCreatedCounter = meterRegistry.counter(SagaMetrics.ORDERS_CREATED, 
+        this.orderCreatedCounter = meterRegistry.counter(SagaMetrics.ORDERS_CREATED,
                 SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
-        this.orderCompletedCounter = meterRegistry.counter(SagaMetrics.ORDERS_COMPLETED, 
+        this.orderCompletedCounter = meterRegistry.counter(SagaMetrics.ORDERS_COMPLETED,
                 SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
-        this.orderFailedCounter = meterRegistry.counter(SagaMetrics.ORDERS_FAILED, 
+        this.orderFailedCounter = meterRegistry.counter(SagaMetrics.ORDERS_FAILED,
                 SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
-        this.compensationsTotalCounter = meterRegistry.counter(SagaMetrics.COMPENSATIONS_TOTAL, 
+        this.compensationsTotalCounter = meterRegistry.counter(SagaMetrics.COMPENSATIONS_TOTAL,
                 SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
-        this.sagaTotalDurationTimer = meterRegistry.timer(SagaMetrics.SAGA_TOTAL_DURATION, 
+        this.sagaTotalDurationTimer = meterRegistry.timer(SagaMetrics.SAGA_TOTAL_DURATION,
                 SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
         this.metricsHelper = new SagaMetricsHelper(meterRegistry, SagaMetrics.SERVICE_ORCHESTRATION);
     }
@@ -114,10 +113,10 @@ public class OrderService {
         orderRepository.save(order);
         metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
         metricsHelper.recordSagaFailure(orderId);
-        
+
         orderFailedCounter.increment();
         compensationsTotalCounter.increment();
-        
+
         // Record saga duration if we have creation time
         if (order.getCreatedAt() != null) {
             long durationMs = Instant.now().toEpochMilli() - order.getCreatedAt().toEpochMilli();
@@ -135,17 +134,13 @@ public class OrderService {
         orderRepository.save(order);
         metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_ORDER);
         metricsHelper.recordSagaSuccess(orderId);
-        
+
         orderCompletedCounter.increment();
-        
+
         // Record saga duration
         if (order.getCreatedAt() != null) {
             long durationMs = order.getCompletedAt().toEpochMilli() - order.getCreatedAt().toEpochMilli();
             sagaTotalDurationTimer.record(java.time.Duration.ofMillis(durationMs));
         }
-    }
-
-    public SagaMetricsHelper getMetricsHelper() {
-        return metricsHelper;
     }
 }

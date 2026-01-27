@@ -3,7 +3,6 @@ package com.thesis.choreography.payment.service;
 import com.thesis.choreography.payment.model.ProcessedEvent;
 import com.thesis.choreography.payment.repository.ProcessedEventRepository;
 import com.thesis.common.metrics.SagaMetrics;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -20,13 +19,23 @@ import java.time.temporal.ChronoUnit;
  * Uses database storage to track processed events and prevent duplicates.
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class IdempotencyService {
 
     private final ProcessedEventRepository processedEventRepository;
     private final Counter duplicateEventCounter;
     private static final int RETENTION_DAYS = 7;
+
+    public IdempotencyService(ProcessedEventRepository processedEventRepository, MeterRegistry meterRegistry) {
+        this.processedEventRepository = processedEventRepository;
+        this.duplicateEventCounter = meterRegistry.counter(
+                SagaMetrics.SAGA_MESSAGES_TOTAL,
+                "service", "payment-choreography",
+                "direction", "received",
+                "type", "event",
+                "outcome", "duplicate"
+        );
+    }
 
     /**
      * Check if an event has already been processed.

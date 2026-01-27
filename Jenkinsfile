@@ -1,5 +1,10 @@
 pipeline {
-    agent any
+    agent none  // Global agent is none to allow parallel queuing
+
+    parameters {
+        string(name: 'BUILD_SCOPE', defaultValue: 'all', description: 'all, choreography-only, orchestration-only, changed-only')
+        booleanParam(name: 'FORCE_REBUILD', defaultValue: false, description: 'Force a rebuild of all services in the selected scope')
+    }
 
     triggers {
         githubPush()
@@ -12,24 +17,6 @@ pipeline {
         disableConcurrentBuilds()
     }
 
-    parameters {
-        choice(
-            name: 'BUILD_SCOPE',
-            choices: ['all', 'choreography-only', 'orchestration-only', 'changed-only'],
-            description: 'Which services to build'
-        )
-        booleanParam(
-            name: 'SKIP_TESTS',
-            defaultValue: false,
-            description: 'Skip running tests'
-        )
-        booleanParam(
-            name: 'FORCE_REBUILD',
-            defaultValue: false,
-            description: 'Force rebuild even if no changes detected'
-        )
-    }
-
     environment {
         REGISTRY = 'ghcr.io'
         IMAGE_PREFIX = "ghcr.io/elskow/saga-pattern"
@@ -38,122 +25,109 @@ pipeline {
         MAVEN_OPTS = '-Xmx4g -XX:+UseG1GC'
         FAILED_SERVICES = ''
         MENTION = '<@594544493869531292>'
+        // Disabled BuildKit to fix missing plugin error
+        DOCKER_BUILDKIT = '0'
     }
 
     stages {
-        stage('Checkout') {
+        // STAGE 1: PLANNING (Uses 1 Executor)
+        stage('Plan & Notify') {
+            agent any
             steps {
                 checkout scm
                 script {
                     env.SHORT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
                     env.BRANCH_NAME = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
 
-                    // Detect changed services for 'changed-only' build scope
-                    if (params.BUILD_SCOPE == 'changed-only' && !params.FORCE_REBUILD) {
-                        def changedFiles = sh(
-                            script: "git diff --name-only HEAD~1 HEAD || echo ''",
-                            returnStdout: true
-                        ).trim()
+                    // --- LOGIC TO DECIDE WHAT TO BUILD ---
+                    def buildAll = params.BUILD_SCOPE == 'all' || params.FORCE_REBUILD
+                    def buildChoreo = buildAll || params.BUILD_SCOPE == 'choreography-only'
+                    def buildOrch = buildAll || params.BUILD_SCOPE == 'orchestration-only'
 
-                        env.BUILD_CHOREOGRAPHY_ORDER = changedFiles.contains('choreography-saga/order-service') || changedFiles.contains('common/') ? 'true' : 'false'
-                        env.BUILD_CHOREOGRAPHY_PAYMENT = changedFiles.contains('choreography-saga/payment-service') || changedFiles.contains('common/') ? 'true' : 'false'
-                        env.BUILD_CHOREOGRAPHY_INVENTORY = changedFiles.contains('choreography-saga/inventory-service') || changedFiles.contains('common/') ? 'true' : 'false'
-                        env.BUILD_CHOREOGRAPHY_SHIPPING = changedFiles.contains('choreography-saga/shipping-service') || changedFiles.contains('common/') ? 'true' : 'false'
-                        env.BUILD_ORCHESTRATION_ORDER = changedFiles.contains('orchestration-saga/order-service') || changedFiles.contains('common/') ? 'true' : 'false'
-                        env.BUILD_ORCHESTRATION_PAYMENT = changedFiles.contains('orchestration-saga/payment-service') || changedFiles.contains('common/') ? 'true' : 'false'
-                        env.BUILD_ORCHESTRATION_INVENTORY = changedFiles.contains('orchestration-saga/inventory-service') || changedFiles.contains('common/') ? 'true' : 'false'
-                        env.BUILD_ORCHESTRATION_SHIPPING = changedFiles.contains('orchestration-saga/shipping-service') || changedFiles.contains('common/') ? 'true' : 'false'
-                    } else {
-                        // Build all or based on scope
-                        def buildChoreography = params.BUILD_SCOPE == 'all' || params.BUILD_SCOPE == 'choreography-only' || params.FORCE_REBUILD
-                        def buildOrchestration = params.BUILD_SCOPE == 'all' || params.BUILD_SCOPE == 'orchestration-only' || params.FORCE_REBUILD
+                    env.BUILD_CHOREOGRAPHY_ORDER = buildChoreo ? 'true' : 'false'
+                    env.BUILD_CHOREOGRAPHY_PAYMENT = buildChoreo ? 'true' : 'false'
+                    env.BUILD_CHOREOGRAPHY_INVENTORY = buildChoreo ? 'true' : 'false'
+                    env.BUILD_CHOREOGRAPHY_SHIPPING = buildChoreo ? 'true' : 'false'
+                    env.BUILD_ORCHESTRATION_ORDER = buildOrch ? 'true' : 'false'
+                    env.BUILD_ORCHESTRATION_PAYMENT = buildOrch ? 'true' : 'false'
+                    env.BUILD_ORCHESTRATION_INVENTORY = buildOrch ? 'true' : 'false'
+                    env.BUILD_ORCHESTRATION_SHIPPING = buildOrch ? 'true' : 'false'
 
-                        env.BUILD_CHOREOGRAPHY_ORDER = buildChoreography ? 'true' : 'false'
-                        env.BUILD_CHOREOGRAPHY_PAYMENT = buildChoreography ? 'true' : 'false'
-                        env.BUILD_CHOREOGRAPHY_INVENTORY = buildChoreography ? 'true' : 'false'
-                        env.BUILD_CHOREOGRAPHY_SHIPPING = buildChoreography ? 'true' : 'false'
-                        env.BUILD_ORCHESTRATION_ORDER = buildOrchestration ? 'true' : 'false'
-                        env.BUILD_ORCHESTRATION_PAYMENT = buildOrchestration ? 'true' : 'false'
-                        env.BUILD_ORCHESTRATION_INVENTORY = buildOrchestration ? 'true' : 'false'
-                        env.BUILD_ORCHESTRATION_SHIPPING = buildOrchestration ? 'true' : 'false'
-                    }
+                    // --- NOTIFICATION ---
+                    def serviceCount = [
+                        env.BUILD_CHOREOGRAPHY_ORDER, env.BUILD_CHOREOGRAPHY_PAYMENT,
+                        env.BUILD_CHOREOGRAPHY_INVENTORY, env.BUILD_CHOREOGRAPHY_SHIPPING,
+                        env.BUILD_ORCHESTRATION_ORDER, env.BUILD_ORCHESTRATION_PAYMENT,
+                        env.BUILD_ORCHESTRATION_INVENTORY, env.BUILD_ORCHESTRATION_SHIPPING
+                    ].count { it == 'true' }
+
+                    discordSend description: """Build Started: ${env.JOB_NAME} #${env.BUILD_NUMBER}
+**Branch:** ${env.BRANCH_NAME}
+**Services:** ${serviceCount}
+**Executors:** 2 (Queued Mode)""",
+                        footer: "Jenkins CI",
+                        link: env.BUILD_URL,
+                        result: 'SUCCESS',
+                        title: "🚀 Build Started",
+                        webhookURL: env.DISCORD_WEBHOOK
                 }
             }
         }
 
-        stage('Test') {
-            when {
-                expression { return !params.SKIP_TESTS }
-            }
-            steps {
-                sh 'mvn clean verify --batch-mode -U --fail-at-end'
-            }
-            post {
-                always {
-                    junit testResults: '**/target/surefire-reports/*.xml', allowEmptyResults: true
-                    junit testResults: '**/target/failsafe-reports/*.xml', allowEmptyResults: true
-                }
-            }
-        }
-
-        stage('Install Common Modules') {
-            steps {
-                sh 'mvn clean install -N -DskipTests --batch-mode -U'
-                sh 'mvn clean install -pl common -DskipTests --batch-mode -U'
-            }
-        }
-
-        stage('Docker Login') {
-            steps {
-                sh "echo ${GHCR_CREDS_PSW} | docker login ghcr.io -u ${GHCR_CREDS_USR} --password-stdin"
-            }
-        }
-
-        stage('Build & Publish Services') {
+        // STAGE 2: PARALLEL EXECUTION (Queuing enforced here)
+        stage('Build Services') {
             parallel {
-                stage('choreography-order-service') {
+                stage('Choreography Order') {
+                    agent any // <--- New Agent = New Slot in Queue
                     when { expression { return env.BUILD_CHOREOGRAPHY_ORDER == 'true' } }
                     steps {
                         buildAndPushService('choreography-saga/order-service', 'choreography-order-service')
                     }
                 }
-                stage('choreography-payment-service') {
+                stage('Choreography Payment') {
+                    agent any
                     when { expression { return env.BUILD_CHOREOGRAPHY_PAYMENT == 'true' } }
                     steps {
                         buildAndPushService('choreography-saga/payment-service', 'choreography-payment-service')
                     }
                 }
-                stage('choreography-inventory-service') {
+                stage('Choreography Inventory') {
+                    agent any
                     when { expression { return env.BUILD_CHOREOGRAPHY_INVENTORY == 'true' } }
                     steps {
                         buildAndPushService('choreography-saga/inventory-service', 'choreography-inventory-service')
                     }
                 }
-                stage('choreography-shipping-service') {
+                stage('Choreography Shipping') {
+                    agent any
                     when { expression { return env.BUILD_CHOREOGRAPHY_SHIPPING == 'true' } }
                     steps {
                         buildAndPushService('choreography-saga/shipping-service', 'choreography-shipping-service')
                     }
                 }
-                stage('orchestration-order-service') {
+                stage('Orchestration Order') {
+                    agent any
                     when { expression { return env.BUILD_ORCHESTRATION_ORDER == 'true' } }
                     steps {
                         buildAndPushService('orchestration-saga/order-service', 'orchestration-order-service')
                     }
                 }
-                stage('orchestration-payment-service') {
+                stage('Orchestration Payment') {
+                    agent any
                     when { expression { return env.BUILD_ORCHESTRATION_PAYMENT == 'true' } }
                     steps {
                         buildAndPushService('orchestration-saga/payment-service', 'orchestration-payment-service')
                     }
                 }
-                stage('orchestration-inventory-service') {
+                stage('Orchestration Inventory') {
+                    agent any
                     when { expression { return env.BUILD_ORCHESTRATION_INVENTORY == 'true' } }
                     steps {
                         buildAndPushService('orchestration-saga/inventory-service', 'orchestration-inventory-service')
                     }
                 }
-                stage('orchestration-shipping-service') {
+                stage('Orchestration Shipping') {
+                    agent any
                     when { expression { return env.BUILD_ORCHESTRATION_SHIPPING == 'true' } }
                     steps {
                         buildAndPushService('orchestration-saga/shipping-service', 'orchestration-shipping-service')
@@ -164,43 +138,23 @@ pipeline {
     }
 
     post {
-        always {
-            sh "docker system prune -af --volumes || true"
-            cleanWs()
-        }
+        // Global post block runs on Flyweight (Controller) because agent is none.
+        // We removed 'cleanWs()' from here because there is no workspace to clean globally.
+        // Cleanup happens inside buildAndPushService.
+
         success {
-            script {
-                def serviceCount = [
-                    env.BUILD_CHOREOGRAPHY_ORDER, env.BUILD_CHOREOGRAPHY_PAYMENT,
-                    env.BUILD_CHOREOGRAPHY_INVENTORY, env.BUILD_CHOREOGRAPHY_SHIPPING,
-                    env.BUILD_ORCHESTRATION_ORDER, env.BUILD_ORCHESTRATION_PAYMENT,
-                    env.BUILD_ORCHESTRATION_INVENTORY, env.BUILD_ORCHESTRATION_SHIPPING
-                ].count { it == 'true' }
-
-                discordSend description: """Build Succeeded: ${env.JOB_NAME} #${env.BUILD_NUMBER}
-
-**Branch:** ${env.BRANCH_NAME}
-**Commit:** ${env.SHORT_SHA}
-**Services Built:** ${serviceCount}
-**Build Scope:** ${params.BUILD_SCOPE}
-
-CC: ${env.MENTION}""",
-                    footer: "Built by Jenkins",
-                    link: env.BUILD_URL,
-                    result: 'SUCCESS',
-                    title: "✅ Build Succeeded",
-                    webhookURL: env.DISCORD_WEBHOOK
-            }
+            // Removed 'node' wrapper - discordSend handles this natively
+            discordSend description: """Build Succeeded: ${env.JOB_NAME} #${env.BUILD_NUMBER}
+**Branch:** ${env.BRANCH_NAME}""",
+                footer: "Built by Jenkins",
+                link: env.BUILD_URL,
+                result: 'SUCCESS',
+                title: "✅ Build Succeeded",
+                webhookURL: env.DISCORD_WEBHOOK
         }
         failure {
             discordSend description: """Build Failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}
-
-**Branch:** ${env.BRANCH_NAME}
-**Commit:** ${env.SHORT_SHA}
-**Build Scope:** ${params.BUILD_SCOPE}
-
-Check console output for details.
-CC: ${env.MENTION}""",
+Check console output for details.""",
                 footer: "Jenkins CI",
                 link: env.BUILD_URL,
                 result: 'FAILURE',
@@ -211,40 +165,51 @@ CC: ${env.MENTION}""",
 }
 
 def buildAndPushService(String svcPath, String svcName) {
-    def imageTag = "${IMAGE_PREFIX}/${svcName}:sha-${env.SHORT_SHA}"
-    def latestTag = "${IMAGE_PREFIX}/${svcName}:latest"
-    def branchTag = "${IMAGE_PREFIX}/${svcName}:${env.BRANCH_NAME.replaceAll('/', '-')}"
+    try {
+        // IMPORTANT: Since we are on a new agent, we MUST checkout code again
+        checkout scm
 
-    echo "=== Building ${svcName} ==="
-
-    timeout(time: 20, unit: 'MINUTES') {
-        sh """
-            mvn spring-boot:build-image -DskipTests --batch-mode \
-            -pl ${svcPath} \
-            -Dspring-boot.build-image.imageName=${imageTag} \
-            -Dspring-boot.build-image.environment.BP_NATIVE_IMAGE=true \
-            -Dspring-boot.build-image.cleanCache=true
-        """
-    }
-
-    // Push with retry logic
-    retry(3) {
-        sh "docker push ${imageTag}"
-    }
-
-    // Tag and push latest (only on main branch)
-    if (env.BRANCH_NAME == 'main') {
-        sh "docker tag ${imageTag} ${latestTag}"
-        retry(3) {
-            sh "docker push ${latestTag}"
+        // Also need to login again because this is a fresh executor session
+        withCredentials([usernamePassword(credentialsId: 'github-ghcr-creds', passwordVariable: 'GHCR_PSW', usernameVariable: 'GHCR_USR')]) {
+            sh "echo ${GHCR_PSW} | docker login ghcr.io -u ${GHCR_USR} --password-stdin"
         }
-    }
 
-    // Tag with branch name
-    sh "docker tag ${imageTag} ${branchTag}"
-    retry(3) {
-        sh "docker push ${branchTag}"
-    }
+        def imageTag = "${IMAGE_PREFIX}/${svcName}:sha-${env.SHORT_SHA}"
+        def latestTag = "${IMAGE_PREFIX}/${svcName}:latest"
+        def branchTag = "${IMAGE_PREFIX}/${svcName}:${env.BRANCH_NAME.replaceAll('/', '-')}"
 
-    echo "=== Successfully published ${svcName} ==="
+        def pattern = svcPath.split('/')[0].replace('-saga', '')
+        def servicePart = svcPath.split('/')[1]
+        def artifactId = "${pattern}-${servicePart}"
+
+        echo "=== Building ${svcName} (artifactId: ${artifactId}) ==="
+
+        timeout(time: 45, unit: 'MINUTES') {
+            sh """
+                docker build \
+                    --build-arg SERVICE_PATH=${svcPath} \
+                    --build-arg ARTIFACT_ID=${artifactId} \
+                    -t ${imageTag} \
+                    -f Dockerfile \
+                    .
+            """
+        }
+
+        retry(3) { sh "docker push ${imageTag}" }
+
+        if (env.BRANCH_NAME == 'main') {
+            sh "docker tag ${imageTag} ${latestTag}"
+            retry(3) { sh "docker push ${latestTag}" }
+        }
+
+        sh "docker tag ${imageTag} ${branchTag}"
+        retry(3) { sh "docker push ${branchTag}" }
+
+        // Cleanup local images to save disk space
+        sh "docker rmi ${imageTag} || true"
+
+    } finally {
+        // Clean workspace after this specific parallel branch finishes
+        cleanWs()
+    }
 }

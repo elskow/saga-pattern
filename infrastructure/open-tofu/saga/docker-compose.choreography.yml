@@ -6,7 +6,7 @@ services:
   # Order Service (Entry point - port 8081)
   # ============================================
   order-service:
-    image: ghcr.io/elskow/saga-pattern/choreography-order-service:latest
+    image: ghcr.io/elskow/saga-pattern/choreography-order-service:HEAD
     container_name: choreography-order-service
     ports:
       - "8081:8081"
@@ -21,20 +21,23 @@ services:
       ZIPKIN_ENDPOINT: http://192.168.11.160:9411/api/v2/spans
       LOG_LEVEL: INFO
       SPRING_PROFILES_ACTIVE: docker
+      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 60s
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
   # ============================================
   # Payment Service
   # ============================================
   payment-service:
-    image: ghcr.io/elskow/saga-pattern/choreography-payment-service:latest
+    image: ghcr.io/elskow/saga-pattern/choreography-payment-service:HEAD
     container_name: choreography-payment-service
+    ports:
+      - "8082:8082"
     environment:
       SERVER_PORT: 8082
       DB_HOST: payment-db
@@ -46,20 +49,23 @@ services:
       ZIPKIN_ENDPOINT: http://192.168.11.160:9411/api/v2/spans
       LOG_LEVEL: INFO
       SPRING_PROFILES_ACTIVE: docker
+      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 60s
+      test: ["CMD", "curl", "-sf", "http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
   # ============================================
   # Inventory Service
   # ============================================
   inventory-service:
-    image: ghcr.io/elskow/saga-pattern/choreography-inventory-service:latest
+    image: ghcr.io/elskow/saga-pattern/choreography-inventory-service:HEAD
     container_name: choreography-inventory-service
+    ports:
+      - "8083:8083"
     environment:
       SERVER_PORT: 8083
       DB_HOST: inventory-db
@@ -71,20 +77,23 @@ services:
       ZIPKIN_ENDPOINT: http://192.168.11.160:9411/api/v2/spans
       LOG_LEVEL: INFO
       SPRING_PROFILES_ACTIVE: docker
+      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 60s
+      test: ["CMD", "curl", "-sf", "http://localhost:8083/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
   # ============================================
   # Shipping Service
   # ============================================
   shipping-service:
-    image: ghcr.io/elskow/saga-pattern/choreography-shipping-service:latest
+    image: ghcr.io/elskow/saga-pattern/choreography-shipping-service:HEAD
     container_name: choreography-shipping-service
+    ports:
+      - "8084:8084"
     environment:
       SERVER_PORT: 8084
       DB_HOST: shipping-db
@@ -96,12 +105,13 @@ services:
       ZIPKIN_ENDPOINT: http://192.168.11.160:9411/api/v2/spans
       LOG_LEVEL: INFO
       SPRING_PROFILES_ACTIVE: docker
+      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8084/actuator/health"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 60s
+      test: ["CMD", "curl", "-sf", "http://localhost:8084/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
 networks:

@@ -32,7 +32,7 @@ public class OrderEventListener {
     @Transactional
     public void handlePaymentEvents(ConsumerRecord<String, Object> record) {
         if (record.value() instanceof PaymentCompletedEvent event) {
-            handlePaymentEvent(record, event, "PaymentCompletedEvent", 
+            handlePaymentEvent(record, event, "PaymentCompletedEvent",
                 () -> !idempotencyService.markProcessed("payment-completed:" + event.getPaymentId(), "PaymentCompletedEvent"),
                 () -> {
                     log.info("Received PaymentCompletedEvent for order: {}", event.getOrderId());
@@ -88,8 +88,7 @@ public class OrderEventListener {
                 () -> {
                     log.info("Received ShippingScheduledEvent for order: {}", event.getOrderId());
                     recordMessageReceived(event.getOrderId(), event.getCreatedAt(), "shipping");
-                    orderService.updateOrderShipping(event.getOrderId(), event.getShippingId(), event.getTrackingNumber());
-                    orderService.completeOrder(event.getOrderId());
+                    orderService.completeOrderWithShipping(event.getOrderId(), event.getShippingId(), event.getTrackingNumber());
                 });
         } else if (record.value() instanceof ShippingFailedEvent event) {
             handleShippingEvent(record, event, "ShippingFailedEvent",

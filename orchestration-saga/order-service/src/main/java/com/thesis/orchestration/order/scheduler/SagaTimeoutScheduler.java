@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 /**
@@ -21,13 +23,6 @@ import java.util.List;
 @Slf4j
 @RequiredArgsConstructor
 public class SagaTimeoutScheduler {
-
-    private static final List<String> PENDING_STATES = List.of(
-            "PAYMENT_PENDING",
-            "INVENTORY_PENDING",
-            "SHIPPING_PENDING",
-            "COMPENSATING"
-    );
 
     private final SagaInstanceRepository sagaInstanceRepository;
     private final OrderSagaOrchestrator orchestrator;
@@ -40,16 +35,16 @@ public class SagaTimeoutScheduler {
     public void checkStaleSagas() {
         Duration timeout = sagaProperties.getSagaTimeout();
         Instant cutoff = Instant.now().minus(timeout);
+        LocalDateTime cutoffLocal = LocalDateTime.ofInstant(cutoff, ZoneId.systemDefault());
+        List<String> terminalStates = List.of("COMPLETED", "CANCELLED");
 
-        for (String state : PENDING_STATES) {
-            List<SagaInstance> staleSagas = sagaInstanceRepository
-                    .findByCurrentStateNotInAndUpdatedAtBefore(List.of("COMPLETED", "CANCELLED"), cutoff);
+        List<SagaInstance> staleSagas = sagaInstanceRepository
+                .findByCurrentStateNotInAndUpdatedAtBefore(terminalStates, cutoffLocal);
 
-            for (SagaInstance saga : staleSagas) {
-                log.warn("Saga timeout detected: orderId={}, state={}, lastUpdated={}",
-                        saga.getOrderId(), saga.getCurrentState(), saga.getUpdatedAt());
-                orchestrator.handleTimeout(saga.getOrderId());
-            }
+        for (SagaInstance saga : staleSagas) {
+            log.warn("Saga timeout detected: orderId={}, state={}, lastUpdated={}",
+                    saga.getOrderId(), saga.getCurrentState(), saga.getUpdatedAt());
+            orchestrator.handleTimeout(saga.getOrderId());
         }
     }
 }

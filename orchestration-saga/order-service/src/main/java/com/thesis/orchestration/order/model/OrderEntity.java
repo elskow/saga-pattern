@@ -1,6 +1,7 @@
 package com.thesis.orchestration.order.model;
 
 import jakarta.persistence.*;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -45,6 +46,9 @@ public class OrderEntity {
     private String shipmentId;
     private String trackingNumber;
     private String failureReason;
+
+    @Version
+    private Long version;
 
     private Instant createdAt;
     private Instant updatedAt;

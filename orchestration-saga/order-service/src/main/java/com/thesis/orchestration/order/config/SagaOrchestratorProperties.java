@@ -10,18 +10,19 @@ import java.time.Duration;
 @Component
 @ConfigurationProperties(prefix = "saga.orchestrator")
 public class SagaOrchestratorProperties {
-    private Duration pendingCommandRetryInterval = Duration.ofSeconds(10);
+    private long pendingCommandRetryInterval = 10000L;
     private Duration pendingCommandRetryDelay = Duration.ofSeconds(10);
     private Duration inMemorySagaTtl = Duration.ofHours(1);
-    private Duration inMemoryCleanupInterval = Duration.ofMinutes(1);
+    private long inMemoryCleanupInterval = 60000L;
     private Duration sagaTimeout = Duration.ofSeconds(30);
-    private Duration sagaTimeoutCheckInterval = Duration.ofSeconds(10);
-    private Duration outboxPollInterval = Duration.ofSeconds(5);
+    private long sagaTimeoutCheckInterval = 10000L;
+    private long outboxPollInterval = 5000L;
     private Duration outboxRetryDelay = Duration.ofSeconds(10);
     private int outboxMaxAttempts = 10;
-    private Duration outboxCleanupInterval = Duration.ofMinutes(5);
+    private long outboxCleanupInterval = 300000L;
     private Duration outboxRetention = Duration.ofHours(24);
     private long outboxRetentionDays = 7;
+    private long replyCleanupInterval = 3600000L;
     
     // Kafka send retry configuration
     private int kafkaSendMaxRetries = 3;

@@ -3,7 +3,9 @@ package com.thesis.orchestration.order.model;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,7 +17,10 @@ import java.time.LocalDateTime;
  * Outbox entry for reliable command delivery.
  */
 @Entity
-@Table(name = "outbox_commands")
+@Table(name = "outbox_commands", indexes = {
+        @Index(name = "idx_outbox_commands_status_created", columnList = "status, createdAt"),
+        @Index(name = "idx_outbox_commands_order_id", columnList = "orderId")
+})
 @Data
 @Builder
 @NoArgsConstructor
@@ -47,4 +52,11 @@ public class OutboxCommand {
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
+
+    /**
+     * Version field for optimistic locking.
+     * Prevents concurrent updates from overwriting each other.
+     */
+    @Version
+    private Long version;
 }

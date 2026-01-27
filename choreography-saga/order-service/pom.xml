@@ -18,6 +18,11 @@
     <name>Choreography Order Service</name>
     <description>Order Service for Choreography-based Saga Pattern</description>
 
+    <properties>
+        <!-- Enable native compilation for this service -->
+        <skipNativeCompile>false</skipNativeCompile>
+    </properties>
+
     <dependencies>
         <!-- Spring Boot -->
         <dependency>

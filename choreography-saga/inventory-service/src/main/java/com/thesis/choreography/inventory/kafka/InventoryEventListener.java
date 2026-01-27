@@ -15,8 +15,6 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -38,7 +36,7 @@ public class InventoryEventListener {
     public void handleOrderEvents(ConsumerRecord<String, Object> record) {
         if (record.value() instanceof OrderCreatedEvent event) {
             handleEvent(record, event, "OrderCreatedEvent",
-                () -> !idempotencyService.markProcessed("order-created:" + event.getOrderId(), "OrderCreatedEvent"),
+                () -> idempotencyService.markProcessed("order-created:" + event.getOrderId(), "OrderCreatedEvent"),
                 () -> {
                     log.info("Received OrderCreatedEvent for order: {}", event.getOrderId());
                     List<PendingOrderItem> pendingItems = event.getItems().stream()
@@ -59,7 +57,7 @@ public class InventoryEventListener {
     public void handlePaymentEvents(ConsumerRecord<String, Object> record) {
         if (record.value() instanceof PaymentCompletedEvent event) {
             handleEvent(record, event, "PaymentCompletedEvent",
-                () -> !idempotencyService.markProcessed("payment-completed:" + event.getPaymentId(), "PaymentCompletedEvent"),
+                () -> idempotencyService.markProcessed("payment-completed:" + event.getPaymentId(), "PaymentCompletedEvent"),
                 () -> {
                     log.info("Received PaymentCompletedEvent for order: {}", event.getOrderId());
                     List<PendingOrderItem> pendingItems = pendingOrderItemRepository.findByOrderId(event.getOrderId());
@@ -76,7 +74,7 @@ public class InventoryEventListener {
                 });
         } else if (record.value() instanceof PaymentFailedEvent event) {
             handleEvent(record, event, "PaymentFailedEvent",
-                () -> !idempotencyService.markProcessed("payment-failed:" + event.getOrderId(), "PaymentFailedEvent"),
+                () -> idempotencyService.markProcessed("payment-failed:" + event.getOrderId(), "PaymentFailedEvent"),
                 () -> {
                     log.info("Received PaymentFailedEvent, cleaning up pending items for order: {}", event.getOrderId());
                     pendingOrderItemRepository.deleteByOrderId(event.getOrderId());
@@ -89,7 +87,7 @@ public class InventoryEventListener {
     public void handleShippingEvents(ConsumerRecord<String, Object> record) {
         if (record.value() instanceof ShippingFailedEvent event) {
             handleEvent(record, event, "ShippingFailedEvent",
-                () -> !idempotencyService.markProcessed("shipping-failed:" + event.getOrderId(), "ShippingFailedEvent"),
+                () -> idempotencyService.markProcessed("shipping-failed:" + event.getOrderId(), "ShippingFailedEvent"),
                 () -> {
                     log.info("Received ShippingFailedEvent, releasing inventory for order: {}", event.getOrderId());
                     inventoryService.releaseInventory(event.getOrderId());

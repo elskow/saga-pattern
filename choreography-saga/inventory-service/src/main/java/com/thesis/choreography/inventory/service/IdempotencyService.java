@@ -2,8 +2,9 @@ package com.thesis.choreography.inventory.service;
 
 import com.thesis.choreography.inventory.model.ProcessedEvent;
 import com.thesis.choreography.inventory.repository.ProcessedEventRepository;
+import com.thesis.common.metrics.SagaMetrics;
 import io.micrometer.core.instrument.Counter;
-import lombok.RequiredArgsConstructor;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -18,13 +19,23 @@ import java.time.temporal.ChronoUnit;
  * Uses database storage to track processed events and prevent duplicates.
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class IdempotencyService {
 
     private final ProcessedEventRepository processedEventRepository;
     private final Counter duplicateEventCounter;
     private static final int RETENTION_DAYS = 7;
+
+    public IdempotencyService(ProcessedEventRepository processedEventRepository, MeterRegistry meterRegistry) {
+        this.processedEventRepository = processedEventRepository;
+        this.duplicateEventCounter = meterRegistry.counter(
+                SagaMetrics.SAGA_MESSAGES_TOTAL,
+                "service", "inventory-choreography",
+                "direction", "received",
+                "type", "event",
+                "outcome", "duplicate"
+        );
+    }
 
     /**
      * Check if an event has already been processed.
@@ -50,7 +61,7 @@ public class IdempotencyService {
             if (isProcessed(eventId)) {
                 log.debug("Event {} of type {} was already processed", eventId, eventType);
                 duplicateEventCounter.increment();
-                return false;
+                return true;
             }
             ProcessedEvent processedEvent = ProcessedEvent.builder()
                     .eventId(eventId)
@@ -58,11 +69,11 @@ public class IdempotencyService {
                     .build();
             processedEventRepository.save(processedEvent);
             log.debug("Marked event {} of type {} as processed", eventId, eventType);
-            return true;
+            return false;
         } catch (DataIntegrityViolationException e) {
             duplicateEventCounter.increment();
             log.debug("Event {} was already processed (concurrent processing)", eventId);
-            return false;
+            return true;
         }
     }
 

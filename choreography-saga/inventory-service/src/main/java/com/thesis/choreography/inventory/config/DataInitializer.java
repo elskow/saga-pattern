@@ -49,7 +49,31 @@ public class DataInitializer {
                         .quantityReserved(0)
                         .build());
                 
-                log.info("Sample products initialized successfully");
+                // Thesis test products - Low stock items for contention testing
+                productRepository.save(Product.builder()
+                        .productId("PROD-LOW-001")
+                        .productName("Rare Item")
+                        .quantityAvailable(10)  // Very limited stock for contention test
+                        .quantityReserved(0)
+                        .build());
+                
+                productRepository.save(Product.builder()
+                        .productId("PROD-LOW-002")
+                        .productName("Limited Edition")
+                        .quantityAvailable(15)  // Limited stock for failure scenarios
+                        .quantityReserved(0)
+                        .build());
+                
+                // High-value product for payment failure scenarios
+                // Note: Price is handled in order service, this just needs to exist
+                productRepository.save(Product.builder()
+                        .productId("PROD-PREMIUM-001")
+                        .productName("Premium Item")
+                        .quantityAvailable(100)
+                        .quantityReserved(0)
+                        .build());
+                
+                log.info("Sample products initialized successfully (including thesis test products)");
             }
         };
     }

@@ -51,8 +51,9 @@ spring:
       observation-enabled: true
     template:
       observation-enabled: true
+      dlt-enabled: true
 
-      dlt-enabled: truemanagement:
+management:
   endpoint:
     health:
       show-details: always

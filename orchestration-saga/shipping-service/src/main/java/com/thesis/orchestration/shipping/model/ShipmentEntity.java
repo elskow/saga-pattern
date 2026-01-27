@@ -19,6 +19,9 @@ public class ShipmentEntity {
     @Id
     private String shipmentId;
 
+    @Version
+    private Long version;
+
     @Column(nullable = false)
     private String orderId;
 

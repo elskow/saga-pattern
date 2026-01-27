@@ -12,6 +12,8 @@ import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Component
@@ -27,20 +29,22 @@ public class StuckSagaHealthIndicator implements HealthIndicator {
     @Override
     public Health health() {
         Instant timeoutCutoff = Instant.now().minus(sagaProperties.getSagaTimeout());
+        LocalDateTime cutoffLocal = LocalDateTime.ofInstant(timeoutCutoff, ZoneId.systemDefault());
         List<String> terminalStates = List.of(
             "COMPLETED",
             "CANCELLED"
         );
 
         long stuckCount = sagaInstanceRepository
-            .findByCurrentStateNotInAndUpdatedAtBefore(terminalStates, timeoutCutoff)
+            .findByCurrentStateNotInAndUpdatedAtBefore(terminalStates, cutoffLocal)
             .size();
 
         if (stuckSagasGauge == null) {
             stuckSagasGauge = Gauge.builder("saga.stuck.sagas.count", this, indicator -> {
                 Instant cutoff = Instant.now().minus(sagaProperties.getSagaTimeout());
+                LocalDateTime lambdaCutoff = LocalDateTime.ofInstant(cutoff, ZoneId.systemDefault());
                 List<String> states = List.of("COMPLETED", "CANCELLED");
-                return (double) sagaInstanceRepository.findByCurrentStateNotInAndUpdatedAtBefore(states, cutoff).size();
+                return (double) sagaInstanceRepository.findByCurrentStateNotInAndUpdatedAtBefore(states, lambdaCutoff).size();
             }).tag("service", "orchestration").register(meterRegistry);
         }
 

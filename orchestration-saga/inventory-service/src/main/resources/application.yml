@@ -51,8 +51,9 @@ spring:
       observation-enabled: true
     template:
       observation-enabled: true
+      dlt-enabled: true
 
-      dlt-enabled: truemanagement:
+management:
   endpoint:
     health:
       show-details: always
@@ -90,3 +91,9 @@ logging:
     org.springframework.kafka: ${KAFKA_LOG_LEVEL:INFO}
   pattern:
     level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+
+# Thesis testing - artificial delay for timeout scenarios
+app:
+  artificial-delay:
+    enabled: ${ARTIFICIAL_DELAY_ENABLED:false}
+    duration-ms: ${ARTIFICIAL_DELAY_MS:0}

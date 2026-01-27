@@ -18,6 +18,11 @@
     <name>Orchestration Shipping Service</name>
     <description>Shipping Service with Eventuate Tram for Orchestration-based Saga Pattern</description>
 
+    <properties>
+        <!-- Enable native compilation for this service -->
+        <skipNativeCompile>false</skipNativeCompile>
+    </properties>
+
     <dependencies>
         <!-- Common Module -->
         <dependency>

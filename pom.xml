@@ -30,6 +30,9 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
+        <!-- Skip native compile for parent pom (pom packaging) -->
+        <skipNativeCompile>true</skipNativeCompile>
+
         <!-- Dependency versions -->
         <spring-boot.version>3.2.0</spring-boot.version>
         <lombok.version>1.18.36</lombok.version>
@@ -169,6 +172,10 @@
                     <plugin>
                         <groupId>org.graalvm.buildtools</groupId>
                         <artifactId>native-maven-plugin</artifactId>
+                        <configuration>
+                            <!-- Skip native compilation for pom packaging and library modules -->
+                            <skip>${skipNativeCompile}</skip>
+                        </configuration>
                         <executions>
                             <execution>
                                 <id>build-native</id>
@@ -189,6 +196,8 @@
                                     <BP_NATIVE_IMAGE>true</BP_NATIVE_IMAGE>
                                 </env>
                             </image>
+                            <!-- Skip AOT processing for non-application modules -->
+                            <skip>${skipNativeCompile}</skip>
                         </configuration>
                         <executions>
                             <execution>

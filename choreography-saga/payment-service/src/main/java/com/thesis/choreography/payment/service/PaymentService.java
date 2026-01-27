@@ -102,6 +102,7 @@ public class PaymentService {
                 Payment payment = Payment.builder()
                         .paymentId(paymentId)
                         .orderId(orderId)
+                        .customerId(orderEvent.getCustomerId())
                         .amount(orderEvent.getTotalAmount())
                         .status(Payment.PaymentStatus.PENDING)
                         .build();

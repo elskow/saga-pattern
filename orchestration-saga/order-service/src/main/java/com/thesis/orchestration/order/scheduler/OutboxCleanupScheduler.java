@@ -8,6 +8,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -40,6 +41,7 @@ public class OutboxCleanupScheduler {
     }
 
     @Scheduled(fixedDelayString = "${saga.orchestrator.outbox-cleanup-interval:5m}")
+    @Transactional
     public void cleanupOutbox() {
         Instant cutoff = Instant.now().minus(Duration.ofDays(sagaProperties.getOutboxRetentionDays()));
         LocalDateTime cutoffDateTime = LocalDateTime.ofInstant(cutoff, java.time.ZoneId.systemDefault());

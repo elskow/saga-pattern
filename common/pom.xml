@@ -16,6 +16,12 @@
     <name>Saga Common Module</name>
     <description>Shared events, DTOs, and utilities for Saga Pattern Thesis</description>
 
+    <properties>
+        <!-- Skip native compilation and AOT for library module (no main class) -->
+        <skipNativeCompile>true</skipNativeCompile>
+        <spring-boot.repackage.skip>true</spring-boot.repackage.skip>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -85,7 +91,7 @@
         <!-- Resilience4j Circuit Breaker -->
         <dependency>
             <groupId>io.github.resilience4j</groupId>
-            <artifactId>resilience4j-spring-boot2</artifactId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
         </dependency>
 
         <!-- Resilience4j Retry -->

@@ -134,11 +134,30 @@ public class OrderStateMachineConfig {
                 @Override
                 public void stateChanged(State<OrderStates, OrderEvents> from,
                                         State<OrderStates, OrderEvents> to) {
+                    // Note: machineId is the orderId
                     if (from != null && to != null) {
                         log.info("State changed from {} to {}", from.getId(), to.getId());
                     } else if (to != null) {
                         log.info("State machine started in state {}", to.getId());
                     }
+                }
+
+                @Override
+                public void stateMachineStarted(StateMachine<OrderStates, OrderEvents> stateMachine) {
+                    String orderId = stateMachine.getId();
+                    log.debug("State machine started for orderId: {}", orderId);
+                }
+
+                @Override
+                public void stateMachineStopped(StateMachine<OrderStates, OrderEvents> stateMachine) {
+                    String orderId = stateMachine.getId();
+                    log.debug("State machine stopped for orderId: {}", orderId);
+                }
+
+                @Override
+                public void stateMachineError(StateMachine<OrderStates, OrderEvents> stateMachine, Exception e) {
+                    String orderId = stateMachine.getId();
+                    log.error("State machine error for orderId: {}: {}", orderId, e.getMessage(), e);
                 }
             };
         }

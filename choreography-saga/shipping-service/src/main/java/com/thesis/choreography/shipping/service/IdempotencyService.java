@@ -2,8 +2,9 @@ package com.thesis.choreography.shipping.service;
 
 import com.thesis.choreography.shipping.model.ProcessedEvent;
 import com.thesis.choreography.shipping.repository.ProcessedEventRepository;
+import com.thesis.common.metrics.SagaMetrics;
 import io.micrometer.core.instrument.Counter;
-import lombok.RequiredArgsConstructor;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -18,13 +19,23 @@ import java.time.temporal.ChronoUnit;
  * Uses database storage to track processed events and prevent duplicates.
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class IdempotencyService {
 
     private final ProcessedEventRepository processedEventRepository;
     private final Counter duplicateEventCounter;
     private static final int RETENTION_DAYS = 7;
+
+    public IdempotencyService(ProcessedEventRepository processedEventRepository, MeterRegistry meterRegistry) {
+        this.processedEventRepository = processedEventRepository;
+        this.duplicateEventCounter = meterRegistry.counter(
+                SagaMetrics.SAGA_MESSAGES_TOTAL,
+                "service", "shipping-choreography",
+                "direction", "received",
+                "type", "event",
+                "outcome", "duplicate"
+        );
+    }
 
     /**
      * Check if an event has already been processed.

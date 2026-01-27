@@ -10,8 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Retryable;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -55,12 +53,7 @@ public abstract class AbstractEventPublisher {
         getFailureCounter(eventType).increment();
     }
 
-    @Retryable(
-            value = {Exception.class},
-            maxAttempts = 3,
-            backoff = @Backoff(delay = 1000, multiplier = 2)
-    )
-    private void sendEventSafely(String topic, String key, Object event, String eventType, String orderId) {
+    protected void sendEventSafely(String topic, String key, Object event, String eventType, String orderId) {
         try {
             kafkaTemplate.send(topic, key, event)
                 .thenAccept(result -> {

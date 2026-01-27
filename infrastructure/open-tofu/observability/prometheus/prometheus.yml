@@ -11,26 +11,90 @@ scrape_configs:
       - targets: ['localhost:9090']
 
   # ==========================================================================
-  # SAGA SERVICES (Docker Compose on saga-node)
+  # CHOREOGRAPHY SAGA SERVICES (saga-node: 192.168.11.152)
+  # Ports: 8081-8084
   # ==========================================================================
-  # Both patterns expose order-service on port 8081
-  # Run sequentially: Choreography first, then Orchestration
-  # Label is added dynamically based on which pattern is running
   
-  - job_name: 'saga-order-service'
+  - job_name: 'choreography-order-service'
     metrics_path: /actuator/prometheus
+    scrape_interval: 5s
     static_configs:
       - targets: ['192.168.11.152:8081']
+        labels:
+          pattern: choreography
+          service: order-service
+
+  - job_name: 'choreography-payment-service'
+    metrics_path: /actuator/prometheus
     scrape_interval: 5s
-    relabel_configs:
-      - source_labels: []
-        target_label: service
-        replacement: order-service
+    static_configs:
+      - targets: ['192.168.11.152:8082']
+        labels:
+          pattern: choreography
+          service: payment-service
+
+  - job_name: 'choreography-inventory-service'
+    metrics_path: /actuator/prometheus
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['192.168.11.152:8083']
+        labels:
+          pattern: choreography
+          service: inventory-service
+
+  - job_name: 'choreography-shipping-service'
+    metrics_path: /actuator/prometheus
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['192.168.11.152:8084']
+        labels:
+          pattern: choreography
+          service: shipping-service
 
   # ==========================================================================
-  # INFRASTRUCTURE METRICS (Optional)
+  # ORCHESTRATION SAGA SERVICES (saga-node: 192.168.11.152)
+  # Ports: 8085-8088
   # ==========================================================================
-  # Uncomment if you want to monitor node resources
+  
+  - job_name: 'orchestration-order-service'
+    metrics_path: /actuator/prometheus
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['192.168.11.152:8085']
+        labels:
+          pattern: orchestration
+          service: order-service
+
+  - job_name: 'orchestration-payment-service'
+    metrics_path: /actuator/prometheus
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['192.168.11.152:8086']
+        labels:
+          pattern: orchestration
+          service: payment-service
+
+  - job_name: 'orchestration-inventory-service'
+    metrics_path: /actuator/prometheus
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['192.168.11.152:8087']
+        labels:
+          pattern: orchestration
+          service: inventory-service
+
+  - job_name: 'orchestration-shipping-service'
+    metrics_path: /actuator/prometheus
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['192.168.11.152:8088']
+        labels:
+          pattern: orchestration
+          service: shipping-service
+
+  # ==========================================================================
+  # INFRASTRUCTURE METRICS (Optional - uncomment if node_exporter is installed)
+  # ==========================================================================
   
   # - job_name: 'saga-node'
   #   static_configs:

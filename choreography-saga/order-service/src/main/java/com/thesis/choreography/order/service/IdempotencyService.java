@@ -3,7 +3,6 @@ package com.thesis.choreography.order.service;
 import com.thesis.choreography.order.model.ProcessedEvent;
 import com.thesis.choreography.order.repository.ProcessedEventRepository;
 import com.thesis.common.metrics.SagaMetrics;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -16,7 +15,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class IdempotencyService {
 
@@ -28,7 +26,7 @@ public class IdempotencyService {
         this.processedEventRepository = processedEventRepository;
         this.duplicateEventCounter = meterRegistry.counter(
                 SagaMetrics.SAGA_MESSAGES_TOTAL,
-                "service", "choreography",
+                "service", "order-choreography",
                 "direction", "received",
                 "type", "event",
                 "outcome", "duplicate"

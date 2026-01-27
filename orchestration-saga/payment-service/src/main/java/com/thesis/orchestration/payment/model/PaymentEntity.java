@@ -23,6 +23,9 @@ public class PaymentEntity {
     @Id
     private String paymentId;
 
+    @Version
+    private Long version;
+
     @Column(nullable = false)
     private String orderId;
 

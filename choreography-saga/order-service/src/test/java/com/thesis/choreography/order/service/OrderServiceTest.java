@@ -106,9 +106,10 @@ class OrderServiceTest {
     }
 
     @Test
-    void shouldUpdateOrderStatus() {
+    void shouldUpdateOrderInventory() {
         // Given
         String orderId = "ORDER-123";
+        String reservationId = "RES-456";
         Order existingOrder = Order.builder()
                 .orderId(orderId)
                 .status(Order.OrderStatus.PENDING)
@@ -116,11 +117,12 @@ class OrderServiceTest {
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(existingOrder));
 
         // When
-        orderService.updateOrderStatus(orderId, Order.OrderStatus.COMPLETED);
+        orderService.updateOrderInventory(orderId, reservationId);
 
         // Then
         verify(orderRepository).save(any(Order.class));
-        assertThat(existingOrder.getStatus()).isEqualTo(Order.OrderStatus.COMPLETED);
+        assertThat(existingOrder.getReservationId()).isEqualTo(reservationId);
+        assertThat(existingOrder.getStatus()).isEqualTo(Order.OrderStatus.INVENTORY_RESERVED);
     }
 
     @Test
@@ -144,20 +146,24 @@ class OrderServiceTest {
     }
 
     @Test
-    void shouldCompleteOrder() {
+    void shouldCompleteOrderWithShipping() {
         // Given
         String orderId = "ORDER-123";
+        String shippingId = "SHIP-789";
+        String trackingNumber = "TRACK-001";
         Order existingOrder = Order.builder()
                 .orderId(orderId)
-                .status(Order.OrderStatus.SHIPPING_SCHEDULED)
+                .status(Order.OrderStatus.INVENTORY_RESERVED)
                 .build();
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(existingOrder));
 
         // When
-        orderService.completeOrder(orderId);
+        orderService.completeOrderWithShipping(orderId, shippingId, trackingNumber);
 
         // Then
         verify(orderRepository).save(any(Order.class));
+        assertThat(existingOrder.getShippingId()).isEqualTo(shippingId);
+        assertThat(existingOrder.getTrackingNumber()).isEqualTo(trackingNumber);
         assertThat(existingOrder.getStatus()).isEqualTo(Order.OrderStatus.COMPLETED);
     }
 

@@ -1,0 +1,121 @@
+# Choreography Pattern Services - LOCAL TESTING
+# Uses event-driven communication via Kafka
+# Run after: docker compose -f docker-compose.infra.yml up -d
+
+services:
+  # ============================================
+  # Order Service (Entry point - port 8081)
+  # ============================================
+  order-service:
+    image: ghcr.io/elskow/saga-pattern/choreography-order-service:HEAD
+    container_name: choreography-order-service
+    ports:
+      - "8081:8081"
+    environment:
+      SERVER_PORT: 8081
+      DB_HOST: order-db
+      DB_PORT: 5432
+      DB_NAME: order_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      LOG_LEVEL: INFO
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # ============================================
+  # Payment Service
+  # ============================================
+  payment-service:
+    image: ghcr.io/elskow/saga-pattern/choreography-payment-service:HEAD
+    container_name: choreography-payment-service
+    ports:
+      - "8082:8082"
+    environment:
+      SERVER_PORT: 8082
+      DB_HOST: payment-db
+      DB_PORT: 5432
+      DB_NAME: payment_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      LOG_LEVEL: INFO
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # ============================================
+  # Inventory Service
+  # ============================================
+  inventory-service:
+    image: ghcr.io/elskow/saga-pattern/choreography-inventory-service:HEAD
+    container_name: choreography-inventory-service
+    ports:
+      - "8083:8083"
+    environment:
+      SERVER_PORT: 8083
+      DB_HOST: inventory-db
+      DB_PORT: 5432
+      DB_NAME: inventory_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      LOG_LEVEL: INFO
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8083/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # ============================================
+  # Shipping Service
+  # ============================================
+  shipping-service:
+    image: ghcr.io/elskow/saga-pattern/choreography-shipping-service:HEAD
+    container_name: choreography-shipping-service
+    ports:
+      - "8084:8084"
+    environment:
+      SERVER_PORT: 8084
+      DB_HOST: shipping-db
+      DB_PORT: 5432
+      DB_NAME: shipping_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      LOG_LEVEL: INFO
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8084/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+networks:
+  default:
+    name: saga-network
+    external: true
