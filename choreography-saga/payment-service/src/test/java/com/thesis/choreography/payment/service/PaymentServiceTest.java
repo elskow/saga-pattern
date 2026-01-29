@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -46,13 +47,13 @@ class PaymentServiceTest {
     void shouldCreatePaymentFromOrderEvent() {
         // Given
         OrderCreatedEvent orderEvent = OrderCreatedEvent.builder()
-                .orderId("ORDER-123")
-                .customerId("CUST-001")
-                .totalAmount(new BigDecimal("99.99"))
-                .shippingAddress("123 Main St")
-                .items(List.of())
-                .createdAt(Instant.now())
-                .build();
+            .orderId("ORDER-123")
+            .customerId("CUST-001")
+            .totalAmount(new BigDecimal("99.99"))
+            .shippingAddress("123 Main St")
+            .items(List.of())
+            .createdAt(Instant.now())
+            .build();
 
         when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -72,13 +73,13 @@ class PaymentServiceTest {
     void shouldProcessPaymentAndPublishEvent() {
         // Given
         OrderCreatedEvent orderEvent = OrderCreatedEvent.builder()
-                .orderId("ORDER-456")
-                .customerId("CUST-002")
-                .totalAmount(new BigDecimal("150.00"))
-                .shippingAddress("456 Oak Ave")
-                .items(List.of())
-                .createdAt(Instant.now())
-                .build();
+            .orderId("ORDER-456")
+            .customerId("CUST-002")
+            .totalAmount(new BigDecimal("150.00"))
+            .shippingAddress("456 Oak Ave")
+            .items(List.of())
+            .createdAt(Instant.now())
+            .build();
 
         when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -95,11 +96,11 @@ class PaymentServiceTest {
         // Given
         String orderId = "ORDER-123";
         Payment existingPayment = Payment.builder()
-                .paymentId("PAY-456")
-                .orderId(orderId)
-                .amount(new BigDecimal("99.99"))
-                .status(Payment.PaymentStatus.COMPLETED)
-                .build();
+            .paymentId("PAY-456")
+            .orderId(orderId)
+            .amount(new BigDecimal("99.99"))
+            .status(Payment.PaymentStatus.COMPLETED)
+            .build();
 
         when(paymentRepository.findByOrderId(orderId)).thenReturn(Optional.of(existingPayment));
 
@@ -116,11 +117,11 @@ class PaymentServiceTest {
         // Given
         String orderId = "ORDER-123";
         Payment existingPayment = Payment.builder()
-                .paymentId("PAY-456")
-                .orderId(orderId)
-                .amount(new BigDecimal("99.99"))
-                .status(Payment.PaymentStatus.COMPLETED)
-                .build();
+            .paymentId("PAY-456")
+            .orderId(orderId)
+            .amount(new BigDecimal("99.99"))
+            .status(Payment.PaymentStatus.COMPLETED)
+            .build();
 
         when(paymentRepository.findByOrderId(orderId)).thenReturn(Optional.of(existingPayment));
 
@@ -139,8 +140,8 @@ class PaymentServiceTest {
 
         // When & Then
         assertThatThrownBy(() -> paymentService.refundPayment(orderId))
-                .isInstanceOf(PaymentNotFoundException.class)
-                .hasMessageContaining(orderId);
+            .isInstanceOf(PaymentNotFoundException.class)
+            .hasMessageContaining(orderId);
 
         verify(paymentRepository, never()).save(any());
         verify(eventPublisher, never()).publishPaymentRefunded(any());
@@ -151,11 +152,11 @@ class PaymentServiceTest {
         // Given
         String orderId = "ORDER-123";
         Payment existingPayment = Payment.builder()
-                .paymentId("PAY-456")
-                .orderId(orderId)
-                .amount(new BigDecimal("99.99"))
-                .status(Payment.PaymentStatus.PENDING) // Not completed
-                .build();
+            .paymentId("PAY-456")
+            .orderId(orderId)
+            .amount(new BigDecimal("99.99"))
+            .status(Payment.PaymentStatus.PENDING) // Not completed
+            .build();
 
         when(paymentRepository.findByOrderId(orderId)).thenReturn(Optional.of(existingPayment));
 
@@ -171,16 +172,16 @@ class PaymentServiceTest {
     void shouldSavePaymentTwiceDuringProcessing() {
         // Given
         OrderCreatedEvent orderEvent = OrderCreatedEvent.builder()
-                .orderId("ORDER-789")
-                .customerId("CUST-003")
-                .totalAmount(new BigDecimal("200.00"))
-                .shippingAddress("789 Pine Rd")
-                .items(List.of())
-                .createdAt(Instant.now())
-                .build();
+            .orderId("ORDER-789")
+            .customerId("CUST-003")
+            .totalAmount(new BigDecimal("200.00"))
+            .shippingAddress("789 Pine Rd")
+            .items(List.of())
+            .createdAt(Instant.now())
+            .build();
 
         // Capture the status at each save call since the same object is mutated
-        java.util.List<Payment.PaymentStatus> capturedStatuses = new java.util.ArrayList<>();
+        List<Payment.PaymentStatus> capturedStatuses = new ArrayList<>();
         when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> {
             Payment payment = invocation.getArgument(0);
             capturedStatuses.add(payment.getStatus());

@@ -18,13 +18,13 @@ import java.util.List;
 public class ReserveInventoryCommand {
     @NotBlank(message = "commandType must not be blank")
     private String commandType;
-    
+
     @NotNull(message = "reservationId must not be null")
     private String reservationId;
-    
+
     @NotNull(message = "orderId must not be null")
     private String orderId;
-    
+
     @NotNull(message = "items must not be null")
     @NotEmpty(message = "items must not be empty")
     private List<OrderCreatedEvent.OrderItemEvent> items;

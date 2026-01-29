@@ -20,20 +20,20 @@ import java.util.List;
 public class InventoryReservedEvent {
     @NotBlank(message = "Reservation ID cannot be blank")
     private String reservationId;
-    
+
     @NotBlank(message = "Order ID cannot be blank")
     private String orderId;
-    
+
     @NotEmpty(message = "Reserved items list cannot be empty")
     @Valid
     private List<ReservedItem> reservedItems;
-    
+
     @NotNull(message = "Reserved at cannot be null")
     private Instant reservedAt;
-    
+
     @NotBlank(message = "Correlation ID cannot be blank")
     private String correlationId;
-    
+
     @Builder.Default
     private Instant createdAt = Instant.now();
 
@@ -44,7 +44,7 @@ public class InventoryReservedEvent {
     public static class ReservedItem {
         @NotBlank(message = "Product ID cannot be blank")
         private String productId;
-        
+
         @Positive(message = "Quantity must be positive")
         private int quantity;
     }

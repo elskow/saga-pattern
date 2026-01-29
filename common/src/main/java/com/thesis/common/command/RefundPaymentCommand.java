@@ -14,10 +14,10 @@ import lombok.NoArgsConstructor;
 public class RefundPaymentCommand {
     @NotBlank(message = "commandType must not be blank")
     private String commandType;
-    
+
     @NotNull(message = "paymentId must not be null")
     private String paymentId;
-    
+
     @NotNull(message = "orderId must not be null")
     private String orderId;
 }

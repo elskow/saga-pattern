@@ -14,10 +14,10 @@ import lombok.NoArgsConstructor;
 public class ReleaseInventoryCommand {
     @NotBlank(message = "commandType must not be blank")
     private String commandType;
-    
+
     @NotNull(message = "reservationId must not be null")
     private String reservationId;
-    
+
     @NotNull(message = "orderId must not be null")
     private String orderId;
 }

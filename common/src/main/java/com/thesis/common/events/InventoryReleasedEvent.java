@@ -15,16 +15,16 @@ import java.time.Instant;
 @AllArgsConstructor
 public class InventoryReleasedEvent {
     private String reservationId;
-    
+
     @NotBlank(message = "Order ID cannot be blank")
     private String orderId;
-    
+
     @NotNull(message = "Released at cannot be null")
     private Instant releasedAt;
-    
+
     @NotBlank(message = "Correlation ID cannot be blank")
     private String correlationId;
-    
+
     @Builder.Default
     private Instant createdAt = Instant.now();
 }

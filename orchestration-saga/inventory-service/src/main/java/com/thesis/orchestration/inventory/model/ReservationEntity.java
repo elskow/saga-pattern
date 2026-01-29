@@ -1,7 +1,6 @@
 package com.thesis.orchestration.inventory.model;
 
 import jakarta.persistence.*;
-import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,9 +10,9 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "inventory_reservations", indexes = {
-        @Index(name = "idx_reservations_status", columnList = "status")
+    @Index(name = "idx_reservations_status", columnList = "status")
 }, uniqueConstraints = {
-        @UniqueConstraint(name = "uk_reservations_order_id", columnNames = "orderId")
+    @UniqueConstraint(name = "uk_reservations_order_id", columnNames = "orderId")
 })
 @Data
 @Builder
@@ -44,12 +43,12 @@ public class ReservationEntity {
     private Instant reservedAt;
     private Instant releasedAt;
 
-    public enum ReservationStatus {
-        PENDING, RESERVED, RELEASED, FAILED
-    }
-
     @PrePersist
     protected void onCreate() {
         createdAt = Instant.now();
+    }
+
+    public enum ReservationStatus {
+        PENDING, RESERVED, RELEASED, FAILED
     }
 }

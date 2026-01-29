@@ -1,10 +1,6 @@
 package com.thesis.orchestration.order.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,7 +11,7 @@ import java.time.LocalDateTime;
 /**
  * Entity for tracking processed replies for idempotency.
  * Prevents duplicate reply processing when Kafka redelivers messages.
- * 
+ * <p>
  * The replyId is constructed as: orderId + ":" + replyType
  * For example: "order-123:PAYMENT_SUCCESS" or "order-123:INVENTORY_RESERVED"
  */

@@ -15,6 +15,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,10 +44,10 @@ class ShippingServiceTest {
     void shouldScheduleShippingSuccessfully() {
         // Given
         InventoryReservedEvent inventoryEvent = InventoryReservedEvent.builder()
-                .reservationId("RES-123")
-                .orderId("ORDER-456")
-                .reservedAt(Instant.now())
-                .build();
+            .reservationId("RES-123")
+            .orderId("ORDER-456")
+            .reservedAt(Instant.now())
+            .build();
 
         String shippingAddress = "123 Main Street, City, Country";
 
@@ -63,15 +65,15 @@ class ShippingServiceTest {
     void shouldCreateShipmentWithCorrectData() {
         // Given
         InventoryReservedEvent inventoryEvent = InventoryReservedEvent.builder()
-                .reservationId("RES-123")
-                .orderId("ORDER-456")
-                .reservedAt(Instant.now())
-                .build();
+            .reservationId("RES-123")
+            .orderId("ORDER-456")
+            .reservedAt(Instant.now())
+            .build();
 
         String shippingAddress = "123 Main Street";
 
         // Capture the status at each save call since the same object is mutated
-        java.util.List<Shipment.ShippingStatus> capturedStatuses = new java.util.ArrayList<>();
+        List<Shipment.ShippingStatus> capturedStatuses = new ArrayList<>();
         ArgumentCaptor<Shipment> shipmentCaptor = ArgumentCaptor.forClass(Shipment.class);
         when(shipmentRepository.save(any(Shipment.class))).thenAnswer(invocation -> {
             Shipment shipment = invocation.getArgument(0);
@@ -99,10 +101,10 @@ class ShippingServiceTest {
         // Given
         String orderId = "ORDER-123";
         Shipment existingShipment = Shipment.builder()
-                .shippingId("SHIP-456")
-                .orderId(orderId)
-                .status(Shipment.ShippingStatus.SCHEDULED)
-                .build();
+            .shippingId("SHIP-456")
+            .orderId(orderId)
+            .status(Shipment.ShippingStatus.SCHEDULED)
+            .build();
 
         when(shipmentRepository.findByOrderId(orderId)).thenReturn(Optional.of(existingShipment));
 
@@ -122,8 +124,8 @@ class ShippingServiceTest {
 
         // When & Then
         assertThatThrownBy(() -> shippingService.cancelShipping(orderId))
-                .isInstanceOf(ShipmentNotFoundException.class)
-                .hasMessageContaining(orderId);
+            .isInstanceOf(ShipmentNotFoundException.class)
+            .hasMessageContaining(orderId);
 
         verify(shipmentRepository, never()).save(any());
     }
@@ -132,10 +134,10 @@ class ShippingServiceTest {
     void shouldGenerateTrackingNumber() {
         // Given
         InventoryReservedEvent inventoryEvent = InventoryReservedEvent.builder()
-                .reservationId("RES-123")
-                .orderId("ORDER-456")
-                .reservedAt(Instant.now())
-                .build();
+            .reservationId("RES-123")
+            .orderId("ORDER-456")
+            .reservedAt(Instant.now())
+            .build();
 
         ArgumentCaptor<Shipment> shipmentCaptor = ArgumentCaptor.forClass(Shipment.class);
         when(shipmentRepository.save(any(Shipment.class))).thenAnswer(invocation -> invocation.getArgument(0));

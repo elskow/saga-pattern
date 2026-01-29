@@ -15,8 +15,8 @@ import java.time.Instant;
  */
 @Entity
 @Table(name = "pending_shipping_addresses", indexes = {
-        @Index(name = "idx_pending_shipping_addresses_order_id", columnList = "order_id"),
-        @Index(name = "idx_pending_shipping_addresses_created_at", columnList = "created_at")
+    @Index(name = "idx_pending_shipping_addresses_order_id", columnList = "order_id"),
+    @Index(name = "idx_pending_shipping_addresses_created_at", columnList = "created_at")
 })
 @Data
 @Builder

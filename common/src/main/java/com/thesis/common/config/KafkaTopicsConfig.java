@@ -18,7 +18,7 @@ import org.springframework.context.annotation.Configuration;
 @Getter
 @Setter
 public class KafkaTopicsConfig {
-    
+
     private String orderEvents = "order-events";
     private String paymentEvents = "payment-events";
     private String inventoryEvents = "inventory-events";

@@ -14,10 +14,10 @@ import lombok.NoArgsConstructor;
 public class CancelShippingCommand {
     @NotBlank(message = "commandType must not be blank")
     private String commandType;
-    
+
     @NotNull(message = "shipmentId must not be null")
     private String shipmentId;
-    
+
     @NotNull(message = "orderId must not be null")
     private String orderId;
 }

@@ -15,11 +15,11 @@ import org.springframework.aot.hint.RuntimeHintsRegistrar;
 public class OrderRuntimeHints implements RuntimeHintsRegistrar {
 
     private static final MemberCategory[] ENTITY_CATEGORIES = {
-            MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
-            MemberCategory.INVOKE_DECLARED_METHODS,
-            MemberCategory.INVOKE_PUBLIC_METHODS,
-            MemberCategory.DECLARED_FIELDS,
-            MemberCategory.PUBLIC_FIELDS
+        MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
+        MemberCategory.INVOKE_DECLARED_METHODS,
+        MemberCategory.INVOKE_PUBLIC_METHODS,
+        MemberCategory.DECLARED_FIELDS,
+        MemberCategory.PUBLIC_FIELDS
     };
 
     @Override

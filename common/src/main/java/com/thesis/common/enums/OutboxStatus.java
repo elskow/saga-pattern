@@ -6,10 +6,6 @@ public enum OutboxStatus {
     SENT,
     FAILED;
 
-    public String getValue() {
-        return name();
-    }
-
     public static OutboxStatus fromValue(String value) {
         if (value == null) {
             return null;
@@ -20,5 +16,9 @@ public enum OutboxStatus {
             }
         }
         throw new IllegalArgumentException("Unknown OutboxStatus: " + value);
+    }
+
+    public String getValue() {
+        return name();
     }
 }

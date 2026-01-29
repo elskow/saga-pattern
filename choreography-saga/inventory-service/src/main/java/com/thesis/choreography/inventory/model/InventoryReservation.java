@@ -10,15 +10,15 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "inventory_reservations", indexes = {
-        @Index(name = "idx_reservations_order_id", columnList = "order_id"),
-        @Index(name = "idx_reservations_status", columnList = "status")
+    @Index(name = "idx_reservations_order_id", columnList = "order_id"),
+    @Index(name = "idx_reservations_status", columnList = "status")
 })
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class InventoryReservation {
-
+    
     @Id
     @Column(name = "reservation_id")
     private String reservationId;

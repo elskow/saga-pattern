@@ -31,9 +31,9 @@ output "saga_node_ip" {
   value       = lxd_instance.node["saga-node"].ipv4_address
 }
 
-output "k6_runner_ip" {
-  description = "IP address of the K6 load testing node"
-  value       = lxd_instance.node["k6-runner"].ipv4_address
+output "gatling_runner_ip" {
+  description = "IP address of the Gatling load testing node"
+  value       = lxd_instance.node["gatling-runner"].ipv4_address
 }
 
 output "observability_node_ip" {
@@ -46,7 +46,7 @@ output "observability_urls" {
   value = {
     prometheus = "http://${var.nodes["observability-node"].ip_address}:9090"
     grafana    = "http://${var.nodes["observability-node"].ip_address}:3000"
-    zipkin     = "http://${var.nodes["observability-node"].ip_address}:9411"
+    jaeger     = "http://${var.nodes["saga-node"].ip_address}:16686"
   }
 }
 
@@ -54,9 +54,9 @@ output "saga_urls" {
   description = "URLs for Saga services (when running)"
   value = {
     choreography_order_api  = "http://${var.nodes["saga-node"].ip_address}:8081/api/orders"
-    orchestration_order_api = "http://${var.nodes["saga-node"].ip_address}:8081/api/orders"
+    orchestration_order_api = "http://${var.nodes["saga-node"].ip_address}:8085/api/orders"
     kafka                   = "${var.nodes["saga-node"].ip_address}:9092"
-    postgres                = "${var.nodes["saga-node"].ip_address}:5432"
+    jaeger_ui               = "http://${var.nodes["saga-node"].ip_address}:16686"
   }
 }
 
@@ -78,12 +78,31 @@ output "ssh_config" {
 }
 
 #------------------------------------------------------------------------------
+# Jenkins Integration Outputs
+#------------------------------------------------------------------------------
+
+output "jenkins_env" {
+  description = "Environment variables for Jenkins pipeline"
+  value = {
+    SAGA_NODE_IP        = var.nodes["saga-node"].ip_address
+    GATLING_RUNNER_IP   = var.nodes["gatling-runner"].ip_address
+    OBSERVABILITY_IP    = var.nodes["observability-node"].ip_address
+    CHOREOGRAPHY_PORT   = "8081"
+    ORCHESTRATION_PORT  = "8085"
+  }
+}
+
+#------------------------------------------------------------------------------
 # Test Commands
 #------------------------------------------------------------------------------
 
 output "test_commands" {
   description = "Useful commands for running tests"
   value       = <<-EOT
+# =============================================================================
+# SERVICE MANAGEMENT (on saga-node)
+# =============================================================================
+
 # Start Choreography pattern:
 ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/saga && sudo docker compose -f docker-compose.choreography.yml up -d"
 
@@ -94,10 +113,31 @@ ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/saga && sudo docker compos
 ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/saga && sudo docker compose -f docker-compose.choreography.yml down"
 ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/saga && sudo docker compose -f docker-compose.orchestration.yml down"
 
-# Run k6 test from k6-runner:
-ssh ubuntu@${var.nodes["k6-runner"].ip_address} "BASE_URL=http://${var.nodes["saga-node"].ip_address}:8081 k6 run -"
-
 # View logs:
 ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/saga && sudo docker compose -f docker-compose.choreography.yml logs -f"
+
+# =============================================================================
+# GATLING BENCHMARKS (on gatling-runner)
+# =============================================================================
+
+# Run choreography benchmark:
+ssh ubuntu@${var.nodes["gatling-runner"].ip_address} "~/run-benchmark.sh choreography thesis-baseline SustainedMixedSimulation ${var.nodes["saga-node"].ip_address}"
+
+# Run orchestration benchmark:
+ssh ubuntu@${var.nodes["gatling-runner"].ip_address} "~/run-benchmark.sh orchestration thesis-baseline SustainedMixedSimulation ${var.nodes["saga-node"].ip_address}"
+
+# Quick warmup:
+ssh ubuntu@${var.nodes["gatling-runner"].ip_address} "~/warmup.sh ${var.nodes["saga-node"].ip_address} 8081 100"
+
+# Copy results to local:
+scp -r ubuntu@${var.nodes["gatling-runner"].ip_address}:~/results/* ./results/
+
+# =============================================================================
+# OBSERVABILITY
+# =============================================================================
+
+# Prometheus: http://${var.nodes["observability-node"].ip_address}:9090
+# Grafana:    http://${var.nodes["observability-node"].ip_address}:3000 (admin/admin)
+# Jaeger:     http://${var.nodes["saga-node"].ip_address}:16686
 EOT
 }

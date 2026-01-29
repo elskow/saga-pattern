@@ -1,7 +1,6 @@
 package com.thesis.orchestration.order.model;
 
 import jakarta.persistence.*;
-import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,9 +11,9 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "orders", indexes = {
-        @Index(name = "idx_orders_customer_id", columnList = "customerId"),
-        @Index(name = "idx_orders_status", columnList = "status"),
-        @Index(name = "idx_orders_created_at", columnList = "createdAt")
+    @Index(name = "idx_orders_customer_id", columnList = "customerId"),
+    @Index(name = "idx_orders_status", columnList = "status"),
+    @Index(name = "idx_orders_created_at", columnList = "createdAt")
 })
 @Data
 @Builder
@@ -36,7 +35,7 @@ public class OrderEntity {
 
     @Column(length = 2000)
     private String itemsJson; // JSON representation of items
-
+    
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private OrderStatus status;
@@ -54,6 +53,17 @@ public class OrderEntity {
     private Instant updatedAt;
     private Instant completedAt;
 
+    @PrePersist
+    protected void onCreate() {
+        createdAt = Instant.now();
+        updatedAt = Instant.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = Instant.now();
+    }
+
     public enum OrderStatus {
         CREATED,
         PAYMENT_PENDING,
@@ -65,16 +75,5 @@ public class OrderEntity {
         SHIPPING_FAILED,
         COMPLETED,
         CANCELLED
-    }
-
-    @PrePersist
-    protected void onCreate() {
-        createdAt = Instant.now();
-        updatedAt = Instant.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = Instant.now();
     }
 }

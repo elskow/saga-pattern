@@ -1,6 +1,5 @@
 package com.thesis.orchestration.order.health;
 
-import com.thesis.common.metrics.SagaMetrics;
 import com.thesis.orchestration.order.config.SagaOrchestratorProperties;
 import com.thesis.orchestration.order.repository.SagaInstanceRepository;
 import io.micrometer.core.instrument.Gauge;
@@ -44,7 +43,7 @@ public class StuckSagaHealthIndicator implements HealthIndicator {
                 Instant cutoff = Instant.now().minus(sagaProperties.getSagaTimeout());
                 LocalDateTime lambdaCutoff = LocalDateTime.ofInstant(cutoff, ZoneId.systemDefault());
                 List<String> states = List.of("COMPLETED", "CANCELLED");
-                return (double) sagaInstanceRepository.findByCurrentStateNotInAndUpdatedAtBefore(states, lambdaCutoff).size();
+                return sagaInstanceRepository.findByCurrentStateNotInAndUpdatedAtBefore(states, lambdaCutoff).size();
             }).tag("service", "orchestration").register(meterRegistry);
         }
 
@@ -56,7 +55,7 @@ public class StuckSagaHealthIndicator implements HealthIndicator {
                 .build();
         }
         return Health.up()
-                .withDetail("stuckSagas", 0)
-                .build();
+            .withDetail("stuckSagas", 0)
+            .build();
     }
 }

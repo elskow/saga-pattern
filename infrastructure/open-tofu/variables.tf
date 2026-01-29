@@ -39,10 +39,10 @@ variable "nodes" {
       storage    = "260GB"
       ip_address = "192.168.11.152"
     }
-    "k6-runner" = {
+    "gatling-runner" = {
       vcpu       = 4
-      memory     = "4GB"
-      storage    = "20GB"
+      memory     = "8GB"
+      storage    = "30GB"
       ip_address = "192.168.11.158"
     }
     "observability-node" = {
@@ -119,4 +119,20 @@ variable "ssh_private_key_path" {
   description = "Path to SSH private key for provisioning"
   type        = string
   default     = "~/.ssh/id_ed25519"
+}
+
+#------------------------------------------------------------------------------
+# Git Repository Configuration (for Gatling tests)
+#------------------------------------------------------------------------------
+
+variable "saga_repo_url" {
+  description = "Git repository URL for saga-pattern project"
+  type        = string
+  default     = "https://github.com/Elskow/saga-pattern.git"
+}
+
+variable "saga_repo_branch" {
+  description = "Git branch to clone"
+  type        = string
+  default     = "main"
 }

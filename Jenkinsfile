@@ -4,6 +4,8 @@ pipeline {
     parameters {
         string(name: 'BUILD_SCOPE', defaultValue: 'all', description: 'all, choreography-only, orchestration-only, changed-only')
         booleanParam(name: 'FORCE_REBUILD', defaultValue: false, description: 'Force a rebuild of all services in the selected scope')
+        booleanParam(name: 'RUN_BENCHMARK', defaultValue: false, description: 'Run thesis benchmark after successful build')
+        choice(name: 'BENCHMARK_PROFILE', choices: ['quick', 'thesis-baseline', 'thesis-stress'], description: 'Benchmark profile (only used if RUN_BENCHMARK is true)')
     }
 
     triggers {
@@ -61,10 +63,12 @@ pipeline {
                         env.BUILD_ORCHESTRATION_INVENTORY, env.BUILD_ORCHESTRATION_SHIPPING
                     ].count { it == 'true' }
 
+                    def benchmarkInfo = params.RUN_BENCHMARK ? "\n**Benchmark:** ${params.BENCHMARK_PROFILE} (after build)" : ""
+
                     discordSend description: """Build Started: ${env.JOB_NAME} #${env.BUILD_NUMBER}
 **Branch:** ${env.BRANCH_NAME}
 **Services:** ${serviceCount}
-**Executors:** 2 (Queued Mode)""",
+**Executors:** 2 (Queued Mode)${benchmarkInfo}""",
                         footer: "Jenkins CI",
                         link: env.BUILD_URL,
                         result: 'SUCCESS',
@@ -132,6 +136,40 @@ pipeline {
                     steps {
                         buildAndPushService('orchestration-saga/shipping-service', 'orchestration-shipping-service')
                     }
+                }
+            }
+        }
+
+        // STAGE 3: TRIGGER BENCHMARK (Optional)
+        stage('Trigger Benchmark') {
+            agent any
+            when {
+                expression { return params.RUN_BENCHMARK == true }
+            }
+            steps {
+                script {
+                    echo "Triggering thesis benchmark pipeline..."
+                    
+                    // Trigger the benchmark pipeline (infrastructure must be pre-provisioned)
+                    build job: 'saga-pattern-benchmark',
+                        wait: false,  // Don't wait for benchmark to complete
+                        parameters: [
+                            choice(name: 'PROFILE', value: params.BENCHMARK_PROFILE),
+                            choice(name: 'SIMULATION', value: 'SustainedMixedSimulation'),
+                            booleanParam(name: 'RUN_CHOREOGRAPHY', value: true),
+                            booleanParam(name: 'RUN_ORCHESTRATION', value: true),
+                            string(name: 'WARMUP_REQUESTS', value: '100'),
+                            string(name: 'COOLDOWN_SECONDS', value: '30')
+                        ]
+                    
+                    discordSend description: """Benchmark Triggered: saga-pattern-benchmark
+**Profile:** ${params.BENCHMARK_PROFILE}
+**Triggered by:** Build #${env.BUILD_NUMBER}""",
+                        footer: "Jenkins CI",
+                        link: env.BUILD_URL,
+                        result: 'SUCCESS',
+                        title: "🧪 Benchmark Triggered",
+                        webhookURL: env.DISCORD_WEBHOOK
                 }
             }
         }

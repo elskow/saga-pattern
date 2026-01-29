@@ -14,8 +14,8 @@ public class OrderEventPublisher extends AbstractEventPublisher {
     private final KafkaTopicsConfig topicsConfig;
 
     public OrderEventPublisher(KafkaTemplate<String, Object> kafkaTemplate,
-                              KafkaTopicsConfig topicsConfig,
-                              MeterRegistry meterRegistry) {
+                               KafkaTopicsConfig topicsConfig,
+                               MeterRegistry meterRegistry) {
         super(kafkaTemplate, topicsConfig, meterRegistry, SagaMetrics.SERVICE_CHOREOGRAPHY);
         this.topicsConfig = topicsConfig;
     }

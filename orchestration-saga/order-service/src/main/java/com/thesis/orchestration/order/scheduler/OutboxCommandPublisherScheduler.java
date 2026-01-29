@@ -1,13 +1,13 @@
 package com.thesis.orchestration.order.scheduler;
 
+import com.thesis.common.metrics.SagaMetrics;
 import com.thesis.orchestration.order.config.SagaOrchestratorProperties;
 import com.thesis.orchestration.order.model.OutboxCommand;
 import com.thesis.orchestration.order.repository.OutboxCommandRepository;
 import com.thesis.orchestration.order.statemachine.OrderSagaOrchestrator;
-import com.thesis.common.metrics.SagaMetrics;
-import lombok.extern.slf4j.Slf4j;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -15,12 +15,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.time.LocalDateTime;
-import java.util.List;
 
 /**
  * Publishes pending outbox commands to Kafka.
@@ -54,32 +54,32 @@ public class OutboxCommandPublisherScheduler {
         this.sagaProperties = sagaProperties;
         this.orchestrator = orchestrator;
         this.outboxPublishAttemptsCounter = meterRegistry.counter(
-                SagaMetrics.OUTBOX_PUBLISH_ATTEMPTS,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION
+            SagaMetrics.OUTBOX_PUBLISH_ATTEMPTS,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION
         );
         this.outboxPublishSuccessCounter = meterRegistry.counter(
-                SagaMetrics.OUTBOX_PUBLISH_SUCCESS,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION
+            SagaMetrics.OUTBOX_PUBLISH_SUCCESS,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION
         );
         this.outboxPublishFailureCounter = meterRegistry.counter(
-                SagaMetrics.OUTBOX_PUBLISH_FAILURE,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION
+            SagaMetrics.OUTBOX_PUBLISH_FAILURE,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION
         );
         this.outboxMaxAttemptsExceededCounter = meterRegistry.counter(
-                SagaMetrics.OUTBOX_MAX_ATTEMPTS_EXCEEDED,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION
+            SagaMetrics.OUTBOX_MAX_ATTEMPTS_EXCEEDED,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION
         );
         meterRegistry.gauge(
-                SagaMetrics.OUTBOX_PENDING_COUNT,
-                java.util.List.of(io.micrometer.core.instrument.Tag.of(SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION)),
-                outboxCommandRepository,
-                repo -> repo.findByStatus(OUTBOX_STATUS_PENDING).size()
+            SagaMetrics.OUTBOX_PENDING_COUNT,
+            List.of(io.micrometer.core.instrument.Tag.of(SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION)),
+            outboxCommandRepository,
+            repo -> repo.findByStatus(OUTBOX_STATUS_PENDING).size()
         );
         meterRegistry.gauge(
-                SagaMetrics.OUTBOX_FAILED_COUNT,
-                java.util.List.of(io.micrometer.core.instrument.Tag.of(SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION)),
-                outboxCommandRepository,
-                repo -> repo.findByStatus(OUTBOX_STATUS_FAILED).size()
+            SagaMetrics.OUTBOX_FAILED_COUNT,
+            List.of(io.micrometer.core.instrument.Tag.of(SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION)),
+            outboxCommandRepository,
+            repo -> repo.findByStatus(OUTBOX_STATUS_FAILED).size()
         );
     }
 
@@ -93,20 +93,20 @@ public class OutboxCommandPublisherScheduler {
     public void publishPendingCommands() {
         Duration retryDelay = sagaProperties.getOutboxRetryDelay();
         LocalDateTime cutoff = LocalDateTime.now().minus(retryDelay);
-        
+
         // Use pessimistic locking query to prevent concurrent processing
         List<OutboxCommand> pendingCommands = outboxCommandRepository.findPendingWithLock(OUTBOX_STATUS_PENDING, cutoff);
 
         for (OutboxCommand outbox : pendingCommands) {
             if (outbox.getAttempts() >= sagaProperties.getOutboxMaxAttempts()) {
                 log.error("Outbox command exceeded max attempts: orderId={}, type={}, attempts={}",
-                        outbox.getOrderId(), outbox.getCommandType(), outbox.getAttempts());
+                    outbox.getOrderId(), outbox.getCommandType(), outbox.getAttempts());
                 outbox.setStatus(OUTBOX_STATUS_FAILED);
                 outboxCommandRepository.save(outbox);
                 orchestrator.markCommandFailedForOutbox(outbox.getOrderId(), outbox.getCommandType());
                 outboxMaxAttemptsExceededCounter.increment();
                 outboxPublishFailureCounter.increment();
-                
+
                 // Trigger saga timeout/compensation for the stuck saga
                 // This ensures the saga doesn't remain in a pending state forever
                 try {
@@ -117,7 +117,7 @@ public class OutboxCommandPublisherScheduler {
                 }
                 continue;
             }
-            
+
             processOutboxCommand(outbox);
         }
     }
@@ -131,12 +131,12 @@ public class OutboxCommandPublisherScheduler {
         try {
             outboxPublishAttemptsCounter.increment();
             CompletableFuture<SendResult<String, String>> future = stringKafkaTemplate.send(
-                    outbox.getTopic(), outbox.getOrderId(), outbox.getPayloadJson());
+                outbox.getTopic(), outbox.getOrderId(), outbox.getPayloadJson());
 
             // Wait synchronously for the send to complete to avoid dirty read issues
             try {
                 future.get(KAFKA_SEND_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-                
+
                 // Success - update outbox within the same transaction
                 outbox.setStatus(OUTBOX_STATUS_SENT);
                 outbox.setLastAttemptAt(LocalDateTime.now());
@@ -145,8 +145,8 @@ public class OutboxCommandPublisherScheduler {
                 orchestrator.markCommandSentForOutbox(outbox.getOrderId(), outbox.getCommandType());
                 outboxPublishSuccessCounter.increment();
                 log.debug("Successfully published outbox command orderId={}, type={}",
-                        outbox.getOrderId(), outbox.getCommandType());
-                        
+                    outbox.getOrderId(), outbox.getCommandType());
+
             } catch (TimeoutException e) {
                 handleSendFailure(outbox, "Kafka send timeout after " + KAFKA_SEND_TIMEOUT_SECONDS + " seconds");
             } catch (ExecutionException e) {
@@ -167,6 +167,6 @@ public class OutboxCommandPublisherScheduler {
         outboxCommandRepository.save(outbox);
         outboxPublishFailureCounter.increment();
         log.error("Failed to publish outbox command orderId={}, type={}: {}",
-                outbox.getOrderId(), outbox.getCommandType(), errorMessage);
+            outbox.getOrderId(), outbox.getCommandType(), errorMessage);
     }
 }

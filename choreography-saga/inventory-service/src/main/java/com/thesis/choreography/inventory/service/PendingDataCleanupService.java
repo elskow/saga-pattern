@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 /**
  * Service to cleanup orphaned pending order items.
@@ -20,8 +21,8 @@ import java.time.temporal.ChronoUnit;
 @Slf4j
 public class PendingDataCleanupService {
 
-    private final PendingOrderItemRepository pendingOrderItemRepository;
     private static final int RETENTION_DAYS = 7;
+    private final PendingOrderItemRepository pendingOrderItemRepository;
 
     public PendingDataCleanupService(PendingOrderItemRepository pendingOrderItemRepository,
                                      MeterRegistry meterRegistry) {
@@ -29,9 +30,9 @@ public class PendingDataCleanupService {
 
         // Register gauge metric for pending order items count
         meterRegistry.gauge(
-                "saga.pending.order.items.count",
-                java.util.List.of(io.micrometer.core.instrument.Tag.of(SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY)),
-                pendingOrderItemRepository,
+            "saga.pending.order.items.count",
+            List.of(io.micrometer.core.instrument.Tag.of(SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY)),
+            pendingOrderItemRepository,
             CrudRepository::count
         );
     }

@@ -1,18 +1,12 @@
 package com.thesis.orchestration.order.model;
 
-import java.time.LocalDateTime;
-import java.time.Instant;
-
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
-import jakarta.persistence.Version;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
 
 /**
  * Entity for persisting saga instance state.
@@ -20,9 +14,9 @@ import lombok.NoArgsConstructor;
  */
 @Entity
 @Table(name = "saga_instances", indexes = {
-        @Index(name = "idx_saga_instances_order_id", columnList = "orderId"),
-        @Index(name = "idx_saga_instances_current_state", columnList = "currentState"),
-        @Index(name = "idx_saga_instances_updated_at", columnList = "updatedAt")
+    @Index(name = "idx_saga_instances_order_id", columnList = "orderId"),
+    @Index(name = "idx_saga_instances_current_state", columnList = "currentState"),
+    @Index(name = "idx_saga_instances_updated_at", columnList = "updatedAt")
 })
 @Data
 @Builder

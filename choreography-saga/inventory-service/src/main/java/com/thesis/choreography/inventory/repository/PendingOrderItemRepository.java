@@ -12,11 +12,11 @@ import java.util.List;
 
 @Repository
 public interface PendingOrderItemRepository extends JpaRepository<PendingOrderItem, Long> {
-    
+
     List<PendingOrderItem> findByOrderId(String orderId);
-    
+
     void deleteByOrderId(String orderId);
-    
+
     @Modifying
     @Query("DELETE FROM PendingOrderItem p WHERE p.createdAt < :cutoff")
     int deleteByCreatedAtBefore(@Param("cutoff") Instant cutoff);

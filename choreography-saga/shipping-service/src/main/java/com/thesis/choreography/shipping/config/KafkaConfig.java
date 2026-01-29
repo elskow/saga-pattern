@@ -41,7 +41,9 @@ public class KafkaConfig {
 
     @Bean
     public KafkaTemplate<String, Object> kafkaTemplate() {
-        return new KafkaTemplate<>(producerFactory());
+        KafkaTemplate<String, Object> template = new KafkaTemplate<>(producerFactory());
+        template.setObservationEnabled(true);
+        return template;
     }
 
     @Bean
@@ -58,22 +60,23 @@ public class KafkaConfig {
 
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory(
-            CommonErrorHandler errorHandler) {
-        ConcurrentKafkaListenerContainerFactory<String, Object> factory = 
-                new ConcurrentKafkaListenerContainerFactory<>();
+        CommonErrorHandler errorHandler) {
+        ConcurrentKafkaListenerContainerFactory<String, Object> factory =
+            new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
         factory.setCommonErrorHandler(errorHandler);
+        factory.getContainerProperties().setObservationEnabled(true);
         return factory;
     }
 
     @Bean
     public CommonErrorHandler errorHandler(KafkaTemplate<String, Object> kafkaTemplate) {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafkaTemplate,
-                (record, ex) -> {
-                    log.error("Sending to DLQ after retries exhausted for topic: {}, key: {}", 
-                            record.topic(), record.key(), ex);
-                    return new org.apache.kafka.common.TopicPartition(record.topic() + ".DLT", record.partition());
-                });
+            (record, ex) -> {
+                log.error("Sending to DLQ after retries exhausted for topic: {}, key: {}",
+                    record.topic(), record.key(), ex);
+                return new org.apache.kafka.common.TopicPartition(record.topic() + ".DLT", record.partition());
+            });
         // Retry 3 times with 1 second interval
         return new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 3L));
     }
@@ -81,16 +84,16 @@ public class KafkaConfig {
     @Bean
     public NewTopic shippingEventsDltTopic() {
         return TopicBuilder.name("shipping-events.DLT")
-                .partitions(3)
-                .replicas(1)
-                .build();
+            .partitions(3)
+            .replicas(1)
+            .build();
     }
 
     @Bean
     public NewTopic shippingEventsTopic() {
         return TopicBuilder.name("shipping-events")
-                .partitions(3)
-                .replicas(1)
-                .build();
+            .partitions(3)
+            .replicas(1)
+            .build();
     }
 }

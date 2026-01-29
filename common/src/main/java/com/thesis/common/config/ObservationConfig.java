@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
 /**
  * Configuration class that enables @Observed annotation support for automatic
  * span creation in distributed tracing.
- * 
+ * <p>
  * This provides automatic tracing for methods annotated with @Observed,
  * creating spans that show up in Zipkin and can be correlated with metrics.
  */

@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 @Component
 @RequiredArgsConstructor
@@ -102,26 +103,26 @@ public class OrderEventListener {
     }
 
     private <T> void handlePaymentEvent(ConsumerRecord<String, Object> record, T event, String eventType,
-                                         java.util.function.Supplier<Boolean> idempotencyCheck,
-                                         Runnable handler) {
+                                        Supplier<Boolean> idempotencyCheck,
+                                        Runnable handler) {
         handleEvent(record, event, eventType, "payment", idempotencyCheck, handler);
     }
 
     private <T> void handleInventoryEvent(ConsumerRecord<String, Object> record, T event, String eventType,
-                                          java.util.function.Supplier<Boolean> idempotencyCheck,
+                                          Supplier<Boolean> idempotencyCheck,
                                           Runnable handler) {
         handleEvent(record, event, eventType, "inventory", idempotencyCheck, handler);
     }
 
     private <T> void handleShippingEvent(ConsumerRecord<String, Object> record, T event, String eventType,
-                                          java.util.function.Supplier<Boolean> idempotencyCheck,
-                                          Runnable handler) {
+                                         Supplier<Boolean> idempotencyCheck,
+                                         Runnable handler) {
         handleEvent(record, event, eventType, "shipping", idempotencyCheck, handler);
     }
 
     private <T> void handleEvent(ConsumerRecord<String, Object> record, T event, String eventType,
-                                   String fromService, java.util.function.Supplier<Boolean> idempotencyCheck,
-                                   Runnable handler) {
+                                 String fromService, Supplier<Boolean> idempotencyCheck,
+                                 Runnable handler) {
         String correlationId = UUID.randomUUID().toString();
         try {
             String orderId = getOrderId(event);
@@ -135,6 +136,8 @@ public class OrderEventListener {
                 return;
             }
 
+            // idempotencyCheck returns true if event is a duplicate (should skip)
+            // The lambda wraps markProcessed with ! so: true = duplicate, false = new
             if (idempotencyCheck.get()) {
                 log.info("Skipping duplicate {} for order: {}", eventType, orderId);
                 return;

@@ -10,7 +10,7 @@ import java.time.Instant;
 @Repository
 public interface ProcessedEventRepository extends JpaRepository<ProcessedEvent, Long> {
     boolean existsByEventId(String eventId);
-    
+
     @Modifying
     int deleteByProcessedAtBefore(Instant cutoff);
 }

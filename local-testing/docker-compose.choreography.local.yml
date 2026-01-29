@@ -1,21 +1,33 @@
 # Choreography Pattern Services - LOCAL BUILD
 # Builds Docker images from source code for debugging
+# Supports scaling with: docker compose up -d --scale order-service=2
 # Usage: docker compose -f docker-compose.choreography.local.yml up -d --build
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  deploy:
+    resources:
+      limits:
+        cpus: '1'
+        memory: 512M
+      reservations:
+        cpus: '0.25'
+        memory: 256M
 
 services:
   # ============================================
   # Order Service (Entry point - port 8081)
   # ============================================
   order-service:
+    <<: *service-defaults
     build:
       context: ..
       dockerfile: Dockerfile.local
       args:
         SERVICE_PATH: choreography-saga/order-service
     image: saga-pattern/choreography-order-service:local
-    container_name: choreography-order-service
     ports:
-      - "8081:8081"
+      - "8081-8084:8081"
     environment:
       SERVER_PORT: 8081
       DB_HOST: chor-order-db
@@ -24,31 +36,34 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
-      LOG_LEVEL: DEBUG
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: choreography-order-service
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+      JAVA_OPTS: "-Xmx256m -Xms128m -XX:+UseG1GC"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8081/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 60s
-    restart: unless-stopped
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8081"
+      - "prometheus.path=/actuator/prometheus"
 
   # ============================================
   # Payment Service
   # ============================================
   payment-service:
+    <<: *service-defaults
     build:
       context: ..
       dockerfile: Dockerfile.local
       args:
         SERVICE_PATH: choreography-saga/payment-service
     image: saga-pattern/choreography-payment-service:local
-    container_name: choreography-payment-service
-    ports:
-      - "8082:8082"
     environment:
       SERVER_PORT: 8082
       DB_HOST: chor-payment-db
@@ -57,31 +72,34 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
-      LOG_LEVEL: DEBUG
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: choreography-payment-service
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+      JAVA_OPTS: "-Xmx256m -Xms128m -XX:+UseG1GC"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8082/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 60s
-    restart: unless-stopped
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8082"
+      - "prometheus.path=/actuator/prometheus"
 
   # ============================================
   # Inventory Service
   # ============================================
   inventory-service:
+    <<: *service-defaults
     build:
       context: ..
       dockerfile: Dockerfile.local
       args:
         SERVICE_PATH: choreography-saga/inventory-service
     image: saga-pattern/choreography-inventory-service:local
-    container_name: choreography-inventory-service
-    ports:
-      - "8083:8083"
     environment:
       SERVER_PORT: 8083
       DB_HOST: chor-inventory-db
@@ -90,31 +108,34 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
-      LOG_LEVEL: DEBUG
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: choreography-inventory-service
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+      JAVA_OPTS: "-Xmx256m -Xms128m -XX:+UseG1GC"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8083/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 60s
-    restart: unless-stopped
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8083"
+      - "prometheus.path=/actuator/prometheus"
 
   # ============================================
   # Shipping Service
   # ============================================
   shipping-service:
+    <<: *service-defaults
     build:
       context: ..
       dockerfile: Dockerfile.local
       args:
         SERVICE_PATH: choreography-saga/shipping-service
     image: saga-pattern/choreography-shipping-service:local
-    container_name: choreography-shipping-service
-    ports:
-      - "8084:8084"
     environment:
       SERVER_PORT: 8084
       DB_HOST: chor-shipping-db
@@ -123,17 +144,22 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
-      LOG_LEVEL: DEBUG
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: choreography-shipping-service
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+      JAVA_OPTS: "-Xmx256m -Xms128m -XX:+UseG1GC"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8084/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 60s
-    restart: unless-stopped
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8084"
+      - "prometheus.path=/actuator/prometheus"
 
 networks:
   default:

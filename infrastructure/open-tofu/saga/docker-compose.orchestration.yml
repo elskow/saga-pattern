@@ -1,28 +1,41 @@
-# Orchestration Pattern Services
+# Orchestration Pattern Services - THESIS TESTING
 # Uses a central orchestrator to coordinate the saga
+# Supports scaling with: docker compose up -d --scale order-service=2
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  deploy:
+    resources:
+      limits:
+        cpus: '1'
+        memory: 768M
+      reservations:
+        cpus: '0.25'
+        memory: 512M
 
 services:
   # ============================================
-  # Order Service (Orchestrator - port 8081)
+  # Order Service (Orchestrator - port 8085)
   # ============================================
   order-service:
-    image: ghcr.io/elskow/saga-pattern/orchestration-order-service:HEAD
-    container_name: orchestration-order-service
+    <<: *service-defaults
+    image: ghcr.io/elskow/saga-pattern/orchestration-order-service:${IMAGE_TAG:-latest}
     ports:
       - "8085:8085"
     environment:
       SERVER_PORT: 8085
-      DB_HOST: order-db
+      DB_HOST: orch-order-db
       DB_PORT: 5432
       DB_NAME: order_db
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      ZIPKIN_ENDPOINT: http://192.168.11.160:9411/api/v2/spans
-      LOG_LEVEL: INFO
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: orchestration-order-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-      # Service URLs for orchestration
+      # Service URLs for orchestration (using Docker DNS)
       PAYMENT_SERVICE_URL: http://payment-service:8086
       INVENTORY_SERVICE_URL: http://inventory-service:8087
       SHIPPING_SERVICE_URL: http://shipping-service:8088
@@ -32,26 +45,28 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    restart: unless-stopped
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8085"
+      - "prometheus.path=/actuator/prometheus"
 
   # ============================================
   # Payment Service
   # ============================================
   payment-service:
-    image: ghcr.io/elskow/saga-pattern/orchestration-payment-service:HEAD
-    container_name: orchestration-payment-service
-    ports:
-      - "8086:8086"
+    <<: *service-defaults
+    image: ghcr.io/elskow/saga-pattern/orchestration-payment-service:${IMAGE_TAG:-latest}
     environment:
       SERVER_PORT: 8086
-      DB_HOST: payment-db
+      DB_HOST: orch-payment-db
       DB_PORT: 5432
       DB_NAME: payment_db
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      ZIPKIN_ENDPOINT: http://192.168.11.160:9411/api/v2/spans
-      LOG_LEVEL: INFO
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: orchestration-payment-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
     healthcheck:
@@ -60,26 +75,28 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    restart: unless-stopped
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8086"
+      - "prometheus.path=/actuator/prometheus"
 
   # ============================================
   # Inventory Service
   # ============================================
   inventory-service:
-    image: ghcr.io/elskow/saga-pattern/orchestration-inventory-service:HEAD
-    container_name: orchestration-inventory-service
-    ports:
-      - "8087:8087"
+    <<: *service-defaults
+    image: ghcr.io/elskow/saga-pattern/orchestration-inventory-service:${IMAGE_TAG:-latest}
     environment:
       SERVER_PORT: 8087
-      DB_HOST: inventory-db
+      DB_HOST: orch-inventory-db
       DB_PORT: 5432
       DB_NAME: inventory_db
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      ZIPKIN_ENDPOINT: http://192.168.11.160:9411/api/v2/spans
-      LOG_LEVEL: INFO
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: orchestration-inventory-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
     healthcheck:
@@ -88,26 +105,28 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    restart: unless-stopped
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8087"
+      - "prometheus.path=/actuator/prometheus"
 
   # ============================================
   # Shipping Service
   # ============================================
   shipping-service:
-    image: ghcr.io/elskow/saga-pattern/orchestration-shipping-service:HEAD
-    container_name: orchestration-shipping-service
-    ports:
-      - "8088:8088"
+    <<: *service-defaults
+    image: ghcr.io/elskow/saga-pattern/orchestration-shipping-service:${IMAGE_TAG:-latest}
     environment:
       SERVER_PORT: 8088
-      DB_HOST: shipping-db
+      DB_HOST: orch-shipping-db
       DB_PORT: 5432
       DB_NAME: shipping_db
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      ZIPKIN_ENDPOINT: http://192.168.11.160:9411/api/v2/spans
-      LOG_LEVEL: INFO
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: orchestration-shipping-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
     healthcheck:
@@ -116,7 +135,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    restart: unless-stopped
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8088"
+      - "prometheus.path=/actuator/prometheus"
 
 networks:
   default:

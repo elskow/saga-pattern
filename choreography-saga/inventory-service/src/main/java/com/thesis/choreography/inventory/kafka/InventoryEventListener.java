@@ -5,7 +5,10 @@ import com.thesis.choreography.inventory.repository.PendingOrderItemRepository;
 import com.thesis.choreography.inventory.service.IdempotencyService;
 import com.thesis.choreography.inventory.service.InventoryService;
 import com.thesis.common.dto.KafkaTopics;
-import com.thesis.common.events.*;
+import com.thesis.common.events.OrderCreatedEvent;
+import com.thesis.common.events.PaymentCompletedEvent;
+import com.thesis.common.events.PaymentFailedEvent;
+import com.thesis.common.events.ShippingFailedEvent;
 import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,12 +43,12 @@ public class InventoryEventListener {
                 () -> {
                     log.info("Received OrderCreatedEvent for order: {}", event.getOrderId());
                     List<PendingOrderItem> pendingItems = event.getItems().stream()
-                            .map(item -> PendingOrderItem.builder()
-                                    .orderId(event.getOrderId())
-                                    .productId(item.getProductId())
-                                    .quantity(item.getQuantity())
-                                    .build())
-                            .collect(Collectors.toList());
+                        .map(item -> PendingOrderItem.builder()
+                            .orderId(event.getOrderId())
+                            .productId(item.getProductId())
+                            .quantity(item.getQuantity())
+                            .build())
+                        .collect(Collectors.toList());
                     pendingOrderItemRepository.saveAll(pendingItems);
                     log.info("Stored {} pending order items for order: {}", pendingItems.size(), event.getOrderId());
                 });
@@ -63,8 +66,8 @@ public class InventoryEventListener {
                     List<PendingOrderItem> pendingItems = pendingOrderItemRepository.findByOrderId(event.getOrderId());
                     if (!pendingItems.isEmpty()) {
                         List<InventoryService.ItemToReserve> items = pendingItems.stream()
-                                .map(item -> new InventoryService.ItemToReserve(item.getProductId(), item.getQuantity()))
-                                .collect(Collectors.toList());
+                            .map(item -> new InventoryService.ItemToReserve(item.getProductId(), item.getQuantity()))
+                            .collect(Collectors.toList());
                         inventoryService.reserveInventory(event, items);
                         pendingOrderItemRepository.deleteByOrderId(event.getOrderId());
                         log.info("Processed and removed pending items for order: {}", event.getOrderId());
@@ -96,7 +99,7 @@ public class InventoryEventListener {
     }
 
     private <T> void handleEvent(ConsumerRecord<String, Object> record, T event, String eventType,
-                                   Supplier<Boolean> idempotencyCheck, Runnable handler) {
+                                 Supplier<Boolean> idempotencyCheck, Runnable handler) {
         String correlationId = UUID.randomUUID().toString();
         try {
             String orderId = getOrderId(event);
@@ -110,7 +113,9 @@ public class InventoryEventListener {
                 return;
             }
 
-            if (idempotencyCheck.get()) {
+            // idempotencyCheck returns true if event was marked as new (should process)
+            // returns false if event was already processed (should skip)
+            if (!idempotencyCheck.get()) {
                 log.info("Skipping duplicate {} for order: {}", eventType, orderId);
                 return;
             }

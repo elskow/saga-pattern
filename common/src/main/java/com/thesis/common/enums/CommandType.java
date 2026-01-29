@@ -1,5 +1,8 @@
 package com.thesis.common.enums;
 
+import lombok.Getter;
+
+@Getter
 public enum CommandType {
 
     PROCESS_PAYMENT("PROCESS_PAYMENT"),
@@ -15,10 +18,6 @@ public enum CommandType {
         this.value = value;
     }
 
-    public String getValue() {
-        return value;
-    }
-
     public static CommandType fromValue(String value) {
         if (value == null) {
             return null;
@@ -30,4 +29,5 @@ public enum CommandType {
         }
         throw new IllegalArgumentException("Unknown CommandType: " + value);
     }
+
 }

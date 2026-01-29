@@ -11,15 +11,15 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "payments", indexes = {
-        @Index(name = "idx_payments_order_id", columnList = "order_id", unique = true),
-        @Index(name = "idx_payments_status", columnList = "status")
+    @Index(name = "idx_payments_order_id", columnList = "order_id", unique = true),
+    @Index(name = "idx_payments_status", columnList = "status")
 })
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class Payment {
-
+    
     @Id
     @Column(name = "payment_id")
     private String paymentId;

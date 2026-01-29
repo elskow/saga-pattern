@@ -2,8 +2,8 @@ package com.thesis.orchestration.order.controller;
 
 import com.thesis.orchestration.order.dto.CreateOrderRequest;
 import com.thesis.orchestration.order.model.OrderEntity;
-import com.thesis.orchestration.order.statemachine.OrderSagaOrchestrator;
 import com.thesis.orchestration.order.service.OrderService;
+import com.thesis.orchestration.order.statemachine.OrderSagaOrchestrator;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.Valid;
@@ -30,17 +30,17 @@ public class OrderController {
         log.info("Received create order request for customer: {}", request.getCustomerId());
 
         Counter.builder("orchestration.orders.created")
-                .tag("service", "order-service")
-                .register(meterRegistry)
-                .increment();
+            .tag("service", "order-service")
+            .register(meterRegistry)
+            .increment();
 
         String orderId = orderSagaOrchestrator.createOrder(request);
 
         return ResponseEntity.accepted().body(Map.of(
-                "orderId", orderId,
-                "customerId", request.getCustomerId(),
-                "totalAmount", request.getTotalAmount(),
-                "status", "SAGA_STARTED"
+            "orderId", orderId,
+            "customerId", request.getCustomerId(),
+            "totalAmount", request.getTotalAmount(),
+            "status", "SAGA_STARTED"
         ));
     }
 
@@ -49,8 +49,8 @@ public class OrderController {
         log.info("Fetching order: {}", orderId);
 
         return orderService.findById(orderId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+            .map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/customer/{customerId}")

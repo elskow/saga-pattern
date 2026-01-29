@@ -15,15 +15,15 @@ import java.time.Instant;
  */
 @Entity
 @Table(name = "pending_order_items", indexes = {
-        @Index(name = "idx_pending_order_items_order_id", columnList = "order_id"),
-        @Index(name = "idx_pending_order_items_created_at", columnList = "created_at")
+    @Index(name = "idx_pending_order_items_order_id", columnList = "order_id"),
+    @Index(name = "idx_pending_order_items_created_at", columnList = "created_at")
 })
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class PendingOrderItem {
-
+    
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

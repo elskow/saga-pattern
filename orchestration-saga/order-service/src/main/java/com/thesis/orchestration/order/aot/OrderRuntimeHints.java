@@ -1,16 +1,12 @@
 package com.thesis.orchestration.order.aot;
 
 import com.thesis.common.aot.CommonRuntimeHints;
-import com.thesis.orchestration.order.controller.GlobalExceptionHandler;
+import com.thesis.orchestration.order.exception.GlobalExceptionHandler;
 import com.thesis.orchestration.order.model.OrderEntity;
 import com.thesis.orchestration.order.model.ProcessedCommand;
 import com.thesis.orchestration.order.model.SagaInstance;
 import com.thesis.orchestration.order.scheduler.SagaTimeoutScheduler;
-import com.thesis.orchestration.order.statemachine.OrderEvents;
-import com.thesis.orchestration.order.statemachine.OrderSagaOrchestrator;
-import com.thesis.orchestration.order.statemachine.OrderStateMachineConfig;
-import com.thesis.orchestration.order.statemachine.OrderStates;
-import com.thesis.orchestration.order.statemachine.SagaData;
+import com.thesis.orchestration.order.statemachine.*;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
@@ -18,18 +14,18 @@ import org.springframework.aot.hint.RuntimeHintsRegistrar;
 /**
  * GraalVM Native Image runtime hints for orchestration order-service.
  * Registers reflection hints for JPA entities, state machine enums, and related classes.
- *
+ * <p>
  * Note: The programmatic StateMachineBuilder approach used in OrderStateMachineConfig
  * is AOT-compatible and doesn't require extensive framework hints.
  */
 public class OrderRuntimeHints implements RuntimeHintsRegistrar {
 
     private static final MemberCategory[] ENTITY_CATEGORIES = {
-            MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
-            MemberCategory.INVOKE_DECLARED_METHODS,
-            MemberCategory.INVOKE_PUBLIC_METHODS,
-            MemberCategory.DECLARED_FIELDS,
-            MemberCategory.PUBLIC_FIELDS
+        MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
+        MemberCategory.INVOKE_DECLARED_METHODS,
+        MemberCategory.INVOKE_PUBLIC_METHODS,
+        MemberCategory.DECLARED_FIELDS,
+        MemberCategory.PUBLIC_FIELDS
     };
 
     @Override

@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.concurrent.CompletableFuture;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
@@ -44,6 +45,12 @@ public class PaymentCommandListener {
 
     private static final String COMMAND_TOPIC = "orchestration.payment.commands";
     private static final String REPLY_TOPIC = "orchestration.payment.replies";
+    
+    /**
+     * Maximum payment amount allowed. Orders with total amount >= this value will be rejected.
+     * This simulates real-world payment gateway behavior for high-value transactions.
+     */
+    private static final BigDecimal MAX_PAYMENT_AMOUNT = new BigDecimal("10000.00");
 
     private final PaymentRepository paymentRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
@@ -177,6 +184,35 @@ public class PaymentCommandListener {
                     command.getPaymentId(), command.getOrderId(), command.getAmount());
 
             metricsHelper.recordMessageReceived(command.getOrderId(), SagaMetrics.TYPE_COMMAND);
+
+            // Reject high-value payments (simulates real-world payment gateway limits)
+            if (command.getAmount() != null && command.getAmount().compareTo(MAX_PAYMENT_AMOUNT) >= 0) {
+                log.warn("Payment rejected for order {}: amount {} exceeds maximum limit {}", 
+                    command.getOrderId(), command.getAmount(), MAX_PAYMENT_AMOUNT);
+                
+                PaymentEntity payment = PaymentEntity.builder()
+                        .paymentId(command.getPaymentId())
+                        .orderId(command.getOrderId())
+                        .customerId(command.getCustomerId())
+                        .amount(command.getAmount())
+                        .status(PaymentEntity.PaymentStatus.FAILED)
+                        .failureReason("Payment amount " + command.getAmount() + 
+                            " exceeds maximum allowed limit of " + MAX_PAYMENT_AMOUNT)
+                        .build();
+                paymentRepository.save(payment);
+                metricsHelper.recordDbInsert(command.getOrderId(), SagaMetrics.ENTITY_PAYMENT);
+                
+                paymentFailedCounter.increment();
+                sagaStepsFailedCounter.increment();
+                
+                PaymentFailedReply reply = PaymentFailedReply.builder()
+                        .paymentId(command.getPaymentId())
+                        .orderId(command.getOrderId())
+                        .reason("Payment amount exceeds maximum allowed limit of " + MAX_PAYMENT_AMOUNT)
+                        .build();
+                sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
+                return;
+            }
 
             // Idempotency check: if payment already exists and is completed/pending, send success reply
             var existingPayment = paymentRepository.findById(command.getPaymentId());

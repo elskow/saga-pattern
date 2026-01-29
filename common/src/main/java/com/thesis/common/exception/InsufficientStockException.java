@@ -1,8 +1,11 @@
 package com.thesis.common.exception;
 
+import lombok.Getter;
+
 /**
  * Exception thrown when there is insufficient stock to fulfill a reservation.
  */
+@Getter
 public class InsufficientStockException extends RuntimeException {
 
     private final String productId;
@@ -11,21 +14,10 @@ public class InsufficientStockException extends RuntimeException {
 
     public InsufficientStockException(String productId, int requestedQuantity, int availableQuantity) {
         super(String.format("Insufficient stock for product %s: requested %d, available %d",
-                productId, requestedQuantity, availableQuantity));
+            productId, requestedQuantity, availableQuantity));
         this.productId = productId;
         this.requestedQuantity = requestedQuantity;
         this.availableQuantity = availableQuantity;
     }
 
-    public String getProductId() {
-        return productId;
-    }
-
-    public int getRequestedQuantity() {
-        return requestedQuantity;
-    }
-
-    public int getAvailableQuantity() {
-        return availableQuantity;
-    }
 }

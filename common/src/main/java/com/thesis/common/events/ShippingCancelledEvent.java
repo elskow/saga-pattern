@@ -16,16 +16,16 @@ import java.time.Instant;
 public class ShippingCancelledEvent {
     @NotBlank(message = "Shipping ID cannot be blank")
     private String shippingId;
-    
+
     @NotBlank(message = "Order ID cannot be blank")
     private String orderId;
-    
+
     @NotNull(message = "Cancelled at cannot be null")
     private Instant cancelledAt;
-    
+
     @NotBlank(message = "Correlation ID cannot be blank")
     private String correlationId;
-    
+
     @Builder.Default
     private Instant createdAt = Instant.now();
 }

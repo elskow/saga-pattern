@@ -32,6 +32,19 @@ public class KafkaConfig {
     @Value("${spring.kafka.bootstrap-servers:localhost:9093}")
     private String bootstrapServers;
 
+    private static DeadLetterPublishingRecoverer getLetterPublishingRecoverer(Map<String, Object> producerProps) {
+        KafkaTemplate<Object, Object> dlqTemplate = new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(producerProps));
+
+        return new DeadLetterPublishingRecoverer(
+            dlqTemplate,
+            (record, ex) -> {
+                log.error("Sending record to DLQ: topic={}, partition={}, offset={}, exception={}",
+                    record.topic(), record.partition(), record.offset(), ex.getMessage());
+                return new TopicPartition(record.topic() + ".dlq", record.partition());
+            }
+        );
+    }
+
     @Bean
     public ProducerFactory<String, Object> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();
@@ -48,7 +61,9 @@ public class KafkaConfig {
 
     @Bean
     public KafkaTemplate<String, Object> kafkaTemplate() {
-        return new KafkaTemplate<>(producerFactory());
+        KafkaTemplate<String, Object> template = new KafkaTemplate<>(producerFactory());
+        template.setObservationEnabled(true);
+        return template;
     }
 
     @Bean
@@ -67,11 +82,12 @@ public class KafkaConfig {
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
         ConcurrentKafkaListenerContainerFactory<String, String> factory =
-                new ConcurrentKafkaListenerContainerFactory<>();
+            new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
         factory.setCommonErrorHandler(errorHandler());
         // Enable manual acknowledgment mode
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
+        factory.getContainerProperties().setObservationEnabled(true);
         return factory;
     }
 
@@ -81,16 +97,7 @@ public class KafkaConfig {
         producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         producerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        KafkaTemplate<Object, Object> dlqTemplate = new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(producerProps));
-
-        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
-                dlqTemplate,
-                (record, ex) -> {
-                    log.error("Sending record to DLQ: topic={}, partition={}, offset={}, exception={}",
-                            record.topic(), record.partition(), record.offset(), ex.getMessage());
-                    return new TopicPartition(record.topic() + ".dlq", record.partition());
-                }
-        );
+        DeadLetterPublishingRecoverer recoverer = getLetterPublishingRecoverer(producerProps);
 
         return new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 3));
     }

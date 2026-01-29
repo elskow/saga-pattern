@@ -48,7 +48,9 @@ public class KafkaConfig {
 
     @Bean
     public KafkaTemplate<String, Object> kafkaTemplate() {
-        return new KafkaTemplate<>(producerFactory());
+        KafkaTemplate<String, Object> template = new KafkaTemplate<>(producerFactory());
+        template.setObservationEnabled(true);
+        return template;
     }
 
     @Bean
@@ -72,6 +74,7 @@ public class KafkaConfig {
         factory.setCommonErrorHandler(errorHandler());
         // Enable manual acknowledgment mode
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
+        factory.getContainerProperties().setObservationEnabled(true);
         return factory;
     }
 

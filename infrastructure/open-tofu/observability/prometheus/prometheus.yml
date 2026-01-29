@@ -11,24 +11,39 @@ scrape_configs:
       - targets: ['localhost:9090']
 
   # ==========================================================================
-  # CHOREOGRAPHY SAGA SERVICES (saga-node: 192.168.11.152)
-  # Ports: 8081-8084
+  # CHOREOGRAPHY SAGA SERVICES
+  # Target host configurable via environment variable (default: 192.168.11.152)
+  # Ports: 8081-8084 (supports up to 4 order-service replicas)
   # ==========================================================================
   
-  - job_name: 'choreography-order-service'
+  - job_name: 'choreography-services'
     metrics_path: /actuator/prometheus
     scrape_interval: 5s
     static_configs:
-      - targets: ['192.168.11.152:8081']
+      # Order service (entry point) - supports scaling to 4 replicas
+      - targets:
+          - '${SAGA_HOST:-192.168.11.152}:8081'
+          - '${SAGA_HOST:-192.168.11.152}:8082'
+          - '${SAGA_HOST:-192.168.11.152}:8083'
+          - '${SAGA_HOST:-192.168.11.152}:8084'
         labels:
           pattern: choreography
-          service: order-service
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '.*:808([1-4])'
+        target_label: service
+        replacement: 'order-service-$1'
 
   - job_name: 'choreography-payment-service'
     metrics_path: /actuator/prometheus
     scrape_interval: 5s
+    # File-based service discovery - reads targets from file
+    file_sd_configs:
+      - files:
+          - '/etc/prometheus/targets/choreography-payment.json'
+        refresh_interval: 30s
     static_configs:
-      - targets: ['192.168.11.152:8082']
+      - targets: ['${SAGA_HOST:-192.168.11.152}:8082']
         labels:
           pattern: choreography
           service: payment-service
@@ -37,7 +52,7 @@ scrape_configs:
     metrics_path: /actuator/prometheus
     scrape_interval: 5s
     static_configs:
-      - targets: ['192.168.11.152:8083']
+      - targets: ['${SAGA_HOST:-192.168.11.152}:8083']
         labels:
           pattern: choreography
           service: inventory-service
@@ -46,30 +61,40 @@ scrape_configs:
     metrics_path: /actuator/prometheus
     scrape_interval: 5s
     static_configs:
-      - targets: ['192.168.11.152:8084']
+      - targets: ['${SAGA_HOST:-192.168.11.152}:8084']
         labels:
           pattern: choreography
           service: shipping-service
 
   # ==========================================================================
-  # ORCHESTRATION SAGA SERVICES (saga-node: 192.168.11.152)
-  # Ports: 8085-8088
+  # ORCHESTRATION SAGA SERVICES
+  # Target host configurable via environment variable (default: 192.168.11.152)
+  # Ports: 8085-8088 (supports up to 4 order-service replicas)
   # ==========================================================================
   
-  - job_name: 'orchestration-order-service'
+  - job_name: 'orchestration-services'
     metrics_path: /actuator/prometheus
     scrape_interval: 5s
     static_configs:
-      - targets: ['192.168.11.152:8085']
+      # Order service (orchestrator) - supports scaling to 4 replicas
+      - targets:
+          - '${SAGA_HOST:-192.168.11.152}:8085'
+          - '${SAGA_HOST:-192.168.11.152}:8086'
+          - '${SAGA_HOST:-192.168.11.152}:8087'
+          - '${SAGA_HOST:-192.168.11.152}:8088'
         labels:
           pattern: orchestration
-          service: order-service
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '.*:808([5-8])'
+        target_label: service
+        replacement: 'order-service-$1'
 
   - job_name: 'orchestration-payment-service'
     metrics_path: /actuator/prometheus
     scrape_interval: 5s
     static_configs:
-      - targets: ['192.168.11.152:8086']
+      - targets: ['${SAGA_HOST:-192.168.11.152}:8086']
         labels:
           pattern: orchestration
           service: payment-service
@@ -78,7 +103,7 @@ scrape_configs:
     metrics_path: /actuator/prometheus
     scrape_interval: 5s
     static_configs:
-      - targets: ['192.168.11.152:8087']
+      - targets: ['${SAGA_HOST:-192.168.11.152}:8087']
         labels:
           pattern: orchestration
           service: inventory-service
@@ -87,19 +112,23 @@ scrape_configs:
     metrics_path: /actuator/prometheus
     scrape_interval: 5s
     static_configs:
-      - targets: ['192.168.11.152:8088']
+      - targets: ['${SAGA_HOST:-192.168.11.152}:8088']
         labels:
           pattern: orchestration
           service: shipping-service
 
   # ==========================================================================
-  # INFRASTRUCTURE METRICS (Optional - uncomment if node_exporter is installed)
+  # INFRASTRUCTURE METRICS
   # ==========================================================================
   
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['${SAGA_HOST:-192.168.11.152}:9092']
+        labels:
+          service: kafka
+    # Note: Kafka JMX exporter would need to be configured separately
+
+  # Uncomment if node_exporter is installed on saga-node
   # - job_name: 'saga-node'
   #   static_configs:
-  #     - targets: ['192.168.11.152:9100']
-  
-  # - job_name: 'k6-runner'
-  #   static_configs:
-  #     - targets: ['192.168.11.158:9100']
+  #     - targets: ['${SAGA_HOST:-192.168.11.152}:9100']

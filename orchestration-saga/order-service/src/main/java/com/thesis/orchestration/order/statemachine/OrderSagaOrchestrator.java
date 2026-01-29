@@ -4,21 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.thesis.common.command.*;
 import com.thesis.common.metrics.SagaMetrics;
-import com.thesis.common.replies.SagaReply;
-import com.thesis.common.replies.PaymentCompletedReply;
-import com.thesis.common.replies.PaymentFailedReply;
-import com.thesis.common.replies.PaymentRefundedReply;
-import com.thesis.common.replies.InventoryReservedReply;
-import com.thesis.common.replies.InventoryFailedReply;
-import com.thesis.common.replies.InventoryReleasedReply;
-import com.thesis.common.replies.ShippingScheduledReply;
-import com.thesis.common.replies.ShippingFailedReply;
-import com.thesis.common.replies.ShippingCancelledReply;
-import com.thesis.orchestration.order.dto.CreateOrderRequest;
+import com.thesis.common.replies.*;
 import com.thesis.orchestration.order.config.SagaOrchestratorProperties;
-import com.thesis.orchestration.order.model.OutboxCommand;
+import com.thesis.orchestration.order.dto.CreateOrderRequest;
 import com.thesis.orchestration.order.model.ProcessedCommand;
-import com.thesis.orchestration.order.model.ProcessedReply;
 import com.thesis.orchestration.order.model.SagaInstance;
 import com.thesis.orchestration.order.repository.OutboxCommandRepository;
 import com.thesis.orchestration.order.repository.ProcessedCommandRepository;
@@ -27,21 +16,20 @@ import com.thesis.orchestration.order.repository.SagaInstanceRepository;
 import com.thesis.orchestration.order.service.OrderService;
 import com.thesis.orchestration.order.service.ReplyProcessingService;
 import com.thesis.orchestration.order.statemachine.OrderStateMachineConfig.OrderStateMachineFactory;
-import lombok.extern.slf4j.Slf4j;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.statemachine.StateMachine;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.messaging.support.MessageBuilder;
 import reactor.core.publisher.Mono;
-import jakarta.annotation.PostConstruct;
-import org.slf4j.MDC;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -50,6 +38,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Order Saga Orchestrator using Spring State Machine.
@@ -59,80 +48,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 @Slf4j
 public class OrderSagaOrchestrator {
-
-    private final OrderStateMachineFactory stateMachineFactory;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
-    private final OrderService orderService;
-    private final ReplyProcessingService replyProcessingService;
-    private final ObjectMapper objectMapper;
-    private final SagaInstanceRepository sagaInstanceRepository;
-    private final ProcessedCommandRepository processedCommandRepository;
-    private final ProcessedReplyRepository processedReplyRepository;
-    private final OutboxCommandRepository outboxCommandRepository;
-    private final SagaOrchestratorProperties sagaProperties;
-     private final Counter kafkaCommandSendSuccessCounter;
-    private final Counter kafkaCommandSendFailureCounter;
-    private final Counter commandRetryAttemptsCounter;
-    private final Counter commandRetrySkippedCounter;
-    private final Counter stateTransitionCounter;
-
-    @Autowired
-    public OrderSagaOrchestrator(OrderStateMachineFactory stateMachineFactory,
-                                  KafkaTemplate<String, Object> kafkaTemplate,
-                                  OrderService orderService,
-                                  ReplyProcessingService replyProcessingService,
-                                  ObjectMapper objectMapper,
-                                  SagaInstanceRepository sagaInstanceRepository,
-                                  ProcessedCommandRepository processedCommandRepository,
-                                  ProcessedReplyRepository processedReplyRepository,
-                                  MeterRegistry meterRegistry,
-                                  SagaOrchestratorProperties sagaProperties,
-                                  OutboxCommandRepository outboxCommandRepository) {
-        this.stateMachineFactory = stateMachineFactory;
-        this.kafkaTemplate = kafkaTemplate;
-        this.orderService = orderService;
-        this.replyProcessingService = replyProcessingService;
-        this.objectMapper = objectMapper;
-        this.sagaInstanceRepository = sagaInstanceRepository;
-        this.processedCommandRepository = processedCommandRepository;
-        this.processedReplyRepository = processedReplyRepository;
-        this.sagaProperties = sagaProperties;
-        this.outboxCommandRepository = outboxCommandRepository;
-        this.kafkaCommandSendSuccessCounter = meterRegistry.counter(
-                SagaMetrics.SAGA_MESSAGES_TOTAL,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
-                SagaMetrics.TAG_DIRECTION, SagaMetrics.DIRECTION_SENT,
-                SagaMetrics.TAG_MESSAGE_TYPE, SagaMetrics.TYPE_COMMAND,
-                SagaMetrics.TAG_OUTCOME, SagaMetrics.OUTCOME_SUCCESS
-        );
-        this.kafkaCommandSendFailureCounter = meterRegistry.counter(
-                SagaMetrics.SAGA_MESSAGES_TOTAL,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
-                SagaMetrics.TAG_DIRECTION, SagaMetrics.DIRECTION_SENT,
-                SagaMetrics.TAG_MESSAGE_TYPE, SagaMetrics.TYPE_COMMAND,
-                SagaMetrics.TAG_OUTCOME, SagaMetrics.OUTCOME_FAILURE
-        );
-        meterRegistry.counter(
-            SagaMetrics.SAGA_MESSAGES_TOTAL,
-            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
-            SagaMetrics.TAG_DIRECTION, SagaMetrics.DIRECTION_SENT,
-            SagaMetrics.TAG_MESSAGE_TYPE, SagaMetrics.TYPE_COMMAND,
-            SagaMetrics.TAG_OUTCOME, "retry"
-        );
-        this.commandRetryAttemptsCounter = meterRegistry.counter(
-                SagaMetrics.COMMANDS_RETRY_ATTEMPTS,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION
-        );
-        this.commandRetrySkippedCounter = meterRegistry.counter(
-                SagaMetrics.COMMANDS_RETRY_SKIPPED,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION
-        );
-        this.stateTransitionCounter = meterRegistry.counter(
-                "saga.state.transitions",
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
-                "direction", "state_machine"
-        );
-    }
 
     // Topic names for commands
     private static final String PAYMENT_COMMAND_TOPIC = "orchestration.payment.commands";
@@ -148,27 +63,96 @@ public class OrderSagaOrchestrator {
     private static final String COMMAND_STATUS_SENT = "SENT";
     private static final String COMMAND_STATUS_SKIPPED = "SKIPPED";
     private static final String OUTBOX_STATUS_PENDING = "PENDING";
-
     // Topic names for replies
     private static final String PAYMENT_REPLY_TOPIC = "orchestration.payment.replies";
     private static final String INVENTORY_REPLY_TOPIC = "orchestration.inventory.replies";
     private static final String SHIPPING_REPLY_TOPIC = "orchestration.shipping.replies";
-
+    private final OrderStateMachineFactory stateMachineFactory;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final OrderService orderService;
+    private final ReplyProcessingService replyProcessingService;
+    private final ObjectMapper objectMapper;
+    private final SagaInstanceRepository sagaInstanceRepository;
+    private final ProcessedCommandRepository processedCommandRepository;
+    private final ProcessedReplyRepository processedReplyRepository;
+    private final OutboxCommandRepository outboxCommandRepository;
+    private final SagaOrchestratorProperties sagaProperties;
+    private final Counter kafkaCommandSendSuccessCounter;
+    private final Counter kafkaCommandSendFailureCounter;
+    private final Counter commandRetryAttemptsCounter;
+    private final Counter commandRetrySkippedCounter;
+    private final Counter stateTransitionCounter;
     // Store active state machines by orderId
     private final Map<String, StateMachine<OrderStates, OrderEvents>> stateMachines = new ConcurrentHashMap<>();
-
     // Store saga data by orderId
     private final Map<String, SagaData> sagaDataMap = new ConcurrentHashMap<>();
-
     // Store saga locks by orderId for thread safety when modifying SagaData
-    private final Map<String, java.util.concurrent.locks.ReentrantLock> sagaLocks = new ConcurrentHashMap<>();
+    private final Map<String, ReentrantLock> sagaLocks = new ConcurrentHashMap<>();
+
+    @Autowired
+    public OrderSagaOrchestrator(OrderStateMachineFactory stateMachineFactory,
+                                 KafkaTemplate<String, Object> kafkaTemplate,
+                                 OrderService orderService,
+                                 ReplyProcessingService replyProcessingService,
+                                 ObjectMapper objectMapper,
+                                 SagaInstanceRepository sagaInstanceRepository,
+                                 ProcessedCommandRepository processedCommandRepository,
+                                 ProcessedReplyRepository processedReplyRepository,
+                                 MeterRegistry meterRegistry,
+                                 SagaOrchestratorProperties sagaProperties,
+                                 OutboxCommandRepository outboxCommandRepository) {
+        this.stateMachineFactory = stateMachineFactory;
+        this.kafkaTemplate = kafkaTemplate;
+        this.orderService = orderService;
+        this.replyProcessingService = replyProcessingService;
+        this.objectMapper = objectMapper;
+        this.sagaInstanceRepository = sagaInstanceRepository;
+        this.processedCommandRepository = processedCommandRepository;
+        this.processedReplyRepository = processedReplyRepository;
+        this.sagaProperties = sagaProperties;
+        this.outboxCommandRepository = outboxCommandRepository;
+        this.kafkaCommandSendSuccessCounter = meterRegistry.counter(
+            SagaMetrics.SAGA_MESSAGES_TOTAL,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
+            SagaMetrics.TAG_DIRECTION, SagaMetrics.DIRECTION_SENT,
+            SagaMetrics.TAG_MESSAGE_TYPE, SagaMetrics.TYPE_COMMAND,
+            SagaMetrics.TAG_OUTCOME, SagaMetrics.OUTCOME_SUCCESS
+        );
+        this.kafkaCommandSendFailureCounter = meterRegistry.counter(
+            SagaMetrics.SAGA_MESSAGES_TOTAL,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
+            SagaMetrics.TAG_DIRECTION, SagaMetrics.DIRECTION_SENT,
+            SagaMetrics.TAG_MESSAGE_TYPE, SagaMetrics.TYPE_COMMAND,
+            SagaMetrics.TAG_OUTCOME, SagaMetrics.OUTCOME_FAILURE
+        );
+        meterRegistry.counter(
+            SagaMetrics.SAGA_MESSAGES_TOTAL,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
+            SagaMetrics.TAG_DIRECTION, SagaMetrics.DIRECTION_SENT,
+            SagaMetrics.TAG_MESSAGE_TYPE, SagaMetrics.TYPE_COMMAND,
+            SagaMetrics.TAG_OUTCOME, "retry"
+        );
+        this.commandRetryAttemptsCounter = meterRegistry.counter(
+            SagaMetrics.COMMANDS_RETRY_ATTEMPTS,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION
+        );
+        this.commandRetrySkippedCounter = meterRegistry.counter(
+            SagaMetrics.COMMANDS_RETRY_SKIPPED,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION
+        );
+        this.stateTransitionCounter = meterRegistry.counter(
+            "saga.state.transitions",
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
+            "direction", "state_machine"
+        );
+    }
 
     /**
      * Gets or creates a lock for the given orderId.
      * Used to ensure thread-safe modifications to SagaData.
      */
-    private java.util.concurrent.locks.ReentrantLock getSagaLock(String orderId) {
-        return sagaLocks.computeIfAbsent(orderId, k -> new java.util.concurrent.locks.ReentrantLock());
+    private ReentrantLock getSagaLock(String orderId) {
+        return sagaLocks.computeIfAbsent(orderId, k -> new ReentrantLock());
     }
 
     /**
@@ -249,31 +233,31 @@ public class OrderSagaOrchestrator {
 
             // Build saga data
             SagaData sagaData = SagaData.builder()
-                    .orderId(orderId)
-                    .customerId(request.getCustomerId())
-                    .paymentId(paymentId)
-                    .reservationId(reservationId)
-                    .shipmentId(shipmentId)
-                    .totalAmount(request.getTotalAmount())
-                    .shippingAddress(request.getShippingAddress())
-                    .items(request.getItems())
-                    .createdAt(Instant.now())
-                    .lastUpdatedAt(Instant.now())
-                    .currentStep(SagaData.SagaStep.PAYMENT)
-                    .build();
+                .orderId(orderId)
+                .customerId(request.getCustomerId())
+                .paymentId(paymentId)
+                .reservationId(reservationId)
+                .shipmentId(shipmentId)
+                .totalAmount(request.getTotalAmount())
+                .shippingAddress(request.getShippingAddress())
+                .items(request.getItems())
+                .createdAt(Instant.now())
+                .lastUpdatedAt(Instant.now())
+                .currentStep(SagaData.SagaStep.PAYMENT)
+                .build();
 
             // TRANSACTION BOUNDARY: Create order, persist saga state, and enqueue outbox command
             // All these operations must succeed together or fail together
             replyProcessingService.createOrderWithSagaState(
-                    orderId,
-                    request.getCustomerId(),
-                    request.getTotalAmount(),
-                    request.getShippingAddress(),
-                    request.getItems(),
-                    paymentId,
-                    reservationId,
-                    shipmentId,
-                    sagaData
+                orderId,
+                request.getCustomerId(),
+                request.getTotalAmount(),
+                request.getShippingAddress(),
+                request.getItems(),
+                paymentId,
+                reservationId,
+                shipmentId,
+                sagaData
             );
 
             // POST-TRANSACTION: Create and start state machine (in-memory operation)
@@ -284,14 +268,14 @@ public class OrderSagaOrchestrator {
                 sm.startReactively().block();
                 stateMachines.put(orderId, sm);
                 sagaDataMap.put(orderId, sagaData);
-                
+
                 log.info("Starting saga for order: {}", orderId);
-                
+
                 // Trigger the saga start
                 sendEventSafely(sm, OrderEvents.START_SAGA);
             } catch (Exception e) {
                 log.error("Failed to start state machine for order {}: {}. Saga will be recovered on next event.",
-                        orderId, e.getMessage(), e);
+                    orderId, e.getMessage(), e);
                 // Don't throw - the order and saga state are persisted, recovery will happen on next reply
             }
 
@@ -306,12 +290,12 @@ public class OrderSagaOrchestrator {
     private void sendPaymentCommand(SagaData data) {
         String commandType = COMMAND_PROCESS_PAYMENT;
         ProcessPaymentCommand command = ProcessPaymentCommand.builder()
-                .commandType(commandType)
-                .paymentId(data.getPaymentId())
-                .orderId(data.getOrderId())
-                .customerId(data.getCustomerId())
-                .amount(data.getTotalAmount())
-                .build();
+            .commandType(commandType)
+            .paymentId(data.getPaymentId())
+            .orderId(data.getOrderId())
+            .customerId(data.getCustomerId())
+            .amount(data.getTotalAmount())
+            .build();
 
         sendCommandIfNotSent(data, commandType, command, PAYMENT_COMMAND_TOPIC, "Payment");
     }
@@ -319,11 +303,11 @@ public class OrderSagaOrchestrator {
     private void sendInventoryCommand(SagaData data) {
         String commandType = COMMAND_RESERVE_INVENTORY;
         ReserveInventoryCommand command = ReserveInventoryCommand.builder()
-                .commandType(commandType)
-                .reservationId(data.getReservationId())
-                .orderId(data.getOrderId())
-                .items(data.getItems())
-                .build();
+            .commandType(commandType)
+            .reservationId(data.getReservationId())
+            .orderId(data.getOrderId())
+            .items(data.getItems())
+            .build();
 
         sendCommandIfNotSent(data, commandType, command, INVENTORY_COMMAND_TOPIC, "Inventory");
     }
@@ -331,11 +315,11 @@ public class OrderSagaOrchestrator {
     private void sendShippingCommand(SagaData data) {
         String commandType = COMMAND_SCHEDULE_SHIPPING;
         ScheduleShippingCommand command = ScheduleShippingCommand.builder()
-                .commandType(commandType)
-                .shipmentId(data.getShipmentId())
-                .orderId(data.getOrderId())
-                .shippingAddress(data.getShippingAddress())
-                .build();
+            .commandType(commandType)
+            .shipmentId(data.getShipmentId())
+            .orderId(data.getOrderId())
+            .shippingAddress(data.getShippingAddress())
+            .build();
 
         sendCommandIfNotSent(data, commandType, command, SHIPPING_COMMAND_TOPIC, "Shipping");
     }
@@ -345,10 +329,10 @@ public class OrderSagaOrchestrator {
     private void sendRefundPaymentCommand(SagaData data) {
         String commandType = COMMAND_REFUND_PAYMENT;
         RefundPaymentCommand command = RefundPaymentCommand.builder()
-                .commandType(commandType)
-                .paymentId(data.getPaymentId())
-                .orderId(data.getOrderId())
-                .build();
+            .commandType(commandType)
+            .paymentId(data.getPaymentId())
+            .orderId(data.getOrderId())
+            .build();
 
         sendCommandIfNotSent(data, commandType, command, PAYMENT_COMMAND_TOPIC, "Refund payment");
     }
@@ -356,10 +340,10 @@ public class OrderSagaOrchestrator {
     private void sendReleaseInventoryCommand(SagaData data) {
         String commandType = COMMAND_RELEASE_INVENTORY;
         ReleaseInventoryCommand command = ReleaseInventoryCommand.builder()
-                .commandType(commandType)
-                .reservationId(data.getReservationId())
-                .orderId(data.getOrderId())
-                .build();
+            .commandType(commandType)
+            .reservationId(data.getReservationId())
+            .orderId(data.getOrderId())
+            .build();
 
         sendCommandIfNotSent(data, commandType, command, INVENTORY_COMMAND_TOPIC, "Release inventory");
     }
@@ -367,10 +351,10 @@ public class OrderSagaOrchestrator {
     private void sendCancelShippingCommand(SagaData data) {
         String commandType = COMMAND_CANCEL_SHIPPING;
         CancelShippingCommand command = CancelShippingCommand.builder()
-                .commandType(commandType)
-                .shipmentId(data.getShipmentId())
-                .orderId(data.getOrderId())
-                .build();
+            .commandType(commandType)
+            .shipmentId(data.getShipmentId())
+            .orderId(data.getOrderId())
+            .build();
 
         sendCommandIfNotSent(data, commandType, command, SHIPPING_COMMAND_TOPIC, "Cancel shipping");
     }
@@ -439,8 +423,9 @@ public class OrderSagaOrchestrator {
         }
 
         // Process in transaction via service
-        ReplyProcessingService.ReplyProcessingResult result = 
-                replyProcessingService.processPaymentSuccess(reply, data, d -> {});
+        ReplyProcessingService.ReplyProcessingResult result =
+            replyProcessingService.processPaymentSuccess(reply, data, d -> {
+            });
 
         if (!result.processed()) {
             return; // Skipped (duplicate or error)
@@ -470,8 +455,8 @@ public class OrderSagaOrchestrator {
         }
 
         // Process in transaction via service
-        ReplyProcessingService.ReplyProcessingResult result = 
-                replyProcessingService.processPaymentFailure(reply);
+        ReplyProcessingService.ReplyProcessingResult result =
+            replyProcessingService.processPaymentFailure(reply);
 
         if (!result.processed()) {
             return; // Skipped (duplicate or error)
@@ -490,16 +475,16 @@ public class OrderSagaOrchestrator {
      */
     private void processPaymentRefundedWithService(PaymentRefundedReply reply) {
         String orderId = reply.getOrderId();
-        java.util.concurrent.locks.ReentrantLock lock = getSagaLock(orderId);
-        
+        ReentrantLock lock = getSagaLock(orderId);
+
         lock.lock();
         try {
             // Read saga data under lock to ensure consistency
             SagaData data = sagaDataMap.get(orderId);
 
             // Process in transaction via service (lock is passed for internal use)
-            ReplyProcessingService.ReplyProcessingResult result = 
-                    replyProcessingService.processPaymentRefunded(reply, data, lock);
+            ReplyProcessingService.ReplyProcessingResult result =
+                replyProcessingService.processPaymentRefunded(reply, data, lock);
 
             if (!result.processed()) {
                 return; // Skipped (duplicate or error)
@@ -576,8 +561,8 @@ public class OrderSagaOrchestrator {
         }
 
         // Process in transaction via service
-        ReplyProcessingService.ReplyProcessingResult result = 
-                replyProcessingService.processInventorySuccess(reply, data);
+        ReplyProcessingService.ReplyProcessingResult result =
+            replyProcessingService.processInventorySuccess(reply, data);
 
         if (!result.processed()) {
             return;
@@ -604,8 +589,8 @@ public class OrderSagaOrchestrator {
         SagaData data = sagaDataMap.get(orderId);
 
         // Process in transaction via service (compensation commands are enqueued atomically)
-        ReplyProcessingService.ReplyProcessingResult result = 
-                replyProcessingService.processInventoryFailure(reply, data);
+        ReplyProcessingService.ReplyProcessingResult result =
+            replyProcessingService.processInventoryFailure(reply, data);
 
         if (!result.processed()) {
             return;
@@ -618,7 +603,7 @@ public class OrderSagaOrchestrator {
 
         if (result.updatedSagaData() != null) {
             sagaDataMap.put(orderId, result.updatedSagaData());
-            
+
             // Check if no compensations needed (immediate completion)
             if (result.updatedSagaData().getExpectedCompensations() == 0) {
                 completeCompensation(orderId);
@@ -632,7 +617,7 @@ public class OrderSagaOrchestrator {
      */
     private void processInventoryReleasedWithService(InventoryReleasedReply reply) {
         String orderId = reply.getOrderId();
-        java.util.concurrent.locks.ReentrantLock lock = getSagaLock(orderId);
+        ReentrantLock lock = getSagaLock(orderId);
 
         lock.lock();
         try {
@@ -640,8 +625,8 @@ public class OrderSagaOrchestrator {
             SagaData data = sagaDataMap.get(orderId);
 
             // Process in transaction via service (lock is passed for internal use)
-            ReplyProcessingService.ReplyProcessingResult result = 
-                    replyProcessingService.processInventoryReleased(reply, data, lock);
+            ReplyProcessingService.ReplyProcessingResult result =
+                replyProcessingService.processInventoryReleased(reply, data, lock);
 
             if (!result.processed()) {
                 return;
@@ -704,8 +689,8 @@ public class OrderSagaOrchestrator {
         StateMachine<OrderStates, OrderEvents> sm = stateMachines.get(orderId);
 
         // Process in transaction via service
-        ReplyProcessingService.ReplyProcessingResult result = 
-                replyProcessingService.processShippingSuccess(reply);
+        ReplyProcessingService.ReplyProcessingResult result =
+            replyProcessingService.processShippingSuccess(reply);
 
         if (!result.processed()) {
             return;
@@ -729,8 +714,8 @@ public class OrderSagaOrchestrator {
         SagaData data = sagaDataMap.get(orderId);
 
         // Process in transaction via service (compensation commands are enqueued atomically)
-        ReplyProcessingService.ReplyProcessingResult result = 
-                replyProcessingService.processShippingFailure(reply, data);
+        ReplyProcessingService.ReplyProcessingResult result =
+            replyProcessingService.processShippingFailure(reply, data);
 
         if (!result.processed()) {
             return;
@@ -743,7 +728,7 @@ public class OrderSagaOrchestrator {
 
         if (result.updatedSagaData() != null) {
             sagaDataMap.put(orderId, result.updatedSagaData());
-            
+
             // Check if no compensations needed (immediate completion)
             if (result.updatedSagaData().getExpectedCompensations() == 0) {
                 completeCompensation(orderId);
@@ -757,7 +742,7 @@ public class OrderSagaOrchestrator {
      */
     private void processShippingCancelledWithService(ShippingCancelledReply reply) {
         String orderId = reply.getOrderId();
-        java.util.concurrent.locks.ReentrantLock lock = getSagaLock(orderId);
+        ReentrantLock lock = getSagaLock(orderId);
 
         lock.lock();
         try {
@@ -765,8 +750,8 @@ public class OrderSagaOrchestrator {
             SagaData data = sagaDataMap.get(orderId);
 
             // Process in transaction via service (lock is passed for internal use)
-            ReplyProcessingService.ReplyProcessingResult result = 
-                    replyProcessingService.processShippingCancelled(reply, data, lock);
+            ReplyProcessingService.ReplyProcessingResult result =
+                replyProcessingService.processShippingCancelled(reply, data, lock);
 
             if (!result.processed()) {
                 return;
@@ -785,11 +770,11 @@ public class OrderSagaOrchestrator {
     private void checkCompensationComplete(String orderId, SagaData data) {
         if (data.getCompletedCompensations() >= data.getExpectedCompensations()) {
             log.info("All compensations completed for order: {} ({}/{})",
-                    orderId, data.getCompletedCompensations(), data.getExpectedCompensations());
+                orderId, data.getCompletedCompensations(), data.getExpectedCompensations());
             completeCompensation(orderId);
         } else {
             log.info("Waiting for more compensations for order: {} ({}/{})",
-                    orderId, data.getCompletedCompensations(), data.getExpectedCompensations());
+                orderId, data.getCompletedCompensations(), data.getExpectedCompensations());
         }
     }
 
@@ -818,6 +803,7 @@ public class OrderSagaOrchestrator {
      * Note: This method is NOT transactional when called internally.
      * For proper transaction management, use replyProcessingService.persistSagaStateTransactional().
      * This method is kept for legacy/internal use only.
+     *
      * @deprecated Use replyProcessingService.persistSagaStateTransactional() for external calls.
      */
     protected void persistSagaState(String orderId, String state, SagaData data) {
@@ -827,11 +813,11 @@ public class OrderSagaOrchestrator {
             LocalDateTime now = LocalDateTime.now();
 
             SagaInstance instance = sagaInstanceRepository.findByOrderId(orderId)
-                    .orElse(SagaInstance.builder()
-                            .sagaId(UUID.randomUUID().toString())
-                            .orderId(orderId)
-                            .createdAt(now)
-                            .build());
+                .orElse(SagaInstance.builder()
+                    .sagaId(UUID.randomUUID().toString())
+                    .orderId(orderId)
+                    .createdAt(now)
+                    .build());
 
             instance.setCurrentState(state);
             instance.setSagaDataJson(sagaDataJson);
@@ -851,7 +837,7 @@ public class OrderSagaOrchestrator {
     private void deleteSagaInstance(String orderId) {
         try {
             sagaInstanceRepository.findByOrderId(orderId)
-                    .ifPresent(sagaInstanceRepository::delete);
+                .ifPresent(sagaInstanceRepository::delete);
             log.debug("Deleted saga instance for order: {}", orderId);
         } catch (DataAccessException e) {
             log.error("Database operation failed while deleting saga instance for order {}: {}", orderId, e.getMessage());
@@ -872,9 +858,9 @@ public class OrderSagaOrchestrator {
     /**
      * Atomically registers a command attempt using INSERT...ON CONFLICT pattern.
      * This prevents race conditions where multiple threads could insert duplicate records.
-     * 
+     *
      * @return true if command should be sent (new record inserted or existing was not SENT)
-     *         false if command was already SENT (skip sending)
+     * false if command was already SENT (skip sending)
      */
     private boolean registerCommandAttempt(String orderId, String commandType) {
         String commandId = orderId + ":" + commandType;
@@ -887,13 +873,13 @@ public class OrderSagaOrchestrator {
 
             // Atomic insert - if record already exists (due to race), this returns 0
             int inserted = processedCommandRepository.insertIfNotExists(
-                    commandId, orderId, commandType, COMMAND_STATUS_PENDING);
+                commandId, orderId, commandType, COMMAND_STATUS_PENDING);
 
             if (inserted == 0) {
                 // Record already existed - check if it's SENT (another thread may have sent it)
                 if (processedCommandRepository.existsByCommandIdAndStatus(commandId, COMMAND_STATUS_SENT)) {
-                    log.debug("Command {} for order {} already sent (detected after insert attempt), skipping", 
-                            commandType, orderId);
+                    log.debug("Command {} for order {} already sent (detected after insert attempt), skipping",
+                        commandType, orderId);
                     return false;
                 }
                 // Record exists but not SENT - we can proceed (another thread registered it as PENDING)
@@ -902,12 +888,12 @@ public class OrderSagaOrchestrator {
             return true;
         } catch (DataAccessException e) {
             log.error("Database operation failed while registering command attempt for order {}, type {}: {}",
-                    orderId, commandType, e.getMessage());
+                orderId, commandType, e.getMessage());
             // On error, default to allowing the attempt (better to risk duplicate than miss)
             return true;
         } catch (Exception e) {
             log.error("Unexpected error registering command attempt for order {}, type {}: {}",
-                    orderId, commandType, e.getMessage(), e);
+                orderId, commandType, e.getMessage(), e);
             return true;
         }
     }
@@ -920,20 +906,20 @@ public class OrderSagaOrchestrator {
         try {
             String commandId = orderId + ":" + commandType;
             ProcessedCommand command = processedCommandRepository.findById(commandId)
-                    .orElse(ProcessedCommand.builder()
-                            .commandId(commandId)
-                            .orderId(orderId)
-                            .commandType(commandType)
-                            .build());
+                .orElse(ProcessedCommand.builder()
+                    .commandId(commandId)
+                    .orderId(orderId)
+                    .commandType(commandType)
+                    .build());
             command.setStatus(status);
             command.setProcessedAt(LocalDateTime.now());
             processedCommandRepository.save(command);
         } catch (DataAccessException e) {
             log.error("Database operation failed while marking command status {} for order {}, type {}: {}",
-                    status, orderId, commandType, e.getMessage());
+                status, orderId, commandType, e.getMessage());
         } catch (Exception e) {
             log.error("Unexpected error marking command status {} for order {}, type {}: {}",
-                    status, orderId, commandType, e.getMessage(), e);
+                status, orderId, commandType, e.getMessage(), e);
         }
     }
 
@@ -944,7 +930,7 @@ public class OrderSagaOrchestrator {
      * Called by SagaTimeoutScheduler when a saga is stuck.
      * Uses locking to prevent duplicate compensation commands when multiple threads
      * try to handle the same timeout concurrently.
-     * 
+     * <p>
      * The actual compensation logic is handled atomically in a single transaction
      * via ReplyProcessingService.handleTimeoutTransactional() to ensure order failure
      * and compensation command enqueue happen together or not at all.
@@ -952,7 +938,7 @@ public class OrderSagaOrchestrator {
     public void handleTimeout(String orderId) {
         // Acquire lock to prevent race condition where multiple timeout handlers
         // could trigger duplicate compensation commands for the same order
-        java.util.concurrent.locks.ReentrantLock lock = getSagaLock(orderId);
+        ReentrantLock lock = getSagaLock(orderId);
         lock.lock();
         try {
             MDC.put("orderId", orderId);
@@ -978,8 +964,8 @@ public class OrderSagaOrchestrator {
 
             // Handle timeout atomically in a single transaction
             // This ensures order failure and compensation command enqueue happen together
-            ReplyProcessingService.TimeoutHandlingResult result = 
-                    replyProcessingService.handleTimeoutTransactional(orderId, data);
+            ReplyProcessingService.TimeoutHandlingResult result =
+                replyProcessingService.handleTimeoutTransactional(orderId, data);
 
             if (!result.handled()) {
                 log.debug("Timeout handling skipped for order: {}", orderId);
@@ -992,8 +978,8 @@ public class OrderSagaOrchestrator {
             }
 
             // Complete compensation if no compensations needed
-            if (result.updatedSagaData() != null && 
-                    result.updatedSagaData().getExpectedCompensations() == 0) {
+            if (result.updatedSagaData() != null &&
+                result.updatedSagaData().getExpectedCompensations() == 0) {
                 completeCompensation(orderId);
             }
         } finally {
@@ -1005,18 +991,18 @@ public class OrderSagaOrchestrator {
     private SagaData recoverSagaData(String orderId) {
         try {
             return sagaInstanceRepository.findByOrderId(orderId)
-                    .map(instance -> {
-                        try {
-                            return objectMapper.readValue(instance.getSagaDataJson(), SagaData.class);
-                        } catch (JsonProcessingException e) {
-                            log.error("JSON deserialization failed for saga data for order {}: {}", orderId, e.getMessage());
-                            return null;
-                        } catch (Exception e) {
-                            log.error("Unexpected error deserializing saga data for order {}: {}", orderId, e.getMessage(), e);
-                            return null;
-                        }
-                    })
-                    .orElse(null);
+                .map(instance -> {
+                    try {
+                        return objectMapper.readValue(instance.getSagaDataJson(), SagaData.class);
+                    } catch (JsonProcessingException e) {
+                        log.error("JSON deserialization failed for saga data for order {}: {}", orderId, e.getMessage());
+                        return null;
+                    } catch (Exception e) {
+                        log.error("Unexpected error deserializing saga data for order {}: {}", orderId, e.getMessage(), e);
+                        return null;
+                    }
+                })
+                .orElse(null);
         } catch (DataAccessException e) {
             log.error("Database operation failed while recovering saga data for order {}: {}", orderId, e.getMessage());
             return null;
@@ -1035,7 +1021,7 @@ public class OrderSagaOrchestrator {
     private boolean recoverSagaIfNeeded(String orderId) {
         // First, acquire in-memory lock to prevent race condition where multiple threads
         // could create duplicate state machines for the same orderId
-        java.util.concurrent.locks.ReentrantLock lock = getSagaLock(orderId);
+        ReentrantLock lock = getSagaLock(orderId);
         lock.lock();
         try {
             // Double-check if already recovered while waiting for lock
@@ -1046,7 +1032,7 @@ public class OrderSagaOrchestrator {
 
             // Use pessimistic lock to prevent concurrent recovery by multiple instances
             SagaInstance instance = sagaInstanceRepository.findByOrderIdForUpdate(orderId)
-                    .orElse(null);
+                .orElse(null);
 
             if (instance == null) {
                 log.warn("No saga instance found in persistence for order: {}", orderId);
@@ -1074,10 +1060,10 @@ public class OrderSagaOrchestrator {
                 log.warn("Invalid state {} for order {}: {}", instance.getCurrentState(), orderId, e.getMessage());
             } catch (IllegalStateException e) {
                 log.warn("State machine error while restoring state {} for order {}: {}",
-                        instance.getCurrentState(), orderId, e.getMessage());
+                    instance.getCurrentState(), orderId, e.getMessage());
             } catch (Exception e) {
                 log.warn("Unexpected error restoring state machine to state {} for order {}: {}",
-                        instance.getCurrentState(), orderId, e.getMessage(), e);
+                    instance.getCurrentState(), orderId, e.getMessage(), e);
             }
 
             // Restore to memory
@@ -1174,7 +1160,7 @@ public class OrderSagaOrchestrator {
 
         } catch (Exception e) {
             log.error("Exception while sending command {} for order {} to {}: {}",
-                    commandType, orderId, topic, e.getMessage(), e);
+                commandType, orderId, topic, e.getMessage(), e);
             handleKafkaSendFailure(topic, key, command, orderId, commandType, e);
         }
     }
@@ -1183,11 +1169,11 @@ public class OrderSagaOrchestrator {
      * Handles Kafka send failures by logging, incrementing metrics, and enqueueing to outbox for retry.
      */
     private void handleKafkaSendFailure(String topic, String key, Object command,
-                                       String orderId, String commandType, Throwable throwable) {
+                                        String orderId, String commandType, Throwable throwable) {
         kafkaCommandSendFailureCounter.increment();
 
         log.error("Failed to send command {} for order {} to topic {}: {}",
-                commandType, orderId, topic, throwable.getMessage(), throwable);
+            commandType, orderId, topic, throwable.getMessage(), throwable);
 
         // Enqueue to outbox for retry - this ensures the command will be retried
         try {
@@ -1195,7 +1181,7 @@ public class OrderSagaOrchestrator {
             log.info("Command {} for order {} enqueued to outbox for retry", commandType, orderId);
         } catch (Exception e) {
             log.error("Failed to enqueue command {} for order {} to outbox: {}",
-                    commandType, orderId, e.getMessage(), e);
+                commandType, orderId, e.getMessage(), e);
             // Mark command as failed if we can't even enqueue it
             markCommandStatus(orderId, commandType, COMMAND_STATUS_SKIPPED);
         }
@@ -1229,15 +1215,15 @@ public class OrderSagaOrchestrator {
 
         if (isSagaTerminal(orderId)) {
             log.info("Skipping pending command retry for terminal saga: orderId={}, commandType={}",
-                    orderId, commandType);
+                orderId, commandType);
             commandRetrySkippedCounter.increment();
             markCommandStatus(orderId, commandType, COMMAND_STATUS_SKIPPED);
             return;
         }
 
         boolean outboxExists = outboxCommandRepository
-                .findByOrderIdAndCommandTypeAndStatus(orderId, commandType, OUTBOX_STATUS_PENDING)
-                .isPresent();
+            .findByOrderIdAndCommandTypeAndStatus(orderId, commandType, OUTBOX_STATUS_PENDING)
+            .isPresent();
         if (outboxExists) {
             log.info("Pending outbox command already exists for orderId={}, commandType={}", orderId, commandType);
             return;
@@ -1256,12 +1242,12 @@ public class OrderSagaOrchestrator {
 
     private boolean isSagaTerminal(String orderId) {
         return sagaInstanceRepository.findByOrderId(orderId)
-                .map(instance -> {
-                    String state = instance.getCurrentState();
-                    return OrderStates.COMPLETED.name().equals(state)
-                            || OrderStates.CANCELLED.name().equals(state);
-                })
-                .orElse(false);
+            .map(instance -> {
+                String state = instance.getCurrentState();
+                return OrderStates.COMPLETED.name().equals(state)
+                    || OrderStates.CANCELLED.name().equals(state);
+            })
+            .orElse(false);
     }
 
     public void markCommandSentForOutbox(String orderId, String commandType) {
@@ -1278,10 +1264,10 @@ public class OrderSagaOrchestrator {
      */
     private void enqueueOutboxCommand(String orderId, String commandType, Object command, String topic) {
         boolean success = replyProcessingService.enqueueOutboxCommandTransactional(
-                orderId, commandType, command, topic);
+            orderId, commandType, command, topic);
         if (!success) {
-            log.warn("Failed to enqueue outbox command {} for order {}, marking as skipped", 
-                    commandType, orderId);
+            log.warn("Failed to enqueue outbox command {} for order {}, marking as skipped",
+                commandType, orderId);
             markCommandStatus(orderId, commandType, COMMAND_STATUS_SKIPPED);
         }
     }

@@ -1,8 +1,11 @@
 package com.thesis.common.exception;
 
+import lombok.Getter;
+
 /**
  * Base exception for resources that cannot be found.
  */
+@Getter
 public class ResourceNotFoundException extends RuntimeException {
 
     private final String resourceType;
@@ -20,11 +23,4 @@ public class ResourceNotFoundException extends RuntimeException {
         this.resourceId = resourceId;
     }
 
-    public String getResourceType() {
-        return resourceType;
-    }
-
-    public String getResourceId() {
-        return resourceId;
-    }
 }

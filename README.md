@@ -260,9 +260,9 @@ Compensation Flow (Automatic by Saga Manager):
 | Orchestration Framework | Eventuate Tram Saga |
 | Database | PostgreSQL (database per service) |
 | Metrics | Micrometer + Prometheus |
-| Tracing | Zipkin |
+| Tracing | Jaeger |
 | Dashboards | Grafana |
-| Load Testing | k6 |
+| Load Testing | Gatling / k6 |
 | Containerization | Docker & Docker Compose |
 | Container Images | Jib (no Dockerfile needed) |
 
@@ -300,14 +300,17 @@ saga-pattern/
 │       │   ├── docker-compose.choreography.yml
 │       │   └── docker-compose.orchestration.yml
 │       └── observability/                     # Monitoring stack
-│           ├── docker-compose.yml             # Prometheus, Grafana, Zipkin
+│           ├── docker-compose.yml             # Prometheus, Grafana, Jaeger
 │           ├── prometheus/prometheus.yml
 │           └── grafana/
 │
-└── load-testing/k6/
-    ├── happy-path-test.js               # Basic success testing
-    ├── comparison-test.js               # Side-by-side comparison
-    └── failure-scenarios-test.js        # Compensation testing
+└── load-testing/
+    ├── gatling/                         # Gatling simulations (primary)
+    │   └── src/test/scala/simulations/  # Scala test simulations
+    └── k6/                              # k6 scripts (legacy)
+        ├── happy-path-test.js           # Basic success testing
+        ├── comparison-test.js           # Side-by-side comparison
+        └── failure-scenarios-test.js    # Compensation testing
 ```
 
 ---
@@ -372,7 +375,7 @@ docker compose -f docker-compose.choreography.yml up -d
 | Inventory Service | 8083 | 5434 | /actuator/health |
 | Shipping Service | 8084 | 5435 | /actuator/health |
 | Kafka | 9092 | - | - |
-| Zipkin | 9411 | - | - |
+| Jaeger UI | 16686 | - | - |
 
 ### Orchestration Pattern
 
@@ -384,7 +387,7 @@ docker compose -f docker-compose.choreography.yml up -d
 | Shipping Service | 8088 | 5439 | /actuator/health |
 | Eventuate CDC | 8099 | - | - |
 | Kafka | 9093 | - | - |
-| Zipkin | 9412 | - | - |
+| Jaeger UI | 16686 | - | - |
 
 ### Monitoring (Shared)
 
@@ -501,10 +504,9 @@ k6 run failure-scenarios-test.js
   - `orders_failed_total` - Failed orders
   - `order_processing_duration_seconds` - Processing time histogram
 
-### Distributed Tracing (Zipkin)
+### Distributed Tracing (Jaeger)
 
-- Choreography: http://localhost:9411
-- Orchestration: http://localhost:9412
+- Jaeger UI: http://localhost:16686
 
 ---
 
@@ -559,7 +561,7 @@ k6 run comparison-test.js
 # 5. Collect results from:
 #    - k6 output (console)
 #    - Grafana dashboards at http://<observability-ip>:3000
-#    - Zipkin traces at http://<observability-ip>:9411
+#    - Jaeger traces at http://<observability-ip>:16686
 #    - Prometheus queries at http://<observability-ip>:9090
 ```
 

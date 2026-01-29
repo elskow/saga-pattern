@@ -3,17 +3,18 @@ package com.thesis.choreography.shipping.service;
 import com.thesis.choreography.shipping.kafka.ShippingEventPublisher;
 import com.thesis.choreography.shipping.model.Shipment;
 import com.thesis.choreography.shipping.repository.ShipmentRepository;
-import com.thesis.common.exception.ShipmentNotFoundException;
 import com.thesis.common.events.InventoryReservedEvent;
 import com.thesis.common.events.ShippingCancelledEvent;
 import com.thesis.common.events.ShippingFailedEvent;
 import com.thesis.common.events.ShippingScheduledEvent;
+import com.thesis.common.exception.ShipmentNotFoundException;
 import com.thesis.common.metrics.SagaMetrics;
 import com.thesis.common.metrics.SagaMetricsHelper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.observation.annotation.Observed;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.dao.DataAccessException;
@@ -41,6 +42,7 @@ public class ShippingService {
     private final Timer compensationDurationTimer;
     private final Counter sagaStepsExecutedCounter;
     private final Counter sagaStepsFailedCounter;
+    @Getter
     private final SagaMetricsHelper metricsHelper;
 
     public ShippingService(ShipmentRepository shipmentRepository,
@@ -48,26 +50,26 @@ public class ShippingService {
                            MeterRegistry meterRegistry) {
         this.shipmentRepository = shipmentRepository;
         this.eventPublisher = eventPublisher;
-        
-        this.shippingSuccessCounter = meterRegistry.counter(SagaMetrics.SHIPPING_SUCCESS, 
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
-        this.shippingFailedCounter = meterRegistry.counter(SagaMetrics.SHIPPING_FAILED, 
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
-        this.shippingTimer = meterRegistry.timer(SagaMetrics.SHIPPING_PROCESSING_TIME, 
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
-        this.stepShippingDurationTimer = meterRegistry.timer(SagaMetrics.STEP_SHIPPING_DURATION, 
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
-        this.compensationShippingCounter = meterRegistry.counter(SagaMetrics.COMPENSATIONS_SHIPPING, 
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
-        this.compensationDurationTimer = meterRegistry.timer(SagaMetrics.COMPENSATION_DURATION, 
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
-                SagaMetrics.TAG_STEP, SagaMetrics.STEP_SHIPPING);
+
+        this.shippingSuccessCounter = meterRegistry.counter(SagaMetrics.SHIPPING_SUCCESS,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.shippingFailedCounter = meterRegistry.counter(SagaMetrics.SHIPPING_FAILED,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.shippingTimer = meterRegistry.timer(SagaMetrics.SHIPPING_PROCESSING_TIME,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.stepShippingDurationTimer = meterRegistry.timer(SagaMetrics.STEP_SHIPPING_DURATION,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.compensationShippingCounter = meterRegistry.counter(SagaMetrics.COMPENSATIONS_SHIPPING,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+        this.compensationDurationTimer = meterRegistry.timer(SagaMetrics.COMPENSATION_DURATION,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
+            SagaMetrics.TAG_STEP, SagaMetrics.STEP_SHIPPING);
         this.sagaStepsExecutedCounter = meterRegistry.counter(SagaMetrics.SAGA_STEPS_EXECUTED,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
-                SagaMetrics.TAG_STEP, SagaMetrics.STEP_SHIPPING);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
+            SagaMetrics.TAG_STEP, SagaMetrics.STEP_SHIPPING);
         this.sagaStepsFailedCounter = meterRegistry.counter(SagaMetrics.SAGA_STEPS_FAILED,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
-                SagaMetrics.TAG_STEP, SagaMetrics.STEP_SHIPPING);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
+            SagaMetrics.TAG_STEP, SagaMetrics.STEP_SHIPPING);
         this.metricsHelper = new SagaMetricsHelper(meterRegistry, SagaMetrics.SERVICE_CHOREOGRAPHY);
     }
 
@@ -84,32 +86,32 @@ public class ShippingService {
         if (shippingAddress == null || shippingAddress.isBlank()) {
             throw new IllegalArgumentException("Shipping address cannot be null or blank");
         }
-        
+
         String orderId = inventoryEvent.getOrderId();
         try {
             MDC.put("orderId", orderId);
             stepShippingDurationTimer.record(() -> {
                 log.info("Scheduling shipping for order: {}", orderId);
-                
+
                 // Record received message and latency
                 metricsHelper.recordMessageReceived(orderId, SagaMetrics.TYPE_EVENT);
                 if (inventoryEvent.getCreatedAt() != null) {
                     Duration latency = Duration.between(inventoryEvent.getCreatedAt(), Instant.now());
                     metricsHelper.recordMessageLatency("inventory", "shipping", latency);
                 }
-                
+
                 String shippingId = UUID.randomUUID().toString();
                 String trackingNumber = "TRK-" + UUID.randomUUID().toString().substring(0, 10).toUpperCase();
-                
+
                 Shipment shipment = Shipment.builder()
-                        .shippingId(shippingId)
-                        .orderId(orderId)
-                        .trackingNumber(trackingNumber)
-                        .shippingAddress(shippingAddress != null ? shippingAddress : "Default Address")
-                        .status(Shipment.ShippingStatus.PENDING)
-                        .estimatedDelivery(Instant.now().plus(3, ChronoUnit.DAYS))
-                        .build();
-                
+                    .shippingId(shippingId)
+                    .orderId(orderId)
+                    .trackingNumber(trackingNumber)
+                    .shippingAddress(shippingAddress)
+                    .status(Shipment.ShippingStatus.PENDING)
+                    .estimatedDelivery(Instant.now().plus(3, ChronoUnit.DAYS))
+                    .build();
+
                 try {
                     shipmentRepository.save(shipment);
                     metricsHelper.recordDbInsert(orderId, SagaMetrics.ENTITY_SHIPMENT);
@@ -126,44 +128,44 @@ public class ShippingService {
 
                     String correlationId = MDC.get("correlationId");
                     if (correlationId == null || correlationId.isBlank()) {
-                        correlationId = inventoryEvent.getCorrelationId() != null ? 
-                                inventoryEvent.getCorrelationId() : UUID.randomUUID().toString();
+                        correlationId = inventoryEvent.getCorrelationId() != null ?
+                            inventoryEvent.getCorrelationId() : UUID.randomUUID().toString();
                         MDC.put("correlationId", correlationId);
                     }
-                    
+
                     ShippingScheduledEvent event = ShippingScheduledEvent.builder()
-                            .shippingId(shippingId)
-                            .orderId(orderId)
-                            .trackingNumber(trackingNumber)
-                            .address(shipment.getShippingAddress())
-                            .estimatedDelivery(shipment.getEstimatedDelivery())
-                            .scheduledAt(Instant.now())
-                            .correlationId(correlationId)
-                            .createdAt(Instant.now())
-                            .build();
+                        .shippingId(shippingId)
+                        .orderId(orderId)
+                        .trackingNumber(trackingNumber)
+                        .address(shipment.getShippingAddress())
+                        .estimatedDelivery(shipment.getEstimatedDelivery())
+                        .scheduledAt(Instant.now())
+                        .correlationId(correlationId)
+                        .createdAt(Instant.now())
+                        .build();
 
                     // Publish event after transaction commit
                     final String finalCorrelationId = correlationId;
                     if (TransactionSynchronizationManager.isSynchronizationActive()) {
                         TransactionSynchronizationManager.registerSynchronization(
-                                new TransactionSynchronization() {
-                                    @Override
-                                    public void afterCommit() {
-                                        try {
-                                            MDC.put("orderId", orderId);
-                                            MDC.put("correlationId", finalCorrelationId);
-                                            eventPublisher.publishShippingScheduled(event);
-                                            metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
-                                            shippingSuccessCounter.increment();
-                                            sagaStepsExecutedCounter.increment();
-                                            log.info("Shipping scheduled for order: {} with tracking: {}", orderId, trackingNumber);
-                                        } catch (Exception e) {
-                                            log.error("Failed to publish ShippingScheduledEvent after commit for order: {}", orderId, e);
-                                        } finally {
-                                            MDC.clear();
-                                        }
+                            new TransactionSynchronization() {
+                                @Override
+                                public void afterCommit() {
+                                    try {
+                                        MDC.put("orderId", orderId);
+                                        MDC.put("correlationId", finalCorrelationId);
+                                        eventPublisher.publishShippingScheduled(event);
+                                        metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
+                                        shippingSuccessCounter.increment();
+                                        sagaStepsExecutedCounter.increment();
+                                        log.info("Shipping scheduled for order: {} with tracking: {}", orderId, trackingNumber);
+                                    } catch (Exception e) {
+                                        log.error("Failed to publish ShippingScheduledEvent after commit for order: {}", orderId, e);
+                                    } finally {
+                                        MDC.clear();
                                     }
                                 }
+                            }
                         );
                     } else {
                         eventPublisher.publishShippingScheduled(event);
@@ -187,7 +189,7 @@ public class ShippingService {
             MDC.clear();
         }
     }
-    
+
     private void handleShippingFailure(Shipment shipment, String orderId, Exception e) {
         try {
             shipment.setStatus(Shipment.ShippingStatus.FAILED);
@@ -199,36 +201,36 @@ public class ShippingService {
                 correlationId = UUID.randomUUID().toString();
                 MDC.put("correlationId", correlationId);
             }
-            
+
             ShippingFailedEvent failedEvent = ShippingFailedEvent.builder()
-                    .orderId(orderId)
-                    .reason(e.getMessage())
-                    .failedAt(Instant.now())
-                    .correlationId(correlationId)
-                    .createdAt(Instant.now())
-                    .build();
+                .orderId(orderId)
+                .reason(e.getMessage())
+                .failedAt(Instant.now())
+                .correlationId(correlationId)
+                .createdAt(Instant.now())
+                .build();
 
             // Publish event after transaction commit
             final String finalCorrelationId = correlationId;
             if (TransactionSynchronizationManager.isSynchronizationActive()) {
                 TransactionSynchronizationManager.registerSynchronization(
-                        new TransactionSynchronization() {
-                            @Override
-                            public void afterCommit() {
-                                try {
-                                    MDC.put("orderId", orderId);
-                                    MDC.put("correlationId", finalCorrelationId);
-                                    eventPublisher.publishShippingFailed(failedEvent);
-                                    metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
-                                    shippingFailedCounter.increment();
-                                    sagaStepsFailedCounter.increment();
-                                } catch (Exception ex) {
-                                    log.error("Failed to publish ShippingFailedEvent after commit for order: {}", orderId, ex);
-                                } finally {
-                                    MDC.clear();
-                                }
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            try {
+                                MDC.put("orderId", orderId);
+                                MDC.put("correlationId", finalCorrelationId);
+                                eventPublisher.publishShippingFailed(failedEvent);
+                                metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
+                                shippingFailedCounter.increment();
+                                sagaStepsFailedCounter.increment();
+                            } catch (Exception ex) {
+                                log.error("Failed to publish ShippingFailedEvent after commit for order: {}", orderId, ex);
+                            } finally {
+                                MDC.clear();
                             }
                         }
+                    }
                 );
             } else {
                 eventPublisher.publishShippingFailed(failedEvent);
@@ -248,21 +250,21 @@ public class ShippingService {
         if (orderId == null || orderId.isBlank()) {
             throw new IllegalArgumentException("Order ID cannot be null or blank");
         }
-        
+
         long startTime = System.currentTimeMillis();
         try {
             MDC.put("orderId", orderId);
             log.info("Cancelling shipping for order: {}", orderId);
-            
+
             Shipment shipment;
             try {
                 shipment = shipmentRepository.findByOrderId(orderId)
-                        .orElseThrow(() -> new ShipmentNotFoundException(orderId));
+                    .orElseThrow(() -> new ShipmentNotFoundException(orderId));
             } catch (DataAccessException e) {
                 log.error("Database error while finding shipment for order: {}", orderId, e);
                 throw e;
             }
-            
+
             if (shipment.getStatus() == Shipment.ShippingStatus.SCHEDULED ||
                 shipment.getStatus() == Shipment.ShippingStatus.PENDING) {
                 shipment.setStatus(Shipment.ShippingStatus.CANCELLED);
@@ -274,13 +276,13 @@ public class ShippingService {
                     throw e;
                 }
 
-            String correlationId = MDC.get("correlationId");
-            if (correlationId == null || correlationId.isBlank()) {
-                correlationId = UUID.randomUUID().toString();
-                MDC.put("correlationId", correlationId);
-            }
-            
-            ShippingCancelledEvent event = ShippingCancelledEvent.builder()
+                String correlationId = MDC.get("correlationId");
+                if (correlationId == null || correlationId.isBlank()) {
+                    correlationId = UUID.randomUUID().toString();
+                    MDC.put("correlationId", correlationId);
+                }
+
+                ShippingCancelledEvent event = ShippingCancelledEvent.builder()
                     .shippingId(shipment.getShippingId())
                     .orderId(orderId)
                     .cancelledAt(Instant.now())
@@ -288,10 +290,10 @@ public class ShippingService {
                     .createdAt(Instant.now())
                     .build();
 
-            // Publish event after transaction commit
-            final String finalCorrelationId = correlationId;
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(
+                // Publish event after transaction commit
+                final String finalCorrelationId = correlationId;
+                if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                    TransactionSynchronizationManager.registerSynchronization(
                         new TransactionSynchronization() {
                             @Override
                             public void afterCommit() {
@@ -307,15 +309,15 @@ public class ShippingService {
                                 }
                             }
                         }
-                );
-            } else {
-                eventPublisher.publishShippingCancelled(event);
-                metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
-            }
+                    );
+                } else {
+                    eventPublisher.publishShippingCancelled(event);
+                    metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
+                }
 
                 compensationShippingCounter.increment();
                 compensationDurationTimer.record(java.time.Duration.ofMillis(System.currentTimeMillis() - startTime));
-                
+
                 log.info("Shipping cancelled for order: {}", orderId);
             }
         } finally {
@@ -323,7 +325,4 @@ public class ShippingService {
         }
     }
 
-    public SagaMetricsHelper getMetricsHelper() {
-        return metricsHelper;
-    }
 }

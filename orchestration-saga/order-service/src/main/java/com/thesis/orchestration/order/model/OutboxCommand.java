@@ -1,11 +1,6 @@
 package com.thesis.orchestration.order.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
-import jakarta.persistence.Version;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,8 +13,8 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(name = "outbox_commands", indexes = {
-        @Index(name = "idx_outbox_commands_status_created", columnList = "status, createdAt"),
-        @Index(name = "idx_outbox_commands_order_id", columnList = "orderId")
+    @Index(name = "idx_outbox_commands_status_created", columnList = "status, createdAt"),
+    @Index(name = "idx_outbox_commands_order_id", columnList = "orderId")
 })
 @Data
 @Builder

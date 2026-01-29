@@ -6,10 +6,6 @@ public enum CommandStatus {
     SENT,
     SKIPPED;
 
-    public String getValue() {
-        return name();
-    }
-
     public static CommandStatus fromValue(String value) {
         if (value == null) {
             return null;
@@ -20,5 +16,9 @@ public enum CommandStatus {
             }
         }
         throw new IllegalArgumentException("Unknown CommandStatus: " + value);
+    }
+
+    public String getValue() {
+        return name();
     }
 }

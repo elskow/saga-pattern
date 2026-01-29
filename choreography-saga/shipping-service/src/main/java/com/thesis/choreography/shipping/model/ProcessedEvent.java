@@ -14,7 +14,7 @@ import java.time.Instant;
  */
 @Entity
 @Table(name = "processed_events", indexes = {
-        @Index(name = "idx_processed_events_event_id", columnList = "event_id", unique = true)
+    @Index(name = "idx_processed_events_event_id", columnList = "event_id", unique = true)
 })
 @Data
 @Builder

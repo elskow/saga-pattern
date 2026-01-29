@@ -12,10 +12,12 @@ import com.thesis.orchestration.inventory.repository.ProductRepository;
 import com.thesis.orchestration.inventory.repository.ReservationRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -34,27 +36,19 @@ public class InventoryService {
     private final ProductRepository productRepository;
     private final SagaMetricsHelper metricsHelper;
 
+    // Thesis testing - artificial delay configuration
+    @Value("${app.artificial-delay.enabled:false}")
+    private boolean artificialDelayEnabled;
+
+    @Value("${app.artificial-delay.duration-ms:0}")
+    private long artificialDelayMs;
+
     public InventoryService(ReservationRepository reservationRepository,
                             ProductRepository productRepository,
                             MeterRegistry meterRegistry) {
         this.reservationRepository = reservationRepository;
         this.productRepository = productRepository;
         this.metricsHelper = new SagaMetricsHelper(meterRegistry, SagaMetrics.SERVICE_ORCHESTRATION);
-    }
-
-    /**
-     * Result of an inventory reservation attempt.
-     */
-    public record ReservationResult(boolean success, String errorMessage, ReservationEntity reservation) {
-        public static ReservationResult success(ReservationEntity reservation) {
-            return new ReservationResult(true, null, reservation);
-        }
-        public static ReservationResult failure(String errorMessage) {
-            return new ReservationResult(false, errorMessage, null);
-        }
-        public static ReservationResult alreadyExists(ReservationEntity existing) {
-            return new ReservationResult(true, null, existing);
-        }
     }
 
     /**
@@ -67,7 +61,18 @@ public class InventoryService {
     @Transactional
     public ReservationResult reserveInventory(ReserveInventoryCommand command) {
         log.info("Reserving inventory {} for order {}",
-                command.getReservationId(), command.getOrderId());
+            command.getReservationId(), command.getOrderId());
+
+        // Thesis testing - artificial delay for timeout scenarios
+        if (artificialDelayEnabled && artificialDelayMs > 0) {
+            log.warn("Artificial delay enabled: sleeping for {} ms (thesis timeout test)", artificialDelayMs);
+            try {
+                Thread.sleep(artificialDelayMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("Artificial delay interrupted for order: {}", command.getOrderId());
+            }
+        }
 
         // Idempotency check: if reservation already exists, return existing status
         Optional<ReservationEntity> existingReservation = reservationRepository.findById(command.getReservationId());
@@ -75,29 +80,29 @@ public class InventoryService {
             ReservationEntity existing = existingReservation.get();
             if (existing.getStatus() == ReservationEntity.ReservationStatus.RESERVED) {
                 log.info("Reservation {} already exists with RESERVED status",
-                        command.getReservationId());
+                    command.getReservationId());
                 return ReservationResult.alreadyExists(existing);
             } else if (existing.getStatus() == ReservationEntity.ReservationStatus.FAILED) {
                 log.info("Reservation {} already exists with FAILED status",
-                        command.getReservationId());
+                    command.getReservationId());
                 return ReservationResult.failure("Reservation previously failed: " + existing.getFailureReason());
             }
             // RELEASED status - attempt re-reservation
             log.warn("Reservation {} exists with RELEASED status, attempting re-reservation",
-                    command.getReservationId());
+                command.getReservationId());
         }
 
         List<OrderCreatedEvent.OrderItemEvent> items = command.getItems();
 
         // Batch query all products at once with pessimistic lock to avoid N+1 problem
         List<String> productIds = items.stream()
-                .map(OrderCreatedEvent.OrderItemEvent::getProductId)
-                .distinct()
-                .toList();
+            .map(OrderCreatedEvent.OrderItemEvent::getProductId)
+            .distinct()
+            .toList();
 
         List<ProductEntity> products = productRepository.findAllByIdInForUpdate(productIds);
         Map<String, ProductEntity> productMap = products.stream()
-                .collect(Collectors.toMap(ProductEntity::getProductId, p -> p));
+            .collect(Collectors.toMap(ProductEntity::getProductId, p -> p));
 
         // Check stock availability for all items
         for (OrderCreatedEvent.OrderItemEvent item : items) {
@@ -108,7 +113,7 @@ public class InventoryService {
                 return ReservationResult.failure(error);
             }
             int available = product.getQuantity() -
-                    (product.getReservedQuantity() != null ? product.getReservedQuantity() : 0);
+                (product.getReservedQuantity() != null ? product.getReservedQuantity() : 0);
             if (available < item.getQuantity()) {
                 String error = "Insufficient stock for product: " + item.getProductId();
                 saveFailedReservation(command, error);
@@ -128,12 +133,12 @@ public class InventoryService {
         // Create reservation record
         String itemsJson = serializeItems(items, command.getOrderId());
         ReservationEntity reservation = ReservationEntity.builder()
-                .reservationId(command.getReservationId())
-                .orderId(command.getOrderId())
-                .itemsJson(itemsJson)
-                .status(ReservationEntity.ReservationStatus.RESERVED)
-                .reservedAt(Instant.now())
-                .build();
+            .reservationId(command.getReservationId())
+            .orderId(command.getOrderId())
+            .itemsJson(itemsJson)
+            .status(ReservationEntity.ReservationStatus.RESERVED)
+            .reservedAt(Instant.now())
+            .build();
         reservationRepository.save(reservation);
         metricsHelper.recordDbInsert(command.getOrderId(), SagaMetrics.ENTITY_INVENTORY);
 
@@ -190,12 +195,12 @@ public class InventoryService {
 
     private void saveFailedReservation(ReserveInventoryCommand command, String reason) {
         ReservationEntity reservation = ReservationEntity.builder()
-                .reservationId(command.getReservationId())
-                .orderId(command.getOrderId())
-                .itemsJson(serializeItems(command.getItems(), command.getOrderId()))
-                .status(ReservationEntity.ReservationStatus.FAILED)
-                .failureReason(reason)
-                .build();
+            .reservationId(command.getReservationId())
+            .orderId(command.getOrderId())
+            .itemsJson(serializeItems(command.getItems(), command.getOrderId()))
+            .status(ReservationEntity.ReservationStatus.FAILED)
+            .failureReason(reason)
+            .build();
         reservationRepository.save(reservation);
         metricsHelper.recordDbInsert(command.getOrderId(), SagaMetrics.ENTITY_INVENTORY);
     }
@@ -214,10 +219,27 @@ public class InventoryService {
         try {
             ObjectMapper mapper = new ObjectMapper();
             return mapper.readValue(itemsJson,
-                    mapper.getTypeFactory().constructCollectionType(List.class, OrderCreatedEvent.OrderItemEvent.class));
+                mapper.getTypeFactory().constructCollectionType(List.class, OrderCreatedEvent.OrderItemEvent.class));
         } catch (Exception e) {
             log.error("Failed to deserialize items: {}", e.getMessage());
-            return java.util.Collections.emptyList();
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Result of an inventory reservation attempt.
+     */
+    public record ReservationResult(boolean success, String errorMessage, ReservationEntity reservation) {
+        public static ReservationResult success(ReservationEntity reservation) {
+            return new ReservationResult(true, null, reservation);
+        }
+
+        public static ReservationResult failure(String errorMessage) {
+            return new ReservationResult(false, errorMessage, null);
+        }
+
+        public static ReservationResult alreadyExists(ReservationEntity existing) {
+            return new ReservationResult(true, null, existing);
         }
     }
 }

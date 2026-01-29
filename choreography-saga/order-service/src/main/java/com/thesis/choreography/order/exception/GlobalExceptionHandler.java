@@ -1,4 +1,4 @@
-package com.thesis.choreography.order.controller;
+package com.thesis.choreography.order.exception;
 
 import com.thesis.common.exception.OrderNotFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -22,28 +22,28 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleNotFound(NoSuchElementException ex) {
         log.warn("Resource not found: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage()));
+            .body(buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleBadRequest(IllegalArgumentException ex) {
         log.warn("Bad request: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage()));
+            .body(buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage()));
     }
 
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, Object>> handleConflict(IllegalStateException ex) {
         log.warn("Conflict: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage()));
+            .body(buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> fieldErrors = new HashMap<>();
         ex.getBindingResult().getFieldErrors().forEach(error ->
-                fieldErrors.put(error.getField(), error.getDefaultMessage())
+            fieldErrors.put(error.getField(), error.getDefaultMessage())
         );
         log.warn("Validation failed: {}", fieldErrors);
 
@@ -56,21 +56,21 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleOrderNotFound(OrderNotFoundException ex) {
         log.warn("Order not found: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage()));
+            .body(buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage()));
     }
 
     @ExceptionHandler(DataAccessException.class)
     public ResponseEntity<Map<String, Object>> handleDataAccess(DataAccessException ex) {
         log.error("Database error", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Database operation failed"));
+            .body(buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Database operation failed"));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
         log.error("Unexpected error", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred"));
+            .body(buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred"));
     }
 
     private Map<String, Object> buildErrorResponse(HttpStatus status, String message) {

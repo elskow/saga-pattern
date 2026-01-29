@@ -15,41 +15,41 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 @Slf4j
 public class PendingDataHealthIndicator implements HealthIndicator {
-    
+
     private static final long MAX_PENDING_ITEMS = 1000;
     private static final long WARNING_THRESHOLD = 500;
-    
+
     private final PendingOrderItemRepository pendingOrderItemRepository;
-    
+
     @Override
     public Health health() {
         try {
             long pendingItems = pendingOrderItemRepository.count();
-            
+
             Health.Builder builder = Health.up()
                 .withDetail("pendingOrderItems", pendingItems)
                 .withDetail("maxThreshold", MAX_PENDING_ITEMS)
                 .withDetail("warningThreshold", WARNING_THRESHOLD);
-            
+
             if (pendingItems > MAX_PENDING_ITEMS) {
-                log.warn("Pending order items exceeded maximum threshold: {} (max: {})", 
-                        pendingItems, MAX_PENDING_ITEMS);
+                log.warn("Pending order items exceeded maximum threshold: {} (max: {})",
+                    pendingItems, MAX_PENDING_ITEMS);
                 return builder.down()
-                    .withDetail("message", "Too many pending order items: " + pendingItems + 
-                            " (threshold: " + MAX_PENDING_ITEMS + ")")
+                    .withDetail("message", "Too many pending order items: " + pendingItems +
+                        " (threshold: " + MAX_PENDING_ITEMS + ")")
                     .withDetail("status", "CRITICAL")
                     .build();
             }
-            
+
             if (pendingItems > WARNING_THRESHOLD) {
-                log.warn("Pending order items approaching threshold: {} (warning: {})", 
-                        pendingItems, WARNING_THRESHOLD);
+                log.warn("Pending order items approaching threshold: {} (warning: {})",
+                    pendingItems, WARNING_THRESHOLD);
                 return builder.status("WARNING")
                     .withDetail("message", "Pending order items approaching threshold: " + pendingItems)
                     .withDetail("status", "WARNING")
                     .build();
             }
-            
+
             return builder
                 .withDetail("status", "HEALTHY")
                 .build();

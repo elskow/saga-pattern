@@ -33,6 +33,19 @@ public class KafkaConfig {
     @Value("${spring.kafka.bootstrap-servers:localhost:9093}")
     private String bootstrapServers;
 
+    private static DeadLetterPublishingRecoverer getLetterPublishingRecoverer(Map<String, Object> producerProps) {
+        KafkaTemplate<Object, Object> dlqTemplate = new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(producerProps));
+
+        return new DeadLetterPublishingRecoverer(
+            dlqTemplate,
+            (record, ex) -> {
+                log.error("Sending record to DLQ: topic={}, partition={}, offset={}, exception={}",
+                    record.topic(), record.partition(), record.offset(), ex.getMessage());
+                return new TopicPartition(record.topic() + ".dlq", record.partition());
+            }
+        );
+    }
+
     @Bean
     public ProducerFactory<String, Object> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();
@@ -50,7 +63,9 @@ public class KafkaConfig {
 
     @Bean
     public KafkaTemplate<String, Object> kafkaTemplate() {
-        return new KafkaTemplate<>(producerFactory());
+        KafkaTemplate<String, Object> template = new KafkaTemplate<>(producerFactory());
+        template.setObservationEnabled(true);
+        return template;
     }
 
     /**
@@ -75,7 +90,9 @@ public class KafkaConfig {
      */
     @Bean
     public KafkaTemplate<String, String> stringKafkaTemplate() {
-        return new KafkaTemplate<>(stringProducerFactory());
+        KafkaTemplate<String, String> template = new KafkaTemplate<>(stringProducerFactory());
+        template.setObservationEnabled(true);
+        return template;
     }
 
     @Bean
@@ -94,11 +111,12 @@ public class KafkaConfig {
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
         ConcurrentKafkaListenerContainerFactory<String, String> factory =
-                new ConcurrentKafkaListenerContainerFactory<>();
+            new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
         factory.setCommonErrorHandler(errorHandler());
         // Use RECORD ack mode to commit after each message is processed successfully
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
+        factory.getContainerProperties().setObservationEnabled(true);
         return factory;
     }
 
@@ -111,16 +129,7 @@ public class KafkaConfig {
         producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         // Enable idempotence for DLQ producer as well
         producerProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
-        KafkaTemplate<Object, Object> dlqTemplate = new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(producerProps));
-
-        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
-                dlqTemplate,
-                (record, ex) -> {
-                    log.error("Sending record to DLQ: topic={}, partition={}, offset={}, exception={}",
-                            record.topic(), record.partition(), record.offset(), ex.getMessage());
-                    return new TopicPartition(record.topic() + ".dlq", record.partition());
-                }
-        );
+        DeadLetterPublishingRecoverer recoverer = getLetterPublishingRecoverer(producerProps);
 
         // Retry 3 times with 1 second interval, then send to DLQ
         return new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 3));

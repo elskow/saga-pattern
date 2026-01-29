@@ -2,43 +2,38 @@ package com.thesis.orchestration.order.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.thesis.common.command.ProcessPaymentCommand;
+import com.thesis.common.events.OrderCreatedEvent;
 import com.thesis.common.replies.*;
 import com.thesis.orchestration.order.model.OutboxCommand;
-import com.thesis.orchestration.order.model.ProcessedReply;
 import com.thesis.orchestration.order.model.SagaInstance;
 import com.thesis.orchestration.order.repository.OutboxCommandRepository;
 import com.thesis.orchestration.order.repository.ProcessedReplyRepository;
 import com.thesis.orchestration.order.repository.SagaInstanceRepository;
-import com.thesis.orchestration.order.statemachine.OrderEvents;
 import com.thesis.orchestration.order.statemachine.OrderStates;
 import com.thesis.orchestration.order.statemachine.SagaData;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
-import org.springframework.statemachine.StateMachine;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
-import com.thesis.common.command.ProcessPaymentCommand;
-import com.thesis.common.events.OrderCreatedEvent;
-
 /**
  * Service for processing saga replies with proper @Transactional support.
- * 
+ * <p>
  * This service is separated from OrderSagaOrchestrator to fix the Spring AOP proxy
  * self-invocation issue. When @KafkaListener methods call @Transactional methods
  * within the same class, Spring's proxy doesn't intercept the call because it's
  * an internal method invocation.
- * 
+ * <p>
  * By extracting the transactional logic to a separate service that is injected,
  * Spring can properly proxy the calls and manage transactions.
  */
@@ -47,40 +42,26 @@ import com.thesis.common.events.OrderCreatedEvent;
 @RequiredArgsConstructor
 public class ReplyProcessingService {
 
-    private final ProcessedReplyRepository processedReplyRepository;
-    private final SagaInstanceRepository sagaInstanceRepository;
-    private final OutboxCommandRepository outboxCommandRepository;
-    private final OrderService orderService;
-    private final ObjectMapper objectMapper;
-
     // Command constants
     private static final String COMMAND_PROCESS_PAYMENT = "PROCESS_PAYMENT";
     private static final String PAYMENT_COMMAND_TOPIC = "orchestration.payment.commands";
     private static final String OUTBOX_STATUS_PENDING = "PENDING";
-
-    /**
-     * Result of processing a reply, containing the next action to take.
-     */
-    public record ReplyProcessingResult(
-            boolean processed,
-            boolean sagaRecovered,
-            String nextState,
-            SagaData updatedSagaData
-    ) {
-        public static ReplyProcessingResult skipped() {
-            return new ReplyProcessingResult(false, false, null, null);
-        }
-
-        public static ReplyProcessingResult success(String nextState, SagaData data) {
-            return new ReplyProcessingResult(true, false, nextState, data);
-        }
-
-        public static ReplyProcessingResult successWithRecovery(String nextState, SagaData data) {
-            return new ReplyProcessingResult(true, true, nextState, data);
-        }
-    }
+    private static final String COMMAND_CANCEL_SHIPPING = "CANCEL_SHIPPING";
+    private static final String COMMAND_RELEASE_INVENTORY = "RELEASE_INVENTORY";
+    private static final String COMMAND_REFUND_PAYMENT = "REFUND_PAYMENT";
+    private static final String INVENTORY_COMMAND_TOPIC = "orchestration.inventory.commands";
+    private static final String SHIPPING_COMMAND_TOPIC = "orchestration.shipping.commands";
+    private final ProcessedReplyRepository processedReplyRepository;
 
     // ========== Atomic Idempotency ==========
+    private final SagaInstanceRepository sagaInstanceRepository;
+
+    // ========== Payment Reply Processing ==========
+    private final OutboxCommandRepository outboxCommandRepository;
+    private final OrderService orderService;
+    private final ObjectMapper objectMapper;
+
+    // ========== Inventory Reply Processing ==========
 
     /**
      * Atomically tries to mark a reply as processed.
@@ -92,7 +73,7 @@ public class ReplyProcessingService {
         String replyId = orderId + ":" + replyType;
         try {
             int inserted = processedReplyRepository.insertIfNotExists(
-                    replyId, orderId, replyType, LocalDateTime.now());
+                replyId, orderId, replyType, LocalDateTime.now());
             if (inserted == 0) {
                 log.debug("Reply {} already processed for order {} (atomic check)", replyType, orderId);
                 return true; // Already processed
@@ -101,20 +82,18 @@ public class ReplyProcessingService {
             return false; // First time processing
         } catch (DataAccessException e) {
             log.error("Database error during atomic idempotency check for order {}, reply {}: {}",
-                    orderId, replyType, e.getMessage());
+                orderId, replyType, e.getMessage());
             // On error, fall back to check-then-mark approach
             return processedReplyRepository.existsByReplyId(replyId);
         }
     }
 
-    // ========== Payment Reply Processing ==========
-
     @Transactional
     public ReplyProcessingResult processPaymentSuccess(
-            PaymentCompletedReply reply,
-            SagaData sagaData,
-            Consumer<SagaData> persistCallback) {
-        
+        PaymentCompletedReply reply,
+        SagaData sagaData,
+        Consumer<SagaData> persistCallback) {
+
         String orderId = reply.getOrderId();
         String replyType = "PAYMENT_SUCCESS";
 
@@ -164,12 +143,14 @@ public class ReplyProcessingService {
         return ReplyProcessingResult.success(OrderStates.CANCELLED.name(), null);
     }
 
+    // ========== Shipping Reply Processing ==========
+
     @Transactional
     public ReplyProcessingResult processPaymentRefunded(
-            PaymentRefundedReply reply,
-            SagaData sagaData,
-            ReentrantLock sagaLock) {
-        
+        PaymentRefundedReply reply,
+        SagaData sagaData,
+        ReentrantLock sagaLock) {
+
         String orderId = reply.getOrderId();
         String replyType = "PAYMENT_REFUNDED";
 
@@ -189,37 +170,35 @@ public class ReplyProcessingService {
         // Note: Lock is already held by caller (processPaymentRefundedWithService)
         // Create a defensive copy with updated values to avoid race conditions
         SagaData updatedData = SagaData.builder()
-                .orderId(sagaData.getOrderId())
-                .customerId(sagaData.getCustomerId())
-                .paymentId(sagaData.getPaymentId())
-                .reservationId(sagaData.getReservationId())
-                .shipmentId(sagaData.getShipmentId())
-                .totalAmount(sagaData.getTotalAmount())
-                .shippingAddress(sagaData.getShippingAddress())
-                .items(sagaData.getItems())
-                .createdAt(sagaData.getCreatedAt())
-                .lastUpdatedAt(java.time.Instant.now())
-                .currentStep(sagaData.getCurrentStep())
-                .paymentCompleted(sagaData.isPaymentCompleted())
-                .inventoryReserved(sagaData.isInventoryReserved())
-                .shippingScheduled(sagaData.isShippingScheduled())
-                .paymentRefunded(true)  // Updated
-                .inventoryReleased(sagaData.isInventoryReleased())
-                .shippingCancelled(sagaData.isShippingCancelled())
-                .expectedCompensations(sagaData.getExpectedCompensations())
-                .completedCompensations(sagaData.getCompletedCompensations() + 1)  // Updated
-                .build();
-        
+            .orderId(sagaData.getOrderId())
+            .customerId(sagaData.getCustomerId())
+            .paymentId(sagaData.getPaymentId())
+            .reservationId(sagaData.getReservationId())
+            .shipmentId(sagaData.getShipmentId())
+            .totalAmount(sagaData.getTotalAmount())
+            .shippingAddress(sagaData.getShippingAddress())
+            .items(sagaData.getItems())
+            .createdAt(sagaData.getCreatedAt())
+            .lastUpdatedAt(java.time.Instant.now())
+            .currentStep(sagaData.getCurrentStep())
+            .paymentCompleted(sagaData.isPaymentCompleted())
+            .inventoryReserved(sagaData.isInventoryReserved())
+            .shippingScheduled(sagaData.isShippingScheduled())
+            .paymentRefunded(true)  // Updated
+            .inventoryReleased(sagaData.isInventoryReleased())
+            .shippingCancelled(sagaData.isShippingCancelled())
+            .expectedCompensations(sagaData.getExpectedCompensations())
+            .completedCompensations(sagaData.getCompletedCompensations() + 1)  // Updated
+            .build();
+
         return new ReplyProcessingResult(true, false, OrderStates.COMPENSATING.name(), updatedData);
     }
 
-    // ========== Inventory Reply Processing ==========
-
     @Transactional
     public ReplyProcessingResult processInventorySuccess(
-            InventoryReservedReply reply,
-            SagaData sagaData) {
-        
+        InventoryReservedReply reply,
+        SagaData sagaData) {
+
         String orderId = reply.getOrderId();
         String replyType = "INVENTORY_RESERVED";
 
@@ -253,14 +232,14 @@ public class ReplyProcessingService {
      * 2. Fails the order
      * 3. Persists saga state as COMPENSATING
      * 4. Enqueues compensation commands to outbox
-     * 
+     * <p>
      * All operations happen in a single transaction to ensure consistency.
      */
     @Transactional
     public ReplyProcessingResult processInventoryFailure(
-            InventoryFailedReply reply,
-            SagaData sagaData) {
-        
+        InventoryFailedReply reply,
+        SagaData sagaData) {
+
         String orderId = reply.getOrderId();
         String replyType = "INVENTORY_FAILED";
 
@@ -296,18 +275,20 @@ public class ReplyProcessingService {
         touchSaga(sagaData);
         persistSagaState(orderId, OrderStates.COMPENSATING.name(), sagaData);
 
-        log.info("Inventory failure handled atomically for order: {}, expectedCompensations: {}", 
-                orderId, expectedCompensations);
+        log.info("Inventory failure handled atomically for order: {}, expectedCompensations: {}",
+            orderId, expectedCompensations);
 
         return ReplyProcessingResult.success(OrderStates.COMPENSATING.name(), sagaData);
     }
 
+    // ========== Helper Methods ==========
+
     @Transactional
     public ReplyProcessingResult processInventoryReleased(
-            InventoryReleasedReply reply,
-            SagaData sagaData,
-            ReentrantLock sagaLock) {
-        
+        InventoryReleasedReply reply,
+        SagaData sagaData,
+        ReentrantLock sagaLock) {
+
         String orderId = reply.getOrderId();
         String replyType = "INVENTORY_RELEASED";
 
@@ -327,31 +308,29 @@ public class ReplyProcessingService {
         // Note: Lock is already held by caller (processInventoryReleasedWithService)
         // Create a defensive copy with updated values to avoid race conditions
         SagaData updatedData = SagaData.builder()
-                .orderId(sagaData.getOrderId())
-                .customerId(sagaData.getCustomerId())
-                .paymentId(sagaData.getPaymentId())
-                .reservationId(sagaData.getReservationId())
-                .shipmentId(sagaData.getShipmentId())
-                .totalAmount(sagaData.getTotalAmount())
-                .shippingAddress(sagaData.getShippingAddress())
-                .items(sagaData.getItems())
-                .createdAt(sagaData.getCreatedAt())
-                .lastUpdatedAt(java.time.Instant.now())
-                .currentStep(sagaData.getCurrentStep())
-                .paymentCompleted(sagaData.isPaymentCompleted())
-                .inventoryReserved(sagaData.isInventoryReserved())
-                .shippingScheduled(sagaData.isShippingScheduled())
-                .paymentRefunded(sagaData.isPaymentRefunded())
-                .inventoryReleased(true)  // Updated
-                .shippingCancelled(sagaData.isShippingCancelled())
-                .expectedCompensations(sagaData.getExpectedCompensations())
-                .completedCompensations(sagaData.getCompletedCompensations() + 1)  // Updated
-                .build();
-        
+            .orderId(sagaData.getOrderId())
+            .customerId(sagaData.getCustomerId())
+            .paymentId(sagaData.getPaymentId())
+            .reservationId(sagaData.getReservationId())
+            .shipmentId(sagaData.getShipmentId())
+            .totalAmount(sagaData.getTotalAmount())
+            .shippingAddress(sagaData.getShippingAddress())
+            .items(sagaData.getItems())
+            .createdAt(sagaData.getCreatedAt())
+            .lastUpdatedAt(java.time.Instant.now())
+            .currentStep(sagaData.getCurrentStep())
+            .paymentCompleted(sagaData.isPaymentCompleted())
+            .inventoryReserved(sagaData.isInventoryReserved())
+            .shippingScheduled(sagaData.isShippingScheduled())
+            .paymentRefunded(sagaData.isPaymentRefunded())
+            .inventoryReleased(true)  // Updated
+            .shippingCancelled(sagaData.isShippingCancelled())
+            .expectedCompensations(sagaData.getExpectedCompensations())
+            .completedCompensations(sagaData.getCompletedCompensations() + 1)  // Updated
+            .build();
+
         return new ReplyProcessingResult(true, false, OrderStates.COMPENSATING.name(), updatedData);
     }
-
-    // ========== Shipping Reply Processing ==========
 
     @Transactional
     public ReplyProcessingResult processShippingSuccess(ShippingScheduledReply reply) {
@@ -381,14 +360,14 @@ public class ReplyProcessingService {
      * 2. Fails the order
      * 3. Persists saga state as COMPENSATING
      * 4. Enqueues compensation commands to outbox
-     * 
+     * <p>
      * All operations happen in a single transaction to ensure consistency.
      */
     @Transactional
     public ReplyProcessingResult processShippingFailure(
-            ShippingFailedReply reply,
-            SagaData sagaData) {
-        
+        ShippingFailedReply reply,
+        SagaData sagaData) {
+
         String orderId = reply.getOrderId();
         String replyType = "SHIPPING_FAILED";
 
@@ -431,18 +410,18 @@ public class ReplyProcessingService {
         touchSaga(sagaData);
         persistSagaState(orderId, OrderStates.COMPENSATING.name(), sagaData);
 
-        log.info("Shipping failure handled atomically for order: {}, expectedCompensations: {}", 
-                orderId, expectedCompensations);
+        log.info("Shipping failure handled atomically for order: {}, expectedCompensations: {}",
+            orderId, expectedCompensations);
 
         return ReplyProcessingResult.success(OrderStates.COMPENSATING.name(), sagaData);
     }
 
     @Transactional
     public ReplyProcessingResult processShippingCancelled(
-            ShippingCancelledReply reply,
-            SagaData sagaData,
-            ReentrantLock sagaLock) {
-        
+        ShippingCancelledReply reply,
+        SagaData sagaData,
+        ReentrantLock sagaLock) {
+
         String orderId = reply.getOrderId();
         String replyType = "SHIPPING_CANCELLED";
 
@@ -462,31 +441,29 @@ public class ReplyProcessingService {
         // Note: Lock is already held by caller (processShippingCancelledWithService)
         // Create a defensive copy with updated values to avoid race conditions
         SagaData updatedData = SagaData.builder()
-                .orderId(sagaData.getOrderId())
-                .customerId(sagaData.getCustomerId())
-                .paymentId(sagaData.getPaymentId())
-                .reservationId(sagaData.getReservationId())
-                .shipmentId(sagaData.getShipmentId())
-                .totalAmount(sagaData.getTotalAmount())
-                .shippingAddress(sagaData.getShippingAddress())
-                .items(sagaData.getItems())
-                .createdAt(sagaData.getCreatedAt())
-                .lastUpdatedAt(java.time.Instant.now())
-                .currentStep(sagaData.getCurrentStep())
-                .paymentCompleted(sagaData.isPaymentCompleted())
-                .inventoryReserved(sagaData.isInventoryReserved())
-                .shippingScheduled(sagaData.isShippingScheduled())
-                .paymentRefunded(sagaData.isPaymentRefunded())
-                .inventoryReleased(sagaData.isInventoryReleased())
-                .shippingCancelled(true)  // Updated
-                .expectedCompensations(sagaData.getExpectedCompensations())
-                .completedCompensations(sagaData.getCompletedCompensations() + 1)  // Updated
-                .build();
-        
+            .orderId(sagaData.getOrderId())
+            .customerId(sagaData.getCustomerId())
+            .paymentId(sagaData.getPaymentId())
+            .reservationId(sagaData.getReservationId())
+            .shipmentId(sagaData.getShipmentId())
+            .totalAmount(sagaData.getTotalAmount())
+            .shippingAddress(sagaData.getShippingAddress())
+            .items(sagaData.getItems())
+            .createdAt(sagaData.getCreatedAt())
+            .lastUpdatedAt(java.time.Instant.now())
+            .currentStep(sagaData.getCurrentStep())
+            .paymentCompleted(sagaData.isPaymentCompleted())
+            .inventoryReserved(sagaData.isInventoryReserved())
+            .shippingScheduled(sagaData.isShippingScheduled())
+            .paymentRefunded(sagaData.isPaymentRefunded())
+            .inventoryReleased(sagaData.isInventoryReleased())
+            .shippingCancelled(true)  // Updated
+            .expectedCompensations(sagaData.getExpectedCompensations())
+            .completedCompensations(sagaData.getCompletedCompensations() + 1)  // Updated
+            .build();
+
         return new ReplyProcessingResult(true, false, OrderStates.COMPENSATING.name(), updatedData);
     }
-
-    // ========== Helper Methods ==========
 
     private void touchSaga(SagaData data) {
         java.time.Instant now = java.time.Instant.now();
@@ -496,6 +473,8 @@ public class ReplyProcessingService {
         data.setLastUpdatedAt(now);
     }
 
+    // ========== Order Creation (Transaction Boundary) ==========
+
     private void persistSagaState(String orderId, String state, SagaData data) {
         try {
             touchSaga(data);
@@ -503,11 +482,11 @@ public class ReplyProcessingService {
             LocalDateTime now = LocalDateTime.now();
 
             SagaInstance instance = sagaInstanceRepository.findByOrderId(orderId)
-                    .orElse(SagaInstance.builder()
-                            .sagaId(java.util.UUID.randomUUID().toString())
-                            .orderId(orderId)
-                            .createdAt(now)
-                            .build());
+                .orElse(SagaInstance.builder()
+                    .sagaId(UUID.randomUUID().toString())
+                    .orderId(orderId)
+                    .createdAt(now)
+                    .build());
 
             instance.setCurrentState(state);
             instance.setSagaDataJson(sagaDataJson);
@@ -531,10 +510,12 @@ public class ReplyProcessingService {
         persistSagaState(orderId, state, data);
     }
 
+    // ========== Timeout Compensation (Atomic Transaction) ==========
+
     private void deleteSagaInstance(String orderId) {
         try {
             sagaInstanceRepository.findByOrderId(orderId)
-                    .ifPresent(sagaInstanceRepository::delete);
+                .ifPresent(sagaInstanceRepository::delete);
             log.debug("Deleted saga instance for order: {}", orderId);
         } catch (DataAccessException e) {
             log.error("Database operation failed while deleting saga instance for order {}: {}", orderId, e.getMessage());
@@ -548,22 +529,20 @@ public class ReplyProcessingService {
     public SagaData recoverSagaData(String orderId) {
         try {
             return sagaInstanceRepository.findByOrderId(orderId)
-                    .map(instance -> {
-                        try {
-                            return objectMapper.readValue(instance.getSagaDataJson(), SagaData.class);
-                        } catch (JsonProcessingException e) {
-                            log.error("JSON deserialization failed for saga data for order {}: {}", orderId, e.getMessage());
-                            return null;
-                        }
-                    })
-                    .orElse(null);
+                .map(instance -> {
+                    try {
+                        return objectMapper.readValue(instance.getSagaDataJson(), SagaData.class);
+                    } catch (JsonProcessingException e) {
+                        log.error("JSON deserialization failed for saga data for order {}: {}", orderId, e.getMessage());
+                        return null;
+                    }
+                })
+                .orElse(null);
         } catch (DataAccessException e) {
             log.error("Database operation failed while recovering saga data for order {}: {}", orderId, e.getMessage());
             return null;
         }
     }
-
-    // ========== Order Creation (Transaction Boundary) ==========
 
     /**
      * Creates an order with saga state in a single transaction.
@@ -572,26 +551,26 @@ public class ReplyProcessingService {
      */
     @Transactional
     public void createOrderWithSagaState(
-            String orderId,
-            String customerId,
-            BigDecimal totalAmount,
-            String shippingAddress,
-            List<OrderCreatedEvent.OrderItemEvent> items,
-            String paymentId,
-            String reservationId,
-            String shipmentId,
-            SagaData sagaData) {
+        String orderId,
+        String customerId,
+        BigDecimal totalAmount,
+        String shippingAddress,
+        List<OrderCreatedEvent.OrderItemEvent> items,
+        String paymentId,
+        String reservationId,
+        String shipmentId,
+        SagaData sagaData) {
 
         // 1. Create and persist order entity
         orderService.createOrder(
-                orderId,
-                customerId,
-                totalAmount,
-                shippingAddress,
-                items,
-                paymentId,
-                reservationId,
-                shipmentId
+            orderId,
+            customerId,
+            totalAmount,
+            shippingAddress,
+            items,
+            paymentId,
+            reservationId,
+            shipmentId
         );
 
         // 2. Persist saga state
@@ -609,71 +588,43 @@ public class ReplyProcessingService {
     private void enqueuePaymentCommand(SagaData data) {
         try {
             ProcessPaymentCommand command = ProcessPaymentCommand.builder()
-                    .commandType(COMMAND_PROCESS_PAYMENT)
-                    .paymentId(data.getPaymentId())
-                    .orderId(data.getOrderId())
-                    .customerId(data.getCustomerId())
-                    .amount(data.getTotalAmount())
-                    .build();
+                .commandType(COMMAND_PROCESS_PAYMENT)
+                .paymentId(data.getPaymentId())
+                .orderId(data.getOrderId())
+                .customerId(data.getCustomerId())
+                .amount(data.getTotalAmount())
+                .build();
 
             String payload = objectMapper.writeValueAsString(command);
             OutboxCommand outbox = OutboxCommand.builder()
-                    .outboxId(UUID.randomUUID().toString())
-                    .orderId(data.getOrderId())
-                    .commandType(COMMAND_PROCESS_PAYMENT)
-                    .topic(PAYMENT_COMMAND_TOPIC)
-                    .payloadJson(payload)
-                    .status(OUTBOX_STATUS_PENDING)
-                    .attempts(0)
-                    .createdAt(LocalDateTime.now())
-                    .build();
+                .outboxId(UUID.randomUUID().toString())
+                .orderId(data.getOrderId())
+                .commandType(COMMAND_PROCESS_PAYMENT)
+                .topic(PAYMENT_COMMAND_TOPIC)
+                .payloadJson(payload)
+                .status(OUTBOX_STATUS_PENDING)
+                .attempts(0)
+                .createdAt(LocalDateTime.now())
+                .build();
             outboxCommandRepository.save(outbox);
             log.debug("Enqueued payment command to outbox for order: {}", data.getOrderId());
         } catch (JsonProcessingException e) {
             log.error("JSON serialization failed while enqueueing payment command for order {}: {}",
-                    data.getOrderId(), e.getMessage());
+                data.getOrderId(), e.getMessage());
             throw new RuntimeException("Failed to enqueue payment command", e);
         }
     }
-
-    // ========== Timeout Compensation (Atomic Transaction) ==========
-
-    /**
-     * Result of timeout handling containing compensation commands to send.
-     */
-    public record TimeoutHandlingResult(
-            boolean handled,
-            SagaData updatedSagaData,
-            List<CompensationCommand> compensationCommands
-    ) {
-        public static TimeoutHandlingResult skipped() {
-            return new TimeoutHandlingResult(false, null, List.of());
-        }
-
-        public static TimeoutHandlingResult success(SagaData data, List<CompensationCommand> commands) {
-            return new TimeoutHandlingResult(true, data, commands);
-        }
-    }
-
-    /**
-     * Represents a compensation command to be sent.
-     */
-    public record CompensationCommand(
-            String commandType,
-            String topic,
-            Object command
-    ) {}
 
     /**
      * Handles saga timeout by atomically:
      * 1. Failing the order
      * 2. Persisting saga state to COMPENSATING
      * 3. Enqueueing compensation commands to outbox
-     * 
+     * <p>
      * This ensures all operations succeed or fail together, preventing scenarios
      * where the order is marked as CANCELLED but compensation commands are never sent.
-     * 
-     * @param orderId the order ID
+     *
+     * @param orderId  the order ID
      * @param sagaData current saga data
      * @return result containing updated saga data and compensation commands
      */
@@ -699,7 +650,7 @@ public class ReplyProcessingService {
         orderService.failOrder(orderId, "Saga timeout - compensation triggered");
 
         // 3. Calculate and create compensation commands
-        List<CompensationCommand> compensationCommands = new java.util.ArrayList<>();
+        List<CompensationCommand> compensationCommands = new ArrayList<>();
         int expectedCompensations = 0;
 
         if (sagaData.isShippingScheduled()) {
@@ -739,56 +690,50 @@ public class ReplyProcessingService {
         return TimeoutHandlingResult.success(sagaData, compensationCommands);
     }
 
-    private static final String COMMAND_CANCEL_SHIPPING = "CANCEL_SHIPPING";
-    private static final String COMMAND_RELEASE_INVENTORY = "RELEASE_INVENTORY";
-    private static final String COMMAND_REFUND_PAYMENT = "REFUND_PAYMENT";
-    private static final String INVENTORY_COMMAND_TOPIC = "orchestration.inventory.commands";
-    private static final String SHIPPING_COMMAND_TOPIC = "orchestration.shipping.commands";
-
     private CompensationCommand createCancelShippingCompensation(SagaData data) {
         try {
-            com.thesis.common.command.CancelShippingCommand command = 
-                    com.thesis.common.command.CancelShippingCommand.builder()
-                            .commandType(COMMAND_CANCEL_SHIPPING)
-                            .shipmentId(data.getShipmentId())
-                            .orderId(data.getOrderId())
-                            .build();
+            com.thesis.common.command.CancelShippingCommand command =
+                com.thesis.common.command.CancelShippingCommand.builder()
+                    .commandType(COMMAND_CANCEL_SHIPPING)
+                    .shipmentId(data.getShipmentId())
+                    .orderId(data.getOrderId())
+                    .build();
             return new CompensationCommand(COMMAND_CANCEL_SHIPPING, SHIPPING_COMMAND_TOPIC, command);
         } catch (Exception e) {
-            log.error("Failed to create cancel shipping compensation for order {}: {}", 
-                    data.getOrderId(), e.getMessage());
+            log.error("Failed to create cancel shipping compensation for order {}: {}",
+                data.getOrderId(), e.getMessage());
             return null;
         }
     }
 
     private CompensationCommand createReleaseInventoryCompensation(SagaData data) {
         try {
-            com.thesis.common.command.ReleaseInventoryCommand command = 
-                    com.thesis.common.command.ReleaseInventoryCommand.builder()
-                            .commandType(COMMAND_RELEASE_INVENTORY)
-                            .reservationId(data.getReservationId())
-                            .orderId(data.getOrderId())
-                            .build();
+            com.thesis.common.command.ReleaseInventoryCommand command =
+                com.thesis.common.command.ReleaseInventoryCommand.builder()
+                    .commandType(COMMAND_RELEASE_INVENTORY)
+                    .reservationId(data.getReservationId())
+                    .orderId(data.getOrderId())
+                    .build();
             return new CompensationCommand(COMMAND_RELEASE_INVENTORY, INVENTORY_COMMAND_TOPIC, command);
         } catch (Exception e) {
-            log.error("Failed to create release inventory compensation for order {}: {}", 
-                    data.getOrderId(), e.getMessage());
+            log.error("Failed to create release inventory compensation for order {}: {}",
+                data.getOrderId(), e.getMessage());
             return null;
         }
     }
 
     private CompensationCommand createRefundPaymentCompensation(SagaData data) {
         try {
-            com.thesis.common.command.RefundPaymentCommand command = 
-                    com.thesis.common.command.RefundPaymentCommand.builder()
-                            .commandType(COMMAND_REFUND_PAYMENT)
-                            .paymentId(data.getPaymentId())
-                            .orderId(data.getOrderId())
-                            .build();
+            com.thesis.common.command.RefundPaymentCommand command =
+                com.thesis.common.command.RefundPaymentCommand.builder()
+                    .commandType(COMMAND_REFUND_PAYMENT)
+                    .paymentId(data.getPaymentId())
+                    .orderId(data.getOrderId())
+                    .build();
             return new CompensationCommand(COMMAND_REFUND_PAYMENT, PAYMENT_COMMAND_TOPIC, command);
         } catch (Exception e) {
-            log.error("Failed to create refund payment compensation for order {}: {}", 
-                    data.getOrderId(), e.getMessage());
+            log.error("Failed to create refund payment compensation for order {}: {}",
+                data.getOrderId(), e.getMessage());
             return null;
         }
     }
@@ -800,34 +745,32 @@ public class ReplyProcessingService {
         try {
             String payload = objectMapper.writeValueAsString(cmd.command());
             OutboxCommand outbox = OutboxCommand.builder()
-                    .outboxId(UUID.randomUUID().toString())
-                    .orderId(orderId)
-                    .commandType(cmd.commandType())
-                    .topic(cmd.topic())
-                    .payloadJson(payload)
-                    .status(OUTBOX_STATUS_PENDING)
-                    .attempts(0)
-                    .createdAt(LocalDateTime.now())
-                    .build();
+                .outboxId(UUID.randomUUID().toString())
+                .orderId(orderId)
+                .commandType(cmd.commandType())
+                .topic(cmd.topic())
+                .payloadJson(payload)
+                .status(OUTBOX_STATUS_PENDING)
+                .attempts(0)
+                .createdAt(LocalDateTime.now())
+                .build();
             outboxCommandRepository.save(outbox);
             log.debug("Enqueued compensation command {} to outbox for order: {}", cmd.commandType(), orderId);
         } catch (JsonProcessingException e) {
             log.error("JSON serialization failed while enqueueing compensation command {} for order {}: {}",
-                    cmd.commandType(), orderId, e.getMessage());
+                cmd.commandType(), orderId, e.getMessage());
             throw new RuntimeException("Failed to enqueue compensation command: " + cmd.commandType(), e);
         }
     }
 
-    // ========== Generic Outbox Command Enqueueing ==========
-
     /**
      * Atomically enqueues a command to the outbox for reliable delivery.
      * This method is transactional to ensure consistency.
-     * 
-     * @param orderId the order ID
+     *
+     * @param orderId     the order ID
      * @param commandType the type of command
-     * @param command the command object to serialize
-     * @param topic the Kafka topic to send to
+     * @param command     the command object to serialize
+     * @param topic       the Kafka topic to send to
      * @return true if enqueued successfully, false otherwise
      */
     @Transactional
@@ -835,26 +778,77 @@ public class ReplyProcessingService {
         try {
             String payload = objectMapper.writeValueAsString(command);
             OutboxCommand outbox = OutboxCommand.builder()
-                    .outboxId(UUID.randomUUID().toString())
-                    .orderId(orderId)
-                    .commandType(commandType)
-                    .topic(topic)
-                    .payloadJson(payload)
-                    .status(OUTBOX_STATUS_PENDING)
-                    .attempts(0)
-                    .createdAt(LocalDateTime.now())
-                    .build();
+                .outboxId(UUID.randomUUID().toString())
+                .orderId(orderId)
+                .commandType(commandType)
+                .topic(topic)
+                .payloadJson(payload)
+                .status(OUTBOX_STATUS_PENDING)
+                .attempts(0)
+                .createdAt(LocalDateTime.now())
+                .build();
             outboxCommandRepository.save(outbox);
             log.debug("Enqueued outbox command {} for order: {}", commandType, orderId);
             return true;
         } catch (JsonProcessingException e) {
             log.error("JSON serialization failed while enqueueing outbox command {} for order {}: {}",
-                    commandType, orderId, e.getMessage());
+                commandType, orderId, e.getMessage());
             return false;
         } catch (DataAccessException e) {
             log.error("Database error while enqueueing outbox command {} for order {}: {}",
-                    commandType, orderId, e.getMessage());
+                commandType, orderId, e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Result of processing a reply, containing the next action to take.
+     */
+    public record ReplyProcessingResult(
+        boolean processed,
+        boolean sagaRecovered,
+        String nextState,
+        SagaData updatedSagaData
+    ) {
+        public static ReplyProcessingResult skipped() {
+            return new ReplyProcessingResult(false, false, null, null);
+        }
+
+        public static ReplyProcessingResult success(String nextState, SagaData data) {
+            return new ReplyProcessingResult(true, false, nextState, data);
+        }
+
+        public static ReplyProcessingResult successWithRecovery(String nextState, SagaData data) {
+            return new ReplyProcessingResult(true, true, nextState, data);
+        }
+    }
+
+    /**
+     * Result of timeout handling containing compensation commands to send.
+     */
+    public record TimeoutHandlingResult(
+        boolean handled,
+        SagaData updatedSagaData,
+        List<CompensationCommand> compensationCommands
+    ) {
+        public static TimeoutHandlingResult skipped() {
+            return new TimeoutHandlingResult(false, null, List.of());
+        }
+
+        public static TimeoutHandlingResult success(SagaData data, List<CompensationCommand> commands) {
+            return new TimeoutHandlingResult(true, data, commands);
+        }
+    }
+
+    // ========== Generic Outbox Command Enqueueing ==========
+
+    /**
+     * Represents a compensation command to be sent.
+     */
+    public record CompensationCommand(
+        String commandType,
+        String topic,
+        Object command
+    ) {
     }
 }

@@ -16,13 +16,13 @@ import java.time.Instant;
 public class OrderCancelledEvent {
     @NotBlank(message = "Order ID cannot be blank")
     private String orderId;
-    
+
     @NotBlank(message = "Reason cannot be blank")
     private String reason;
-    
+
     @NotNull(message = "Cancelled at cannot be null")
     private Instant cancelledAt;
-    
+
     @NotBlank(message = "Correlation ID cannot be blank")
     private String correlationId;
 }

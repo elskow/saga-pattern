@@ -5,6 +5,7 @@
 locals {
   ssh_public_key = var.ssh_public_key
   saga_node_ip   = var.nodes["saga-node"].ip_address
+  gatling_runner_ip = var.nodes["gatling-runner"].ip_address
 }
 
 #------------------------------------------------------------------------------
@@ -166,68 +167,118 @@ resource "null_resource" "saga_node" {
     ]
   }
 
-  # Pull images ahead of time
+  # Pull images ahead of time (but don't start containers - Jenkins will do that)
   provisioner "remote-exec" {
     inline = [
       "sudo docker compose -f ~/saga/docker-compose.infra.yml pull",
       "sudo docker compose -f ~/saga/docker-compose.choreography.yml pull",
       "sudo docker compose -f ~/saga/docker-compose.orchestration.yml pull",
-      "echo 'All images pulled successfully'"
-    ]
-  }
-
-  # Start infrastructure services
-  provisioner "remote-exec" {
-    inline = [
-      "cd ~/saga && sudo docker compose -f docker-compose.infra.yml up -d",
-      "sleep 30",
-      "sudo docker compose -f ~/saga/docker-compose.infra.yml ps",
-      "echo 'Infrastructure services started'",
-      "echo 'Kafka: ${var.nodes["saga-node"].ip_address}:9092'",
-      "echo 'PostgreSQL: ${var.nodes["saga-node"].ip_address}:5432'"
+      "echo 'All images pulled successfully'",
+      "echo 'saga-node setup complete! Jenkins will start containers during benchmarks.'"
     ]
   }
 }
 
 #------------------------------------------------------------------------------
-# K6 Runner Setup
+# Gatling Runner Setup (JDK 17 + Maven + Gatling)
 #------------------------------------------------------------------------------
 
-resource "null_resource" "k6_runner" {
+resource "null_resource" "gatling_runner" {
   depends_on = [lxd_instance.node]
 
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    host        = var.nodes["k6-runner"].ip_address
+    host        = var.nodes["gatling-runner"].ip_address
     private_key = file(var.ssh_private_key_path)
     agent       = false
-    timeout     = "5m"
+    timeout     = "10m"
   }
 
   provisioner "remote-exec" {
     inline = [
       "cloud-init status --wait",
-      "echo 'Cloud-init completed on k6-runner'"
+      "echo 'Cloud-init completed on gatling-runner'"
     ]
   }
 
-  # Install K6
+  # Install JDK 17 (Eclipse Temurin)
   provisioner "remote-exec" {
     inline = [
-      "sudo gpg -k",
-      "sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69",
-      "echo 'deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main' | sudo tee /etc/apt/sources.list.d/k6.list",
       "sudo apt-get update",
-      "sudo apt-get install -y k6",
-      "k6 version",
-      "echo 'K6 installed successfully'"
+      "sudo apt-get install -y wget apt-transport-https gpg",
+      "wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | sudo gpg --dearmor --yes -o /usr/share/keyrings/adoptium.gpg",
+      "echo 'deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb '$(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release)' main' | sudo tee /etc/apt/sources.list.d/adoptium.list",
+      "sudo apt-get update",
+      "sudo apt-get install -y temurin-17-jdk",
+      "java -version",
+      "echo 'JDK 17 installed successfully'"
+    ]
+  }
+
+  # Install Maven
+  provisioner "remote-exec" {
+    inline = [
+      "sudo apt-get install -y maven",
+      "mvn -version",
+      "echo 'Maven installed successfully'"
+    ]
+  }
+
+  # Create workspace directory
+  provisioner "remote-exec" {
+    inline = [
+      "mkdir -p ~/workspace",
+      "mkdir -p ~/results",
+      "echo 'Workspace directories created'"
+    ]
+  }
+
+  # Clone the saga-pattern repository (using GHCR token for authentication)
+  provisioner "remote-exec" {
+    inline = [
+      # Configure git credentials for future pulls
+      "git config --global credential.helper store",
+      "echo 'https://${var.ghcr_username}:${var.ghcr_token}@github.com' > ~/.git-credentials",
+      "chmod 600 ~/.git-credentials",
+      # Clone the repository
+      "cd ~/workspace && git clone --depth 1 --branch ${var.saga_repo_branch} ${var.saga_repo_url} saga-pattern",
+      "echo 'Repository cloned successfully'"
+    ]
+  }
+
+  # Pre-download Maven dependencies for Gatling
+  provisioner "remote-exec" {
+    inline = [
+      "cd ~/workspace/saga-pattern/load-testing/gatling && mvn dependency:resolve",
+      "echo 'Maven dependencies downloaded'"
+    ]
+  }
+
+  # Upload benchmark runner script
+  provisioner "file" {
+    source      = "${path.module}/scripts/run-benchmark.sh"
+    destination = "/home/ubuntu/run-benchmark.sh"
+  }
+
+  # Upload warmup script
+  provisioner "file" {
+    source      = "${path.module}/scripts/warmup.sh"
+    destination = "/home/ubuntu/warmup.sh"
+  }
+
+  # Make scripts executable
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x ~/run-benchmark.sh ~/warmup.sh",
+      "echo 'Gatling runner setup complete!'",
+      "echo 'Run benchmarks with: ~/run-benchmark.sh <pattern> <profile> <simulation> <saga_host>'"
     ]
   }
 }
 
 #------------------------------------------------------------------------------
-# Observability Node Setup (Prometheus, Grafana, Zipkin)
+# Observability Node Setup (Prometheus, Grafana)
 #------------------------------------------------------------------------------
 
 resource "null_resource" "observability_node" {
@@ -268,8 +319,7 @@ resource "null_resource" "observability_node" {
       "mkdir -p ~/observability/prometheus",
       "mkdir -p ~/observability/grafana/provisioning/datasources",
       "mkdir -p ~/observability/grafana/provisioning/dashboards",
-      "mkdir -p ~/observability/grafana/dashboards",
-      "mkdir -p ~/observability/zipkin"
+      "mkdir -p ~/observability/grafana/dashboards"
     ]
   }
 
@@ -279,16 +329,14 @@ resource "null_resource" "observability_node" {
     destination = "/home/ubuntu/observability"
   }
 
-  # Start observability stack
+  # Pull images but don't start (can be started manually if needed)
   provisioner "remote-exec" {
     inline = [
-      "cd ~/observability && sudo docker compose up -d",
-      "sleep 15",
-      "sudo docker compose -f ~/observability/docker-compose.yml ps",
-      "echo 'Observability stack started successfully'",
+      "cd ~/observability && sudo docker compose pull || true",
+      "echo 'Observability node setup complete!'",
+      "echo 'To start manually: cd ~/observability && sudo docker compose up -d'",
       "echo 'Prometheus: http://${var.nodes["observability-node"].ip_address}:9090'",
-      "echo 'Grafana: http://${var.nodes["observability-node"].ip_address}:3000 (admin/admin)'",
-      "echo 'Zipkin: http://${var.nodes["observability-node"].ip_address}:9411'"
+      "echo 'Grafana: http://${var.nodes["observability-node"].ip_address}:3000 (admin/admin)'"
     ]
   }
 }

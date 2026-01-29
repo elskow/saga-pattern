@@ -5,12 +5,12 @@ import com.thesis.choreography.inventory.model.InventoryReservation;
 import com.thesis.choreography.inventory.model.Product;
 import com.thesis.choreography.inventory.repository.InventoryReservationRepository;
 import com.thesis.choreography.inventory.repository.ProductRepository;
-import com.thesis.common.exception.InsufficientStockException;
-import com.thesis.common.exception.ProductNotFoundException;
 import com.thesis.common.events.InventoryReleasedEvent;
 import com.thesis.common.events.InventoryReservationFailedEvent;
 import com.thesis.common.events.InventoryReservedEvent;
 import com.thesis.common.events.PaymentCompletedEvent;
+import com.thesis.common.exception.InsufficientStockException;
+import com.thesis.common.exception.ProductNotFoundException;
 import com.thesis.common.metrics.SagaMetrics;
 import com.thesis.common.metrics.SagaMetricsHelper;
 import io.micrometer.core.instrument.Counter;
@@ -51,11 +51,11 @@ public class InventoryService {
     private final Counter sagaStepsFailedCounter;
     @Getter
     private final SagaMetricsHelper metricsHelper;
-    
+
     // Thesis testing - artificial delay configuration
     @Value("${app.artificial-delay.enabled:false}")
     private boolean artificialDelayEnabled;
-    
+
     @Value("${app.artificial-delay.duration-ms:0}")
     private long artificialDelayMs;
 
@@ -68,22 +68,22 @@ public class InventoryService {
         this.eventPublisher = eventPublisher;
 
         this.reservationSuccessCounter = meterRegistry.counter(SagaMetrics.INVENTORY_RESERVATIONS_SUCCESS,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
         this.reservationFailedCounter = meterRegistry.counter(SagaMetrics.INVENTORY_RESERVATIONS_FAILED,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
         this.stepInventoryDurationTimer = meterRegistry.timer(SagaMetrics.STEP_INVENTORY_DURATION,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
         this.compensationInventoryCounter = meterRegistry.counter(SagaMetrics.COMPENSATIONS_INVENTORY,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
         this.compensationDurationTimer = meterRegistry.timer(SagaMetrics.COMPENSATION_DURATION,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
-                SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
+            SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
         this.sagaStepsExecutedCounter = meterRegistry.counter(SagaMetrics.SAGA_STEPS_EXECUTED,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
-                SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
+            SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
         this.sagaStepsFailedCounter = meterRegistry.counter(SagaMetrics.SAGA_STEPS_FAILED,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
-                SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY,
+            SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
         this.metricsHelper = new SagaMetricsHelper(meterRegistry, SagaMetrics.SERVICE_CHOREOGRAPHY);
     }
 
@@ -106,7 +106,7 @@ public class InventoryService {
             MDC.put("orderId", orderId);
             stepInventoryDurationTimer.record(() -> {
                 log.info("Reserving inventory for order: {}", orderId);
-                
+
                 // Thesis testing - artificial delay for timeout scenarios
                 if (artificialDelayEnabled && artificialDelayMs > 0) {
                     log.warn("Artificial delay enabled: sleeping for {} ms (thesis timeout test)", artificialDelayMs);
@@ -131,14 +131,14 @@ public class InventoryService {
                 try {
                     // Batch query all products at once to avoid N+1 query problem
                     List<String> productIds = items.stream()
-                            .map(ItemToReserve::productId)
-                            .collect(Collectors.toList());
+                        .map(ItemToReserve::productId)
+                        .collect(Collectors.toList());
 
                     Map<String, Product> products;
                     try {
                         List<Product> productList = productRepository.findAllByProductIdIn(productIds);
                         products = productList.stream()
-                                .collect(Collectors.toMap(Product::getProductId, p -> p));
+                            .collect(Collectors.toMap(Product::getProductId, p -> p));
                     } catch (DataAccessException e) {
                         log.error("Database error while finding products for order: {}", orderId, e);
                         throw e;
@@ -167,18 +167,18 @@ public class InventoryService {
                         productsToUpdate.add(product);
 
                         InventoryReservation reservation = InventoryReservation.builder()
-                                .reservationId(reservationId + "-" + item.productId())
-                                .orderId(orderId)
-                                .productId(item.productId())
-                                .quantity(item.quantity())
-                                .status(InventoryReservation.ReservationStatus.RESERVED)
-                                .build();
+                            .reservationId(reservationId + "-" + item.productId())
+                            .orderId(orderId)
+                            .productId(item.productId())
+                            .quantity(item.quantity())
+                            .status(InventoryReservation.ReservationStatus.RESERVED)
+                            .build();
                         reservationsToSave.add(reservation);
 
                         reservedItems.add(InventoryReservedEvent.ReservedItem.builder()
-                                .productId(item.productId())
-                                .quantity(item.quantity())
-                                .build());
+                            .productId(item.productId())
+                            .quantity(item.quantity())
+                            .build());
                     }
 
                     // Batch save all products and reservations
@@ -196,41 +196,41 @@ public class InventoryService {
                     String correlationId = MDC.get("correlationId");
                     if (correlationId == null || correlationId.isBlank()) {
                         correlationId = paymentEvent.getCorrelationId() != null ?
-                                paymentEvent.getCorrelationId() : UUID.randomUUID().toString();
+                            paymentEvent.getCorrelationId() : UUID.randomUUID().toString();
                         MDC.put("correlationId", correlationId);
                     }
 
                     InventoryReservedEvent event = InventoryReservedEvent.builder()
-                            .reservationId(reservationId)
-                            .orderId(orderId)
-                            .reservedItems(reservedItems)
-                            .reservedAt(Instant.now())
-                            .correlationId(correlationId)
-                            .createdAt(Instant.now())
-                            .build();
+                        .reservationId(reservationId)
+                        .orderId(orderId)
+                        .reservedItems(reservedItems)
+                        .reservedAt(Instant.now())
+                        .correlationId(correlationId)
+                        .createdAt(Instant.now())
+                        .build();
 
                     // Publish event after transaction commit
                     final String finalCorrelationId = correlationId;
                     if (TransactionSynchronizationManager.isSynchronizationActive()) {
                         TransactionSynchronizationManager.registerSynchronization(
-                                new TransactionSynchronization() {
-                                    @Override
-                                    public void afterCommit() {
-                                        try {
-                                            MDC.put("orderId", orderId);
-                                            MDC.put("correlationId", finalCorrelationId);
-                                            eventPublisher.publishInventoryReserved(event);
-                                            metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
-                                            reservationSuccessCounter.increment();
-                                            sagaStepsExecutedCounter.increment();
-                                            log.info("Inventory reserved for order: {}", orderId);
-                                        } catch (Exception e) {
-                                            log.error("Failed to publish InventoryReservedEvent after commit for order: {}", orderId, e);
-                                        } finally {
-                                            MDC.clear();
-                                        }
+                            new TransactionSynchronization() {
+                                @Override
+                                public void afterCommit() {
+                                    try {
+                                        MDC.put("orderId", orderId);
+                                        MDC.put("correlationId", finalCorrelationId);
+                                        eventPublisher.publishInventoryReserved(event);
+                                        metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
+                                        reservationSuccessCounter.increment();
+                                        sagaStepsExecutedCounter.increment();
+                                        log.info("Inventory reserved for order: {}", orderId);
+                                    } catch (Exception e) {
+                                        log.error("Failed to publish InventoryReservedEvent after commit for order: {}", orderId, e);
+                                    } finally {
+                                        MDC.clear();
                                     }
                                 }
+                            }
                         );
                     } else {
                         eventPublisher.publishInventoryReserved(event);
@@ -268,34 +268,34 @@ public class InventoryService {
             }
 
             InventoryReservationFailedEvent failedEvent = InventoryReservationFailedEvent.builder()
-                    .orderId(orderId)
-                    .reason(e.getMessage())
-                    .failedAt(Instant.now())
-                    .correlationId(correlationId)
-                    .createdAt(Instant.now())
-                    .build();
+                .orderId(orderId)
+                .reason(e.getMessage())
+                .failedAt(Instant.now())
+                .correlationId(correlationId)
+                .createdAt(Instant.now())
+                .build();
 
             // Publish event after transaction commit
             final String finalCorrelationId = correlationId;
             if (TransactionSynchronizationManager.isSynchronizationActive()) {
                 TransactionSynchronizationManager.registerSynchronization(
-                        new TransactionSynchronization() {
-                            @Override
-                            public void afterCommit() {
-                                try {
-                                    MDC.put("orderId", orderId);
-                                    MDC.put("correlationId", finalCorrelationId);
-                                    eventPublisher.publishInventoryReservationFailed(failedEvent);
-                                    metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
-                                    reservationFailedCounter.increment();
-                                    sagaStepsFailedCounter.increment();
-                                } catch (Exception ex) {
-                                    log.error("Failed to publish InventoryReservationFailedEvent after commit for order: {}", orderId, ex);
-                                } finally {
-                                    MDC.clear();
-                                }
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            try {
+                                MDC.put("orderId", orderId);
+                                MDC.put("correlationId", finalCorrelationId);
+                                eventPublisher.publishInventoryReservationFailed(failedEvent);
+                                metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
+                                reservationFailedCounter.increment();
+                                sagaStepsFailedCounter.increment();
+                            } catch (Exception ex) {
+                                log.error("Failed to publish InventoryReservationFailedEvent after commit for order: {}", orderId, ex);
+                            } finally {
+                                MDC.clear();
                             }
                         }
+                    }
                 );
             } else {
                 eventPublisher.publishInventoryReservationFailed(failedEvent);
@@ -331,8 +331,8 @@ public class InventoryService {
 
             // Filter only RESERVED reservations
             List<InventoryReservation> reservedReservations = reservations.stream()
-                    .filter(r -> r.getStatus() == InventoryReservation.ReservationStatus.RESERVED)
-                    .toList();
+                .filter(r -> r.getStatus() == InventoryReservation.ReservationStatus.RESERVED)
+                .toList();
 
             if (reservedReservations.isEmpty()) {
                 log.info("No reserved inventory to release for order: {}", orderId);
@@ -341,15 +341,15 @@ public class InventoryService {
 
             // Batch query all products at once
             List<String> productIds = reservedReservations.stream()
-                    .map(InventoryReservation::getProductId)
-                    .distinct()
-                    .collect(Collectors.toList());
+                .map(InventoryReservation::getProductId)
+                .distinct()
+                .collect(Collectors.toList());
 
             Map<String, Product> products;
             try {
                 List<Product> productList = productRepository.findAllByProductIdIn(productIds);
                 products = productList.stream()
-                        .collect(Collectors.toMap(Product::getProductId, p -> p));
+                    .collect(Collectors.toMap(Product::getProductId, p -> p));
             } catch (DataAccessException e) {
                 log.error("Database error while finding products for order: {}", orderId, e);
                 throw e;
@@ -394,31 +394,31 @@ public class InventoryService {
             }
 
             InventoryReleasedEvent event = InventoryReleasedEvent.builder()
-                    .orderId(orderId)
-                    .releasedAt(Instant.now())
-                    .correlationId(correlationId)
-                    .createdAt(Instant.now())
-                    .build();
+                .orderId(orderId)
+                .releasedAt(Instant.now())
+                .correlationId(correlationId)
+                .createdAt(Instant.now())
+                .build();
 
             // Publish event after transaction commit
             final String finalCorrelationId = correlationId;
             if (TransactionSynchronizationManager.isSynchronizationActive()) {
                 TransactionSynchronizationManager.registerSynchronization(
-                        new TransactionSynchronization() {
-                            @Override
-                            public void afterCommit() {
-                                try {
-                                    MDC.put("orderId", orderId);
-                                    MDC.put("correlationId", finalCorrelationId);
-                                    eventPublisher.publishInventoryReleased(event);
-                                    metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
-                                } catch (Exception e) {
-                                    log.error("Failed to publish InventoryReleasedEvent after commit for order: {}", orderId, e);
-                                } finally {
-                                    MDC.clear();
-                                }
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            try {
+                                MDC.put("orderId", orderId);
+                                MDC.put("correlationId", finalCorrelationId);
+                                eventPublisher.publishInventoryReleased(event);
+                                metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
+                            } catch (Exception e) {
+                                log.error("Failed to publish InventoryReleasedEvent after commit for order: {}", orderId, e);
+                            } finally {
+                                MDC.clear();
                             }
                         }
+                    }
                 );
             } else {
                 eventPublisher.publishInventoryReleased(event);
@@ -434,5 +434,6 @@ public class InventoryService {
         }
     }
 
-    public record ItemToReserve(String productId, int quantity) {}
+    public record ItemToReserve(String productId, int quantity) {
+    }
 }

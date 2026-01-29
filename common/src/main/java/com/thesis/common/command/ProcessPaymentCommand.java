@@ -17,16 +17,16 @@ import java.math.BigDecimal;
 public class ProcessPaymentCommand {
     @NotBlank(message = "commandType must not be blank")
     private String commandType;
-    
+
     @NotNull(message = "paymentId must not be null")
     private String paymentId;
-    
+
     @NotNull(message = "orderId must not be null")
     private String orderId;
-    
+
     @NotNull(message = "customerId must not be null")
     private String customerId;
-    
+
     @NotNull(message = "amount must not be null")
     @Positive(message = "amount must be positive")
     private BigDecimal amount;

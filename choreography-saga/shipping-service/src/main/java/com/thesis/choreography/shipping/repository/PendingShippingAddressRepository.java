@@ -12,11 +12,11 @@ import java.util.Optional;
 
 @Repository
 public interface PendingShippingAddressRepository extends JpaRepository<PendingShippingAddress, String> {
-    
+
     Optional<PendingShippingAddress> findByOrderId(String orderId);
-    
+
     void deleteByOrderId(String orderId);
-    
+
     @Modifying
     @Query("DELETE FROM PendingShippingAddress p WHERE p.createdAt < :cutoff")
     int deleteByCreatedAtBefore(@Param("cutoff") Instant cutoff);

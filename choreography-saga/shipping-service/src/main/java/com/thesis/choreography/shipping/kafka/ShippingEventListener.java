@@ -5,7 +5,9 @@ import com.thesis.choreography.shipping.repository.PendingShippingAddressReposit
 import com.thesis.choreography.shipping.service.IdempotencyService;
 import com.thesis.choreography.shipping.service.ShippingService;
 import com.thesis.common.dto.KafkaTopics;
-import com.thesis.common.events.*;
+import com.thesis.common.events.InventoryReservedEvent;
+import com.thesis.common.events.OrderCreatedEvent;
+import com.thesis.common.events.PaymentRefundedEvent;
 import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,14 +36,14 @@ public class ShippingEventListener {
     @Transactional
     public void handleOrderEvents(ConsumerRecord<String, Object> record) {
         if (record.value() instanceof OrderCreatedEvent event) {
-            handleEvent(record, event, "OrderCreatedEvent",
+            handleEvent(event, "OrderCreatedEvent",
                 () -> !idempotencyService.markProcessed("order-created:" + event.getOrderId(), "OrderCreatedEvent"),
                 () -> {
                     log.info("Received OrderCreatedEvent for order: {}, storing shipping address", event.getOrderId());
                     PendingShippingAddress pendingAddress = PendingShippingAddress.builder()
-                            .orderId(event.getOrderId())
-                            .shippingAddress(event.getShippingAddress())
-                            .build();
+                        .orderId(event.getOrderId())
+                        .shippingAddress(event.getShippingAddress())
+                        .build();
                     pendingShippingAddressRepository.save(pendingAddress);
                     log.info("Stored pending shipping address for order: {}", event.getOrderId());
                 });
@@ -52,7 +54,7 @@ public class ShippingEventListener {
     @Transactional
     public void handleInventoryEvents(ConsumerRecord<String, Object> record) {
         if (record.value() instanceof InventoryReservedEvent event) {
-            handleEvent(record, event, "InventoryReservedEvent",
+            handleEvent(event, "InventoryReservedEvent",
                 () -> !idempotencyService.markProcessed("inventory-reserved:" + event.getReservationId(), "InventoryReservedEvent"),
                 () -> {
                     log.info("Received InventoryReservedEvent for order: {}", event.getOrderId());
@@ -72,7 +74,7 @@ public class ShippingEventListener {
     @Transactional
     public void handlePaymentEvents(ConsumerRecord<String, Object> record) {
         if (record.value() instanceof PaymentRefundedEvent event) {
-            handleEvent(record, event, "PaymentRefundedEvent",
+            handleEvent(event, "PaymentRefundedEvent",
                 () -> !idempotencyService.markProcessed("payment-refunded:" + event.getOrderId(), "PaymentRefundedEvent"),
                 () -> {
                     log.info("Received PaymentRefundedEvent, cancelling shipping for order: {}", event.getOrderId());
@@ -82,8 +84,8 @@ public class ShippingEventListener {
         }
     }
 
-    private <T> void handleEvent(ConsumerRecord<String, Object> record, T event, String eventType,
-                                   Supplier<Boolean> idempotencyCheck, Runnable handler) {
+    private <T> void handleEvent(T event, String eventType,
+                                 Supplier<Boolean> idempotencyCheck, Runnable handler) {
         String correlationId = UUID.randomUUID().toString();
         try {
             String orderId = getOrderId(event);
@@ -97,6 +99,8 @@ public class ShippingEventListener {
                 return;
             }
 
+            // idempotencyCheck returns true if event is a duplicate (should skip)
+            // The lambda wraps markProcessed with ! so: true = duplicate, false = new
             if (idempotencyCheck.get()) {
                 log.info("Skipping duplicate {} for order: {}", eventType, orderId);
                 return;

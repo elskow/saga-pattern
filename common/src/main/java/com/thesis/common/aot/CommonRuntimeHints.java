@@ -1,37 +1,12 @@
 package com.thesis.common.aot;
 
-import com.thesis.common.command.CancelShippingCommand;
-import com.thesis.common.command.ProcessPaymentCommand;
-import com.thesis.common.command.RefundPaymentCommand;
-import com.thesis.common.command.ReleaseInventoryCommand;
-import com.thesis.common.command.ReserveInventoryCommand;
-import com.thesis.common.command.ScheduleShippingCommand;
+import com.thesis.common.command.*;
 import com.thesis.common.dto.CreateOrderRequest;
 import com.thesis.common.dto.KafkaTopics;
 import com.thesis.common.dto.OrderResponse;
 import com.thesis.common.dto.OrderStatus;
-import com.thesis.common.events.InventoryReleasedEvent;
-import com.thesis.common.events.InventoryReservationFailedEvent;
-import com.thesis.common.events.InventoryReservedEvent;
-import com.thesis.common.events.OrderCancelledEvent;
-import com.thesis.common.events.OrderCompletedEvent;
-import com.thesis.common.events.OrderCreatedEvent;
-import com.thesis.common.events.PaymentCompletedEvent;
-import com.thesis.common.events.PaymentFailedEvent;
-import com.thesis.common.events.PaymentRefundedEvent;
-import com.thesis.common.events.ShippingCancelledEvent;
-import com.thesis.common.events.ShippingFailedEvent;
-import com.thesis.common.events.ShippingScheduledEvent;
-import com.thesis.common.replies.InventoryFailedReply;
-import com.thesis.common.replies.InventoryReleasedReply;
-import com.thesis.common.replies.InventoryReservedReply;
-import com.thesis.common.replies.PaymentCompletedReply;
-import com.thesis.common.replies.PaymentFailedReply;
-import com.thesis.common.replies.PaymentRefundedReply;
-import com.thesis.common.replies.SagaReply;
-import com.thesis.common.replies.ShippingCancelledReply;
-import com.thesis.common.replies.ShippingFailedReply;
-import com.thesis.common.replies.ShippingScheduledReply;
+import com.thesis.common.events.*;
+import com.thesis.common.replies.*;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
@@ -44,9 +19,9 @@ import org.springframework.aot.hint.RuntimeHintsRegistrar;
 public class CommonRuntimeHints implements RuntimeHintsRegistrar {
 
     private static final MemberCategory[] SERIALIZATION_CATEGORIES = {
-            MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
-            MemberCategory.INVOKE_DECLARED_METHODS,
-            MemberCategory.DECLARED_FIELDS
+        MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
+        MemberCategory.INVOKE_DECLARED_METHODS,
+        MemberCategory.DECLARED_FIELDS
     };
 
     @Override

@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Kafka-based command listener for inventory service.
  * Handles inventory reservation and release commands from the saga orchestrator.
- * 
+ * <p>
  * Uses InventoryService for database operations to ensure proper @Transactional support
  * (avoiding Spring AOP self-invocation issues).
  */
@@ -58,37 +58,37 @@ public class InventoryCommandListener {
     private final Validator validator;
 
     public InventoryCommandListener(InventoryService inventoryService,
-                                     KafkaTemplate<String, Object> kafkaTemplate,
-                                     ObjectMapper objectMapper,
-                                     MeterRegistry meterRegistry,
-                                     Validator validator) {
+                                    KafkaTemplate<String, Object> kafkaTemplate,
+                                    ObjectMapper objectMapper,
+                                    MeterRegistry meterRegistry,
+                                    Validator validator) {
         this.inventoryService = inventoryService;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
         this.validator = validator;
         this.reservationSuccessCounter = meterRegistry.counter(SagaMetrics.INVENTORY_RESERVATIONS_SUCCESS,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
         this.reservationFailedCounter = meterRegistry.counter(SagaMetrics.INVENTORY_RESERVATIONS_FAILED,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
         this.reservationTimer = meterRegistry.timer(SagaMetrics.STEP_INVENTORY_DURATION,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
         this.compensationInventoryCounter = meterRegistry.counter(SagaMetrics.COMPENSATIONS_INVENTORY,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
         this.compensationDurationTimer = meterRegistry.timer(SagaMetrics.COMPENSATION_DURATION,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
-                SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
+            SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
         this.sagaStepsExecutedCounter = meterRegistry.counter(SagaMetrics.SAGA_STEPS_EXECUTED,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
-                SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
+            SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
         this.sagaStepsFailedCounter = meterRegistry.counter(SagaMetrics.SAGA_STEPS_FAILED,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
-                SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
+            SagaMetrics.TAG_STEP, SagaMetrics.STEP_INVENTORY);
         this.kafkaReplySendFailureCounter = meterRegistry.counter(
-                SagaMetrics.SAGA_MESSAGES_TOTAL,
-                SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
-                SagaMetrics.TAG_DIRECTION, SagaMetrics.DIRECTION_SENT,
-                SagaMetrics.TAG_MESSAGE_TYPE, SagaMetrics.TYPE_REPLY,
-                SagaMetrics.TAG_OUTCOME, SagaMetrics.OUTCOME_FAILURE
+            SagaMetrics.SAGA_MESSAGES_TOTAL,
+            SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION,
+            SagaMetrics.TAG_DIRECTION, SagaMetrics.DIRECTION_SENT,
+            SagaMetrics.TAG_MESSAGE_TYPE, SagaMetrics.TYPE_REPLY,
+            SagaMetrics.TAG_OUTCOME, SagaMetrics.OUTCOME_FAILURE
         );
         this.metricsHelper = new SagaMetricsHelper(meterRegistry, SagaMetrics.SERVICE_ORCHESTRATION);
     }
@@ -129,11 +129,11 @@ public class InventoryCommandListener {
                     String validationError = validateCommandWithReason(command);
                     if (validationError != null) {
                         InventoryReleasedReply reply = InventoryReleasedReply.builder()
-                                .reservationId(command.getReservationId())
-                                .orderId(command.getOrderId())
-                                .success(false)
-                                .reason("Validation failed: " + validationError)
-                                .build();
+                            .reservationId(command.getReservationId())
+                            .orderId(command.getOrderId())
+                            .success(false)
+                            .reason("Validation failed: " + validationError)
+                            .build();
                         sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
                     } else {
                         handleReleaseInventory(command);
@@ -153,13 +153,13 @@ public class InventoryCommandListener {
     private void sendValidationFailureReply(String reservationId, String orderId, String validationError) {
         reservationFailedCounter.increment();
         sagaStepsFailedCounter.increment();
-        
+
         InventoryFailedReply reply = InventoryFailedReply.builder()
-                .reservationId(reservationId)
-                .orderId(orderId)
-                .reason("Validation failed: " + validationError)
-                .build();
-        
+            .reservationId(reservationId)
+            .orderId(orderId)
+            .reason("Validation failed: " + validationError)
+            .build();
+
         sendReplySafely(REPLY_TOPIC, orderId, reply, orderId);
         log.error("Inventory command validation failed for order {}: {}", orderId, validationError);
     }
@@ -178,19 +178,19 @@ public class InventoryCommandListener {
                 sagaStepsExecutedCounter.increment();
 
                 InventoryReservedReply reply = InventoryReservedReply.builder()
-                        .reservationId(command.getReservationId())
-                        .orderId(command.getOrderId())
-                        .build();
+                    .reservationId(command.getReservationId())
+                    .orderId(command.getOrderId())
+                    .build();
                 sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
             } else {
                 reservationFailedCounter.increment();
                 sagaStepsFailedCounter.increment();
 
                 InventoryFailedReply reply = InventoryFailedReply.builder()
-                        .reservationId(command.getReservationId())
-                        .orderId(command.getOrderId())
-                        .reason(result.errorMessage())
-                        .build();
+                    .reservationId(command.getReservationId())
+                    .orderId(command.getOrderId())
+                    .reason(result.errorMessage())
+                    .build();
                 sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
                 log.error("Inventory {} reservation failed: {}", command.getReservationId(), result.errorMessage());
             }
@@ -199,10 +199,10 @@ public class InventoryCommandListener {
             sagaStepsFailedCounter.increment();
 
             InventoryFailedReply reply = InventoryFailedReply.builder()
-                    .reservationId(command.getReservationId())
-                    .orderId(command.getOrderId())
-                    .reason("Reservation failed: " + e.getMessage())
-                    .build();
+                .reservationId(command.getReservationId())
+                .orderId(command.getOrderId())
+                .reason("Reservation failed: " + e.getMessage())
+                .build();
             sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
             log.error("Unexpected error reserving inventory {}: {}", command.getReservationId(), e.getMessage(), e);
         } finally {
@@ -229,11 +229,11 @@ public class InventoryCommandListener {
         }
 
         InventoryReleasedReply reply = InventoryReleasedReply.builder()
-                .reservationId(command.getReservationId())
-                .orderId(command.getOrderId())
-                .success(success)
-                .reason(reason)
-                .build();
+            .reservationId(command.getReservationId())
+            .orderId(command.getOrderId())
+            .success(success)
+            .reason(reason)
+            .build();
         sendReplySafely(REPLY_TOPIC, command.getOrderId(), reply, command.getOrderId());
 
         compensationInventoryCounter.increment();
@@ -251,13 +251,13 @@ public class InventoryCommandListener {
                 } else {
                     kafkaReplySendFailureCounter.increment();
                     log.error("Failed to send reply for order {} to topic {}: {}",
-                            orderId, topic, ex.getMessage(), ex);
+                        orderId, topic, ex.getMessage(), ex);
                 }
             });
         } catch (Exception e) {
             kafkaReplySendFailureCounter.increment();
             log.error("Exception while sending reply for order {} to topic {}: {}",
-                    orderId, topic, e.getMessage(), e);
+                orderId, topic, e.getMessage(), e);
         }
     }
 
@@ -265,9 +265,9 @@ public class InventoryCommandListener {
         Set<ConstraintViolation<T>> violations = validator.validate(command);
         if (!violations.isEmpty()) {
             String errorMessage = violations.stream()
-                    .map(v -> v.getPropertyPath() + ": " + v.getMessage())
-                    .reduce((a, b) -> a + ", " + b)
-                    .orElse("Unknown validation error");
+                .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("Unknown validation error");
             log.error("Command validation failed: {}", errorMessage);
             return errorMessage;
         }

@@ -1,21 +1,33 @@
 # Orchestration Pattern Services - LOCAL BUILD
 # Builds Docker images from source code for debugging
+# Supports scaling with: docker compose up -d --scale order-service=2
 # Usage: docker compose -f docker-compose.orchestration.local.yml up -d --build
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  deploy:
+    resources:
+      limits:
+        cpus: '1'
+        memory: 512M
+      reservations:
+        cpus: '0.25'
+        memory: 256M
 
 services:
   # ============================================
   # Order Service (Orchestrator - port 8085)
   # ============================================
   order-service:
+    <<: *service-defaults
     build:
       context: ..
       dockerfile: Dockerfile.local
       args:
         SERVICE_PATH: orchestration-saga/order-service
     image: saga-pattern/orchestration-order-service:local
-    container_name: orchestration-order-service
     ports:
-      - "8085:8085"
+      - "8085-8088:8085"
     environment:
       SERVER_PORT: 8085
       DB_HOST: orch-order-db
@@ -24,35 +36,38 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
-      LOG_LEVEL: DEBUG
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: orchestration-order-service
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-      # Service URLs for orchestration
+      # Service URLs for orchestration (using Docker DNS)
       PAYMENT_SERVICE_URL: http://payment-service:8086
       INVENTORY_SERVICE_URL: http://inventory-service:8087
       SHIPPING_SERVICE_URL: http://shipping-service:8088
+      JAVA_OPTS: "-Xmx256m -Xms128m -XX:+UseG1GC"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8085/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 60s
-    restart: unless-stopped
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8085"
+      - "prometheus.path=/actuator/prometheus"
 
   # ============================================
   # Payment Service
   # ============================================
   payment-service:
+    <<: *service-defaults
     build:
       context: ..
       dockerfile: Dockerfile.local
       args:
         SERVICE_PATH: orchestration-saga/payment-service
     image: saga-pattern/orchestration-payment-service:local
-    container_name: orchestration-payment-service
-    ports:
-      - "8086:8086"
     environment:
       SERVER_PORT: 8086
       DB_HOST: orch-payment-db
@@ -61,31 +76,34 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
-      LOG_LEVEL: DEBUG
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: orchestration-payment-service
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+      JAVA_OPTS: "-Xmx256m -Xms128m -XX:+UseG1GC"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8086/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 60s
-    restart: unless-stopped
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8086"
+      - "prometheus.path=/actuator/prometheus"
 
   # ============================================
   # Inventory Service
   # ============================================
   inventory-service:
+    <<: *service-defaults
     build:
       context: ..
       dockerfile: Dockerfile.local
       args:
         SERVICE_PATH: orchestration-saga/inventory-service
     image: saga-pattern/orchestration-inventory-service:local
-    container_name: orchestration-inventory-service
-    ports:
-      - "8087:8087"
     environment:
       SERVER_PORT: 8087
       DB_HOST: orch-inventory-db
@@ -94,31 +112,34 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
-      LOG_LEVEL: DEBUG
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: orchestration-inventory-service
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+      JAVA_OPTS: "-Xmx256m -Xms128m -XX:+UseG1GC"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8087/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 60s
-    restart: unless-stopped
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8087"
+      - "prometheus.path=/actuator/prometheus"
 
   # ============================================
   # Shipping Service
   # ============================================
   shipping-service:
+    <<: *service-defaults
     build:
       context: ..
       dockerfile: Dockerfile.local
       args:
         SERVICE_PATH: orchestration-saga/shipping-service
     image: saga-pattern/orchestration-shipping-service:local
-    container_name: orchestration-shipping-service
-    ports:
-      - "8088:8088"
     environment:
       SERVER_PORT: 8088
       DB_HOST: orch-shipping-db
@@ -127,17 +148,22 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
-      LOG_LEVEL: DEBUG
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: orchestration-shipping-service
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+      JAVA_OPTS: "-Xmx256m -Xms128m -XX:+UseG1GC"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8088/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 60s
-    restart: unless-stopped
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8088"
+      - "prometheus.path=/actuator/prometheus"
 
 networks:
   default:

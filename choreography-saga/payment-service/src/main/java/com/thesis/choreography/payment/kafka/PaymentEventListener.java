@@ -5,8 +5,6 @@ import com.thesis.choreography.payment.service.PaymentService;
 import com.thesis.common.dto.KafkaTopics;
 import com.thesis.common.events.InventoryReservationFailedEvent;
 import com.thesis.common.events.OrderCreatedEvent;
-import com.thesis.common.metrics.SagaMetrics;
-import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -69,8 +67,8 @@ public class PaymentEventListener {
 
                 Set<?> violations = validator.validate(typedEvent);
                 if (!violations.isEmpty()) {
-                    log.error("Invalid {} received for order: {}. Violations: {}", 
-                            eventClass.getSimpleName(), orderId, violations);
+                    log.error("Invalid {} received for order: {}. Violations: {}",
+                        eventClass.getSimpleName(), orderId, violations);
                     return;
                 }
 
@@ -86,11 +84,6 @@ public class PaymentEventListener {
         } finally {
             MDC.clear();
         }
-    }
-
-    @FunctionalInterface
-    private interface EventHandler<T> {
-        void handle(T event, String eventId) throws Exception;
     }
 
     private String getOrderId(Object event) {
@@ -125,5 +118,10 @@ public class PaymentEventListener {
         if (correlationId != null) {
             MDC.put("correlationId", correlationId);
         }
+    }
+
+    @FunctionalInterface
+    private interface EventHandler<T> {
+        void handle(T event, String eventId) throws Exception;
     }
 }
