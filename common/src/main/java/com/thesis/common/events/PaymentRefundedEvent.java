@@ -3,35 +3,37 @@ package com.thesis.common.events;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class PaymentRefundedEvent {
+public record PaymentRefundedEvent(
     @NotBlank(message = "Payment ID cannot be blank")
-    private String paymentId;
+    String paymentId,
 
     @NotBlank(message = "Order ID cannot be blank")
-    private String orderId;
+    String orderId,
 
     @NotNull(message = "Refund amount cannot be null")
     @Positive(message = "Refund amount must be positive")
-    private BigDecimal refundAmount;
+    BigDecimal refundAmount,
 
     @NotNull(message = "Refunded at cannot be null")
-    private Instant refundedAt;
+    Instant refundedAt,
 
     @NotBlank(message = "Correlation ID cannot be blank")
-    private String correlationId;
+    String correlationId,
 
-    @Builder.Default
-    private Instant createdAt = Instant.now();
+    Instant createdAt
+) implements ChoreographyEvent {
+    public PaymentRefundedEvent {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
+
+    public static PaymentRefundedEvent of(String paymentId, String orderId, BigDecimal refundAmount,
+                                          Instant refundedAt, String correlationId) {
+        return new PaymentRefundedEvent(paymentId, orderId, refundAmount, refundedAt, correlationId, Instant.now());
+    }
 }

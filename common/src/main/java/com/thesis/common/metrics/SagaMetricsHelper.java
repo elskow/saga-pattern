@@ -6,31 +6,25 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Helper class for recording thesis comparison metrics.
- * Provides convenient methods to track messages and DB writes per saga transaction.
- */
 public class SagaMetricsHelper {
 
     private final MeterRegistry meterRegistry;
     private final String serviceType;
 
-    // Counters for total metrics
     private final Counter messagesSentCounter;
     private final Counter messagesReceivedCounter;
     private final Counter dbInsertsCounter;
     private final Counter dbUpdatesCounter;
 
-    // Distribution summaries for per-transaction metrics
     private final DistributionSummary messagesPerSuccessfulSaga;
     private final DistributionSummary messagesPerFailedSaga;
     private final DistributionSummary dbWritesPerSuccessfulSaga;
     private final DistributionSummary dbWritesPerFailedSaga;
 
-    // Per-transaction tracking (orderId -> counts)
     private final ConcurrentHashMap<String, AtomicInteger> messageCountByOrder = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicInteger> dbWriteCountByOrder = new ConcurrentHashMap<>();
 
@@ -38,7 +32,6 @@ public class SagaMetricsHelper {
         this.meterRegistry = meterRegistry;
         this.serviceType = serviceType;
 
-        // Initialize total counters
         this.messagesSentCounter = Counter.builder(SagaMetrics.SAGA_MESSAGES_TOTAL)
             .tag(SagaMetrics.TAG_SERVICE, serviceType)
             .tag(SagaMetrics.TAG_DIRECTION, SagaMetrics.DIRECTION_SENT)
@@ -59,7 +52,6 @@ public class SagaMetricsHelper {
             .tag(SagaMetrics.TAG_OPERATION, SagaMetrics.OPERATION_UPDATE)
             .register(meterRegistry);
 
-        // Initialize distribution summaries for per-transaction metrics
         this.messagesPerSuccessfulSaga = DistributionSummary.builder(SagaMetrics.SAGA_MESSAGES_PER_TRANSACTION)
             .tag(SagaMetrics.TAG_SERVICE, serviceType)
             .tag(SagaMetrics.TAG_OUTCOME, SagaMetrics.OUTCOME_SUCCESS)
@@ -81,17 +73,10 @@ public class SagaMetricsHelper {
             .register(meterRegistry);
     }
 
-    /**
-     * Record a message being sent.
-     *
-     * @param orderId     The order ID for per-transaction tracking
-     * @param messageType The type of message (event, command, reply)
-     */
     public void recordMessageSent(String orderId, String messageType) {
         messagesSentCounter.increment();
         messageCountByOrder.computeIfAbsent(orderId, k -> new AtomicInteger(0)).incrementAndGet();
 
-        // Also record with message type tag for detailed analysis
         Counter.builder(SagaMetrics.SAGA_MESSAGES_TOTAL)
             .tag(SagaMetrics.TAG_SERVICE, serviceType)
             .tag(SagaMetrics.TAG_DIRECTION, SagaMetrics.DIRECTION_SENT)
@@ -100,17 +85,10 @@ public class SagaMetricsHelper {
             .increment();
     }
 
-    /**
-     * Record a message being received.
-     *
-     * @param orderId     The order ID for per-transaction tracking
-     * @param messageType The type of message (event, command, reply)
-     */
     public void recordMessageReceived(String orderId, String messageType) {
         messagesReceivedCounter.increment();
         messageCountByOrder.computeIfAbsent(orderId, k -> new AtomicInteger(0)).incrementAndGet();
 
-        // Also record with message type tag for detailed analysis
         Counter.builder(SagaMetrics.SAGA_MESSAGES_TOTAL)
             .tag(SagaMetrics.TAG_SERVICE, serviceType)
             .tag(SagaMetrics.TAG_DIRECTION, SagaMetrics.DIRECTION_RECEIVED)
@@ -119,17 +97,10 @@ public class SagaMetricsHelper {
             .increment();
     }
 
-    /**
-     * Record a database insert operation.
-     *
-     * @param orderId The order ID for per-transaction tracking
-     * @param entity  The entity type being inserted
-     */
     public void recordDbInsert(String orderId, String entity) {
         dbInsertsCounter.increment();
         dbWriteCountByOrder.computeIfAbsent(orderId, k -> new AtomicInteger(0)).incrementAndGet();
 
-        // Also record with entity tag for detailed analysis
         Counter.builder(SagaMetrics.SAGA_DB_WRITES_TOTAL)
             .tag(SagaMetrics.TAG_SERVICE, serviceType)
             .tag(SagaMetrics.TAG_OPERATION, SagaMetrics.OPERATION_INSERT)
@@ -138,17 +109,10 @@ public class SagaMetricsHelper {
             .increment();
     }
 
-    /**
-     * Record a database update operation.
-     *
-     * @param orderId The order ID for per-transaction tracking
-     * @param entity  The entity type being updated
-     */
     public void recordDbUpdate(String orderId, String entity) {
         dbUpdatesCounter.increment();
         dbWriteCountByOrder.computeIfAbsent(orderId, k -> new AtomicInteger(0)).incrementAndGet();
 
-        // Also record with entity tag for detailed analysis
         Counter.builder(SagaMetrics.SAGA_DB_WRITES_TOTAL)
             .tag(SagaMetrics.TAG_SERVICE, serviceType)
             .tag(SagaMetrics.TAG_OPERATION, SagaMetrics.OPERATION_UPDATE)
@@ -157,13 +121,6 @@ public class SagaMetricsHelper {
             .increment();
     }
 
-    /**
-     * Record message latency between services.
-     *
-     * @param fromService The sending service
-     * @param toService   The receiving service
-     * @param latency     The latency duration
-     */
     public void recordMessageLatency(String fromService, String toService, Duration latency) {
         Timer.builder(SagaMetrics.SAGA_MESSAGE_LATENCY)
             .tag(SagaMetrics.TAG_SERVICE, serviceType)
@@ -173,55 +130,29 @@ public class SagaMetricsHelper {
             .record(latency);
     }
 
-    /**
-     * Called when a saga completes successfully.
-     * Records per-transaction metrics and cleans up tracking data.
-     *
-     * @param orderId The order ID
-     */
     public void recordSagaSuccess(String orderId) {
-        AtomicInteger messageCount = messageCountByOrder.remove(orderId);
-        AtomicInteger dbWriteCount = dbWriteCountByOrder.remove(orderId);
-
-        if (messageCount != null) {
-            messagesPerSuccessfulSaga.record(messageCount.get());
-        }
-        if (dbWriteCount != null) {
-            dbWritesPerSuccessfulSaga.record(dbWriteCount.get());
-        }
+        Optional.ofNullable(messageCountByOrder.remove(orderId))
+            .ifPresent(count -> messagesPerSuccessfulSaga.record(count.get()));
+        Optional.ofNullable(dbWriteCountByOrder.remove(orderId))
+            .ifPresent(count -> dbWritesPerSuccessfulSaga.record(count.get()));
     }
 
-    /**
-     * Called when a saga fails.
-     * Records per-transaction metrics and cleans up tracking data.
-     *
-     * @param orderId The order ID
-     */
     public void recordSagaFailure(String orderId) {
-        AtomicInteger messageCount = messageCountByOrder.remove(orderId);
-        AtomicInteger dbWriteCount = dbWriteCountByOrder.remove(orderId);
-
-        if (messageCount != null) {
-            messagesPerFailedSaga.record(messageCount.get());
-        }
-        if (dbWriteCount != null) {
-            dbWritesPerFailedSaga.record(dbWriteCount.get());
-        }
+        Optional.ofNullable(messageCountByOrder.remove(orderId))
+            .ifPresent(count -> messagesPerFailedSaga.record(count.get()));
+        Optional.ofNullable(dbWriteCountByOrder.remove(orderId))
+            .ifPresent(count -> dbWritesPerFailedSaga.record(count.get()));
     }
 
-    /**
-     * Get current message count for an order (for debugging/logging).
-     */
     public int getMessageCount(String orderId) {
-        AtomicInteger count = messageCountByOrder.get(orderId);
-        return count != null ? count.get() : 0;
+        return Optional.ofNullable(messageCountByOrder.get(orderId))
+            .map(AtomicInteger::get)
+            .orElse(0);
     }
 
-    /**
-     * Get current DB write count for an order (for debugging/logging).
-     */
     public int getDbWriteCount(String orderId) {
-        AtomicInteger count = dbWriteCountByOrder.get(orderId);
-        return count != null ? count.get() : 0;
+        return Optional.ofNullable(dbWriteCountByOrder.get(orderId))
+            .map(AtomicInteger::get)
+            .orElse(0);
     }
 }

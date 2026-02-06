@@ -13,12 +13,9 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -39,13 +36,14 @@ class OrderControllerTest {
     void shouldCreateOrder() throws Exception {
         // Given
         CreateOrderRequest request = createOrderRequest();
-        OrderResponse response = OrderResponse.builder()
-                .orderId("ORDER-123")
-                .customerId("CUST-001")
-                .status("PENDING")
-                .totalAmount(new BigDecimal("99.98"))
-                .createdAt(Instant.now())
-                .build();
+        OrderResponse response = new OrderResponse(
+                "ORDER-123",
+                "CUST-001",
+                "PENDING",
+                List.of(),
+                new BigDecimal("99.98"),
+                Instant.now(),
+                null);
 
         when(orderService.createOrder(any(CreateOrderRequest.class))).thenReturn(response);
 
@@ -63,13 +61,14 @@ class OrderControllerTest {
     void shouldGetOrderById() throws Exception {
         // Given
         String orderId = "ORDER-123";
-        OrderResponse response = OrderResponse.builder()
-                .orderId(orderId)
-                .customerId("CUST-001")
-                .status("COMPLETED")
-                .totalAmount(new BigDecimal("99.98"))
-                .createdAt(Instant.now())
-                .build();
+        OrderResponse response = new OrderResponse(
+                orderId,
+                "CUST-001",
+                "COMPLETED",
+                List.of(),
+                new BigDecimal("99.98"),
+                Instant.now(),
+                null);
 
         when(orderService.getOrder(orderId)).thenReturn(response);
 
@@ -84,17 +83,9 @@ class OrderControllerTest {
     void shouldGetOrdersByCustomer() throws Exception {
         // Given
         String customerId = "CUST-001";
-        List<OrderResponse> orders = Arrays.asList(
-                OrderResponse.builder()
-                        .orderId("ORDER-1")
-                        .customerId(customerId)
-                        .status("PENDING")
-                        .build(),
-                OrderResponse.builder()
-                        .orderId("ORDER-2")
-                        .customerId(customerId)
-                        .status("COMPLETED")
-                        .build()
+        List<OrderResponse> orders = List.of(
+                new OrderResponse("ORDER-1", customerId, "PENDING", List.of(), null, null, null),
+                new OrderResponse("ORDER-2", customerId, "COMPLETED", List.of(), null, null, null)
         );
 
         when(orderService.getOrdersByCustomer(customerId)).thenReturn(orders);
@@ -111,7 +102,7 @@ class OrderControllerTest {
     void shouldReturnEmptyListWhenNoOrdersForCustomer() throws Exception {
         // Given
         String customerId = "CUST-999";
-        when(orderService.getOrdersByCustomer(customerId)).thenReturn(Collections.emptyList());
+        when(orderService.getOrdersByCustomer(customerId)).thenReturn(List.of());
 
         // When/Then
         mockMvc.perform(get("/api/orders/customer/{customerId}", customerId))
@@ -120,17 +111,15 @@ class OrderControllerTest {
     }
 
     private CreateOrderRequest createOrderRequest() {
-        CreateOrderRequest.OrderItemRequest item = new CreateOrderRequest.OrderItemRequest();
-        item.setProductId("PROD-001");
-        item.setProductName("Test Product");
-        item.setQuantity(2);
-        item.setPrice(new BigDecimal("49.99"));
+        var item = new CreateOrderRequest.OrderItemRequest(
+                "PROD-001",
+                "Test Product",
+                2,
+                new BigDecimal("49.99"));
 
-        CreateOrderRequest request = new CreateOrderRequest();
-        request.setCustomerId("CUST-001");
-        request.setShippingAddress("123 Main Street");
-        request.setItems(Arrays.asList(item));
-
-        return request;
+        return new CreateOrderRequest(
+                "CUST-001",
+                "123 Main Street",
+                List.of(item));
     }
 }

@@ -2,26 +2,23 @@ package com.thesis.common.command;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ScheduleShippingCommand {
-    @NotBlank(message = "commandType must not be blank")
-    private String commandType;
+public record ScheduleShippingCommand(
+    @NotBlank(message = "Command type cannot be blank")
+    String commandType,
 
-    @NotNull(message = "shipmentId must not be null")
-    private String shipmentId;
+    @NotNull(message = "Shipping ID cannot be null")
+    String shippingId,
 
-    @NotNull(message = "orderId must not be null")
-    private String orderId;
+    @NotNull(message = "Order ID cannot be null")
+    String orderId,
 
-    @NotNull(message = "shippingAddress must not be null")
-    @NotBlank(message = "shippingAddress must not be blank")
-    private String shippingAddress;
+    @NotNull(message = "Shipping address cannot be null")
+    @NotBlank(message = "Shipping address cannot be blank")
+    String shippingAddress
+) {
+    public static ScheduleShippingCommand of(String commandType, String shippingId,
+                                              String orderId, String shippingAddress) {
+        return new ScheduleShippingCommand(commandType, shippingId, orderId, shippingAddress);
+    }
 }

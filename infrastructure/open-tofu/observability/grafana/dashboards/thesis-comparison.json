@@ -49,7 +49,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "saga_orders_created_total{job=\"choreography-order-service\"} or vector(0)",
+          "expr": "sum(saga_orders_created_total{service=\\\"choreography\\\"})",
           "refId": "A"
         }
       ],
@@ -89,7 +89,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "saga_orders_completed_total{job=\"choreography-order-service\"} or vector(0)",
+          "expr": "sum(saga_orders_completed_total{service=\\\"choreography\\\"})",
           "refId": "A"
         }
       ],
@@ -129,7 +129,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "saga_orders_failed_total{job=\"choreography-order-service\"} or vector(0)",
+          "expr": "sum(saga_orders_failed_total{service=\\\"choreography\\\"})",
           "refId": "A"
         }
       ],
@@ -169,7 +169,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "saga_orders_created_total{job=\"orchestration-order-service\"} or vector(0)",
+          "expr": "sum(saga_orders_created_total{service=\\\"orchestration\\\"})",
           "refId": "A"
         }
       ],
@@ -209,7 +209,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "saga_orders_completed_total{job=\"orchestration-order-service\"} or vector(0)",
+          "expr": "sum(saga_orders_completed_total{service=\\\"orchestration\\\"})",
           "refId": "A"
         }
       ],
@@ -249,7 +249,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "saga_orders_failed_total{job=\"orchestration-order-service\"} or vector(0)",
+          "expr": "sum(saga_orders_failed_total{service=\\\"orchestration\\\"})",
           "refId": "A"
         }
       ],
@@ -259,7 +259,7 @@
     {
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
       "id": 101,
-      "title": "Saga Processing Time (Average)",
+      "title": "Saga Total Duration (End-to-End)",
       "type": "row"
     },
     {
@@ -272,8 +272,8 @@
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.01 },
-              { "color": "red", "value": 0.1 }
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
             ]
           },
           "unit": "s"
@@ -297,11 +297,11 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "saga_order_processing_time_seconds_sum{job=\"choreography-order-service\"} / saga_order_processing_time_seconds_count{job=\"choreography-order-service\"}",
+          "expr": "sum(saga_total_duration_seconds_sum{service=\\\"choreography\\\"}) / sum(saga_total_duration_seconds_count{service=\\\"choreography\\\"})",
           "refId": "A"
         }
       ],
-      "title": "Choreography - Avg Processing",
+      "title": "Choreography - Avg Saga Duration",
       "type": "stat"
     },
     {
@@ -314,8 +314,8 @@
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.01 },
-              { "color": "red", "value": 0.1 }
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
             ]
           },
           "unit": "s"
@@ -339,11 +339,11 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "max_over_time(saga_order_processing_time_seconds_max{job=\"choreography-order-service\"}[5m])",
+          "expr": "max(saga_total_duration_seconds_max{service=\\\"choreography\\\"})",
           "refId": "A"
         }
       ],
-      "title": "Choreography - Max Processing",
+      "title": "Choreography - Max Saga Duration",
       "type": "stat"
     },
     {
@@ -381,11 +381,11 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "saga_total_duration_seconds_sum{job=\"orchestration-order-service\"} / saga_total_duration_seconds_count{job=\"orchestration-order-service\"}",
+          "expr": "sum(saga_total_duration_seconds_sum{service=\\\"orchestration\\\"}) / sum(saga_total_duration_seconds_count{service=\\\"orchestration\\\"})",
           "refId": "A"
         }
       ],
-      "title": "Orchestration - Avg Processing",
+      "title": "Orchestration - Avg Saga Duration",
       "type": "stat"
     },
     {
@@ -398,8 +398,8 @@
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.01 },
-              { "color": "red", "value": 0.1 }
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
             ]
           },
           "unit": "s"
@@ -423,11 +423,11 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "max_over_time(saga_total_duration_seconds_max{job=\"orchestration-order-service\"}[5m])",
+          "expr": "max(saga_total_duration_seconds_max{service=\\\"orchestration\\\"})",
           "refId": "A"
         }
       ],
-      "title": "Orchestration - Max Processing",
+      "title": "Orchestration - Max Saga Duration",
       "type": "stat"
     },
     {
@@ -490,17 +490,17 @@
       },
       "targets": [
         {
-          "expr": "saga_step_payment_duration_seconds_sum{job=\"choreography-payment-service\"} / saga_step_payment_duration_seconds_count{job=\"choreography-payment-service\"}",
+          "expr": "sum(saga_step_payment_duration_seconds_sum{service=\\\"choreography\\\"}) / sum(saga_step_payment_duration_seconds_count{service=\\\"choreography\\\"})",
           "legendFormat": "Payment",
           "refId": "A"
         },
         {
-          "expr": "saga_step_inventory_duration_seconds_sum{job=\"choreography-inventory-service\"} / saga_step_inventory_duration_seconds_count{job=\"choreography-inventory-service\"}",
+          "expr": "sum(saga_step_inventory_duration_seconds_sum{service=\\\"choreography\\\"}) / sum(saga_step_inventory_duration_seconds_count{service=\\\"choreography\\\"})",
           "legendFormat": "Inventory",
           "refId": "B"
         },
         {
-          "expr": "saga_step_shipping_duration_seconds_sum{job=\"choreography-shipping-service\"} / saga_step_shipping_duration_seconds_count{job=\"choreography-shipping-service\"}",
+          "expr": "sum(saga_step_shipping_duration_seconds_sum{service=\\\"choreography\\\"}) / sum(saga_step_shipping_duration_seconds_count{service=\\\"choreography\\\"})",
           "legendFormat": "Shipping",
           "refId": "C"
         }
@@ -562,17 +562,17 @@
       },
       "targets": [
         {
-          "expr": "saga_step_payment_duration_seconds_sum{job=\"orchestration-payment-service\"} / saga_step_payment_duration_seconds_count{job=\"orchestration-payment-service\"}",
+          "expr": "sum(saga_step_payment_duration_seconds_sum{service=\\\"orchestration\\\"}) / sum(saga_step_payment_duration_seconds_count{service=\\\"orchestration\\\"})",
           "legendFormat": "Payment",
           "refId": "A"
         },
         {
-          "expr": "saga_step_inventory_duration_seconds_sum{job=\"orchestration-inventory-service\"} / saga_step_inventory_duration_seconds_count{job=\"orchestration-inventory-service\"}",
+          "expr": "sum(saga_step_inventory_duration_seconds_sum{service=\\\"orchestration\\\"}) / sum(saga_step_inventory_duration_seconds_count{service=\\\"orchestration\\\"})",
           "legendFormat": "Inventory",
           "refId": "B"
         },
         {
-          "expr": "saga_step_shipping_duration_seconds_sum{job=\"orchestration-shipping-service\"} / saga_step_shipping_duration_seconds_count{job=\"orchestration-shipping-service\"}",
+          "expr": "sum(saga_step_shipping_duration_seconds_sum{service=\\\"orchestration\\\"}) / sum(saga_step_shipping_duration_seconds_count{service=\\\"orchestration\\\"})",
           "legendFormat": "Shipping",
           "refId": "C"
         }
@@ -621,7 +621,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "saga_compensations_total{job=\"choreography-order-service\"} or vector(0)",
+          "expr": "sum(saga_compensations_total{service=\\\"choreography\\\"})",
           "refId": "A"
         }
       ],
@@ -663,7 +663,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "saga_compensations_total{job=\"orchestration-order-service\"} or vector(0)",
+          "expr": "sum(saga_compensations_total{service=\\\"orchestration\\\"})",
           "refId": "A"
         }
       ],
@@ -711,22 +711,22 @@
       },
       "targets": [
         {
-          "expr": "saga_compensations_payment_total{job=\"choreography-order-service\"} or vector(0)",
+          "expr": "sum(saga_compensations_payment_total{service=\\\"choreography\\\"})",
           "legendFormat": "Choreography - Payment",
           "refId": "A"
         },
         {
-          "expr": "saga_compensations_inventory_total{job=\"choreography-order-service\"} or vector(0)",
+          "expr": "sum(saga_compensations_inventory_total{service=\\\"choreography\\\"})",
           "legendFormat": "Choreography - Inventory",
           "refId": "B"
         },
         {
-          "expr": "saga_compensations_payment_total{job=\"orchestration-order-service\"} or vector(0)",
+          "expr": "sum(saga_compensations_payment_total{service=\\\"orchestration\\\"})",
           "legendFormat": "Orchestration - Payment",
           "refId": "C"
         },
         {
-          "expr": "saga_compensations_inventory_total{job=\"orchestration-order-service\"} or vector(0)",
+          "expr": "sum(saga_compensations_inventory_total{service=\\\"orchestration\\\"})",
           "legendFormat": "Orchestration - Inventory",
           "refId": "D"
         }
@@ -790,22 +790,22 @@
       },
       "targets": [
         {
-          "expr": "rate(saga_orders_created_total{job=\"choreography-order-service\"}[1m])",
+          "expr": "sum(rate(saga_orders_created_total{service=\\\"choreography\\\"}[1m]))",
           "legendFormat": "Choreography - Created",
           "refId": "A"
         },
         {
-          "expr": "rate(saga_orders_completed_total{job=\"choreography-order-service\"}[1m])",
+          "expr": "sum(rate(saga_orders_completed_total{service=\\\"choreography\\\"}[1m]))",
           "legendFormat": "Choreography - Completed",
           "refId": "B"
         },
         {
-          "expr": "rate(saga_orders_created_total{job=\"orchestration-order-service\"}[1m])",
+          "expr": "sum(rate(saga_orders_created_total{service=\\\"orchestration\\\"}[1m]))",
           "legendFormat": "Orchestration - Created",
           "refId": "C"
         },
         {
-          "expr": "rate(saga_orders_completed_total{job=\"orchestration-order-service\"}[1m])",
+          "expr": "sum(rate(saga_orders_completed_total{service=\\\"orchestration\\\"}[1m]))",
           "legendFormat": "Orchestration - Completed",
           "refId": "D"
         }
@@ -1606,6 +1606,632 @@
     },
     {
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 74 },
+      "id": 109,
+      "title": "Compensation Duration",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 75 },
+      "id": 70,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_compensation_duration_seconds_sum{service=\"choreography\"}) / sum(saga_compensation_duration_seconds_count{service=\"choreography\"})",
+          "refId": "A"
+        }
+      ],
+      "title": "Choreography - Avg Compensation Duration",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 75 },
+      "id": 71,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_compensation_duration_seconds_sum{service=\"orchestration\"}) / sum(saga_compensation_duration_seconds_count{service=\"orchestration\"})",
+          "refId": "A"
+        }
+      ],
+      "title": "Orchestration - Avg Compensation Duration",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Duration (s)",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "s"
+        },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*Choreography.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": ".*Orchestration.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "purple", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 75 },
+      "id": 72,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "sum(saga_compensation_duration_seconds_sum{service=\"choreography\"}) / sum(saga_compensation_duration_seconds_count{service=\"choreography\"})",
+          "legendFormat": "Choreography - Avg",
+          "refId": "A"
+        },
+        {
+          "expr": "max(saga_compensation_duration_seconds_max{service=\"choreography\"})",
+          "legendFormat": "Choreography - Max",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(saga_compensation_duration_seconds_sum{service=\"orchestration\"}) / sum(saga_compensation_duration_seconds_count{service=\"orchestration\"})",
+          "legendFormat": "Orchestration - Avg",
+          "refId": "C"
+        },
+        {
+          "expr": "max(saga_compensation_duration_seconds_max{service=\"orchestration\"})",
+          "legendFormat": "Orchestration - Max",
+          "refId": "D"
+        }
+      ],
+      "title": "Compensation Duration Over Time",
+      "type": "timeseries"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 81 },
+      "id": 110,
+      "title": "Idempotency & Duplicate Detection",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 82 },
+      "id": 73,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_idempotency_check_count_total{job=~\"choreography.*\"}) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "title": "Choreography - Idempotency Checks",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 82 },
+      "id": 74,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_idempotency_check_count_total{job=~\"orchestration.*\"}) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "title": "Orchestration - Idempotency Checks",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 100 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 82 },
+      "id": 75,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_idempotency_duplicate_detected_total{job=~\"choreography.*\"}) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "title": "Choreography - Duplicates Detected",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 100 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 82 },
+      "id": 76,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_idempotency_duplicate_detected_total{job=~\"orchestration.*\"}) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "title": "Orchestration - Duplicates Detected",
+      "type": "stat"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 86 },
+      "id": 111,
+      "title": "Outbox Pattern (Orchestration Only)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 87 },
+      "id": 77,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_outbox_publish_success_total{job=~\"orchestration.*\"}) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "title": "Outbox Published",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 87 },
+      "id": 78,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_outbox_publish_failure_total{job=~\"orchestration.*\"}) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "title": "Outbox Failures",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 87 },
+      "id": 79,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_outbox_pending_count{job=~\"orchestration.*\"}) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "title": "Outbox Pending",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 87 },
+      "id": 80,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "rate(saga_outbox_publish_success_total{job=~\"orchestration.*\"}[1m])",
+          "legendFormat": "Published/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(saga_outbox_publish_failure_total{job=~\"orchestration.*\"}[1m])",
+          "legendFormat": "Failures/s",
+          "refId": "B"
+        },
+        {
+          "expr": "saga_outbox_pending_count{job=~\"orchestration.*\"}",
+          "legendFormat": "Pending Queue",
+          "refId": "C"
+        }
+      ],
+      "title": "Outbox Throughput & Queue",
+      "type": "timeseries"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 93 },
+      "id": 112,
+      "title": "Retry & Error Handling",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 94 },
+      "id": 81,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_retry_attempts_total{job=~\"choreography.*\"}) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "title": "Choreography - Retry Attempts",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 94 },
+      "id": 82,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_retry_attempts_total{job=~\"orchestration.*\"}) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "title": "Orchestration - Retry Attempts",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 94 },
+      "id": 83,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_retry_exhausted_total{job=~\"choreography.*\"}) or vector(0)",
+          "legendFormat": "Choreography",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(saga_retry_exhausted_total{job=~\"orchestration.*\"}) or vector(0)",
+          "legendFormat": "Orchestration",
+          "refId": "B"
+        }
+      ],
+      "title": "Retries Exhausted",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 94 },
+      "id": 84,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "expr": "sum(saga_deadletter_count_total{job=~\"choreography.*\"}) or vector(0)",
+          "legendFormat": "Choreography",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(saga_deadletter_count_total{job=~\"orchestration.*\"}) or vector(0)",
+          "legendFormat": "Orchestration",
+          "refId": "B"
+        }
+      ],
+      "title": "Dead Letter Count",
+      "type": "stat"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 98 },
       "id": 108,
       "title": "Service Metrics",
       "type": "row"

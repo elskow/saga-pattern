@@ -4,16 +4,16 @@ import com.thesis.choreography.inventory.model.PendingOrderItem;
 import com.thesis.choreography.inventory.repository.PendingOrderItemRepository;
 import com.thesis.choreography.inventory.service.IdempotencyService;
 import com.thesis.choreography.inventory.service.InventoryService;
-import com.thesis.common.dto.KafkaTopics;
+import com.thesis.common.config.KafkaTopicsProperties;
 import com.thesis.common.events.OrderCreatedEvent;
 import com.thesis.common.events.PaymentCompletedEvent;
 import com.thesis.common.events.PaymentFailedEvent;
 import com.thesis.common.events.ShippingFailedEvent;
+import com.thesis.common.util.MdcUtils;
 import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.slf4j.MDC;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -34,66 +33,66 @@ public class InventoryEventListener {
     private final IdempotencyService idempotencyService;
     private final Validator validator;
 
-    @KafkaListener(topics = KafkaTopics.ORDER_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:inventory-service}")
+    @KafkaListener(topics = KafkaTopicsProperties.ORDER_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:inventory-service}")
     @Transactional
     public void handleOrderEvents(ConsumerRecord<String, Object> record) {
         if (record.value() instanceof OrderCreatedEvent event) {
             handleEvent(record, event, "OrderCreatedEvent",
-                () -> idempotencyService.markProcessed("order-created:" + event.getOrderId(), "OrderCreatedEvent"),
+                () -> idempotencyService.tryMarkAsProcessed("order-created:%s".formatted(event.orderId()), "OrderCreatedEvent"),
                 () -> {
-                    log.info("Received OrderCreatedEvent for order: {}", event.getOrderId());
-                    List<PendingOrderItem> pendingItems = event.getItems().stream()
+                    log.debug("Received OrderCreatedEvent for order: {}", event.orderId());
+                    List<PendingOrderItem> pendingItems = event.items().stream()
                         .map(item -> PendingOrderItem.builder()
-                            .orderId(event.getOrderId())
-                            .productId(item.getProductId())
-                            .quantity(item.getQuantity())
+                            .orderId(event.orderId())
+                            .productId(item.productId())
+                            .quantity(item.quantity())
                             .build())
-                        .collect(Collectors.toList());
+                        .toList();
                     pendingOrderItemRepository.saveAll(pendingItems);
-                    log.info("Stored {} pending order items for order: {}", pendingItems.size(), event.getOrderId());
+                    log.debug("Stored {} pending order items for order: {}", pendingItems.size(), event.orderId());
                 });
         }
     }
 
-    @KafkaListener(topics = KafkaTopics.PAYMENT_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:inventory-service}")
+    @KafkaListener(topics = KafkaTopicsProperties.PAYMENT_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:inventory-service}")
     @Transactional
     public void handlePaymentEvents(ConsumerRecord<String, Object> record) {
         if (record.value() instanceof PaymentCompletedEvent event) {
             handleEvent(record, event, "PaymentCompletedEvent",
-                () -> idempotencyService.markProcessed("payment-completed:" + event.getPaymentId(), "PaymentCompletedEvent"),
+                () -> idempotencyService.tryMarkAsProcessed("payment-completed:%s".formatted(event.paymentId()), "PaymentCompletedEvent"),
                 () -> {
-                    log.info("Received PaymentCompletedEvent for order: {}", event.getOrderId());
-                    List<PendingOrderItem> pendingItems = pendingOrderItemRepository.findByOrderId(event.getOrderId());
+                    log.debug("Received PaymentCompletedEvent for order: {}", event.orderId());
+                    List<PendingOrderItem> pendingItems = pendingOrderItemRepository.findByOrderId(event.orderId());
                     if (!pendingItems.isEmpty()) {
                         List<InventoryService.ItemToReserve> items = pendingItems.stream()
                             .map(item -> new InventoryService.ItemToReserve(item.getProductId(), item.getQuantity()))
-                            .collect(Collectors.toList());
+                            .toList();
                         inventoryService.reserveInventory(event, items);
-                        pendingOrderItemRepository.deleteByOrderId(event.getOrderId());
-                        log.info("Processed and removed pending items for order: {}", event.getOrderId());
+                        pendingOrderItemRepository.deleteByOrderId(event.orderId());
+                        log.debug("Processed and removed pending items for order: {}", event.orderId());
                     } else {
-                        log.warn("No pending items found for order: {}", event.getOrderId());
+                        log.warn("No pending items found for order: {}", event.orderId());
                     }
                 });
         } else if (record.value() instanceof PaymentFailedEvent event) {
             handleEvent(record, event, "PaymentFailedEvent",
-                () -> idempotencyService.markProcessed("payment-failed:" + event.getOrderId(), "PaymentFailedEvent"),
+                () -> idempotencyService.tryMarkAsProcessed("payment-failed:%s".formatted(event.orderId()), "PaymentFailedEvent"),
                 () -> {
-                    log.info("Received PaymentFailedEvent, cleaning up pending items for order: {}", event.getOrderId());
-                    pendingOrderItemRepository.deleteByOrderId(event.getOrderId());
+                    log.debug("Received PaymentFailedEvent, cleaning up pending items for order: {}", event.orderId());
+                    pendingOrderItemRepository.deleteByOrderId(event.orderId());
                 });
         }
     }
 
-    @KafkaListener(topics = KafkaTopics.SHIPPING_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:inventory-service}")
+    @KafkaListener(topics = KafkaTopicsProperties.SHIPPING_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:inventory-service}")
     @Transactional
     public void handleShippingEvents(ConsumerRecord<String, Object> record) {
         if (record.value() instanceof ShippingFailedEvent event) {
             handleEvent(record, event, "ShippingFailedEvent",
-                () -> idempotencyService.markProcessed("shipping-failed:" + event.getOrderId(), "ShippingFailedEvent"),
+                () -> idempotencyService.tryMarkAsProcessed("shipping-failed:%s".formatted(event.orderId()), "ShippingFailedEvent"),
                 () -> {
-                    log.info("Received ShippingFailedEvent, releasing inventory for order: {}", event.getOrderId());
-                    inventoryService.releaseInventory(event.getOrderId());
+                    log.debug("Received ShippingFailedEvent, releasing inventory for order: {}", event.orderId());
+                    inventoryService.releaseInventory(event.orderId());
                 });
         }
     }
@@ -102,10 +101,10 @@ public class InventoryEventListener {
                                  Supplier<Boolean> idempotencyCheck, Runnable handler) {
         String correlationId = UUID.randomUUID().toString();
         try {
-            String orderId = getOrderId(event);
-            String eventCorrelationId = getCorrelationId(event, correlationId);
+            String orderId = MdcUtils.getOrderId(event);
+            String eventCorrelationId = MdcUtils.getCorrelationId(event, correlationId);
 
-            setupMdc(orderId, eventCorrelationId);
+            MdcUtils.setupEventMdc(orderId, eventCorrelationId);
 
             Set<?> violations = validator.validate(event);
             if (!violations.isEmpty()) {
@@ -113,10 +112,8 @@ public class InventoryEventListener {
                 return;
             }
 
-            // idempotencyCheck returns true if event was marked as new (should process)
-            // returns false if event was already processed (should skip)
             if (!idempotencyCheck.get()) {
-                log.info("Skipping duplicate {} for order: {}", eventType, orderId);
+                log.trace("Skipping duplicate {} for order: {}", eventType, orderId);
                 return;
             }
 
@@ -125,36 +122,7 @@ public class InventoryEventListener {
             log.error("Error processing event {}: {}", eventType, e.getMessage(), e);
             throw e;
         } finally {
-            MDC.clear();
+            MdcUtils.clearEventMdc();
         }
-    }
-
-    private String getOrderId(Object event) {
-        if (event instanceof HasOrderId ho) {
-            return ho.getOrderId();
-        }
-        return "unknown";
-    }
-
-    private String getCorrelationId(Object event, String defaultCorrelationId) {
-        if (event instanceof HasCorrelationId hc) {
-            return hc.getCorrelationId() != null ? hc.getCorrelationId() : defaultCorrelationId;
-        }
-        return defaultCorrelationId;
-    }
-
-    private void setupMdc(String orderId, String correlationId) {
-        MDC.put("orderId", orderId != null ? orderId : "unknown");
-        if (correlationId != null) {
-            MDC.put("correlationId", correlationId);
-        }
-    }
-
-    private interface HasOrderId {
-        String getOrderId();
-    }
-
-    private interface HasCorrelationId {
-        String getCorrelationId();
     }
 }

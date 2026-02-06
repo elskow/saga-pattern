@@ -2,39 +2,43 @@ package com.thesis.common.events;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ShippingScheduledEvent {
+public record ShippingScheduledEvent(
     @NotBlank(message = "Shipping ID cannot be blank")
-    private String shippingId;
-    
+    String shippingId,
+
     @NotBlank(message = "Order ID cannot be blank")
-    private String orderId;
-    
+    String orderId,
+
     @NotBlank(message = "Tracking number cannot be blank")
-    private String trackingNumber;
-    
+    String trackingNumber,
+
     @NotBlank(message = "Address cannot be blank")
-    private String address;
-    
+    String address,
+
     @NotNull(message = "Estimated delivery cannot be null")
-    private Instant estimatedDelivery;
-    
+    Instant estimatedDelivery,
+
     @NotNull(message = "Scheduled at cannot be null")
-    private Instant scheduledAt;
-    
+    Instant scheduledAt,
+
     @NotBlank(message = "Correlation ID cannot be blank")
-    private String correlationId;
-    
-    @Builder.Default
-    private Instant createdAt = Instant.now();
+    String correlationId,
+
+    Instant createdAt
+) implements ChoreographyEvent {
+    public ShippingScheduledEvent {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
+
+    public static ShippingScheduledEvent of(String shippingId, String orderId, String trackingNumber,
+                                            String address, Instant estimatedDelivery, Instant scheduledAt,
+                                            String correlationId) {
+        return new ShippingScheduledEvent(shippingId, orderId, trackingNumber, address, estimatedDelivery,
+                                          scheduledAt, correlationId, Instant.now());
+    }
 }

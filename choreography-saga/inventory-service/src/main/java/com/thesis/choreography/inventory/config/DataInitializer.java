@@ -49,23 +49,48 @@ public class DataInitializer {
                     .quantityReserved(0)
                     .build());
 
-                // Thesis test products - Low stock items for contention testing
+                productRepository.save(Product.builder()
+                    .productId("PROD-005")
+                    .productName("Monitor")
+                    .quantityAvailable(120)
+                    .quantityReserved(0)
+                    .build());
+
+                productRepository.save(Product.builder()
+                    .productId("PROD-006")
+                    .productName("Webcam")
+                    .quantityAvailable(300)
+                    .quantityReserved(0)
+                    .build());
+
+                productRepository.save(Product.builder()
+                    .productId("PROD-007")
+                    .productName("USB Hub")
+                    .quantityAvailable(400)
+                    .quantityReserved(0)
+                    .build());
+
+                productRepository.save(Product.builder()
+                    .productId("PROD-008")
+                    .productName("Mousepad")
+                    .quantityAvailable(500)
+                    .quantityReserved(0)
+                    .build());
+
                 productRepository.save(Product.builder()
                     .productId("PROD-LOW-001")
                     .productName("Rare Item")
-                    .quantityAvailable(10)  // Very limited stock for contention test
+                    .quantityAvailable(10)
                     .quantityReserved(0)
                     .build());
 
                 productRepository.save(Product.builder()
                     .productId("PROD-LOW-002")
                     .productName("Limited Edition")
-                    .quantityAvailable(15)  // Limited stock for failure scenarios
+                    .quantityAvailable(15)
                     .quantityReserved(0)
                     .build());
 
-                // High-value product for payment failure scenarios
-                // Note: Price is handled in order service, this just needs to exist
                 productRepository.save(Product.builder()
                     .productId("PROD-PREMIUM-001")
                     .productName("Premium Item")
@@ -73,7 +98,7 @@ public class DataInitializer {
                     .quantityReserved(0)
                     .build());
 
-                log.info("Sample products initialized successfully (including thesis test products)");
+                log.info("Sample products initialized successfully");
             }
         };
     }

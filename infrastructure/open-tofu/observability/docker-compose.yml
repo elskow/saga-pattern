@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   prometheus:
     image: prom/prometheus:v2.48.0
@@ -36,18 +34,6 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
-    restart: unless-stopped
-    networks:
-      - observability
-
-  zipkin:
-    image: openzipkin/zipkin:3.0
-    container_name: zipkin
-    ports:
-      - "9411:9411"
-    environment:
-      - STORAGE_TYPE=mem
-      - JAVA_OPTS=-Xms256m -Xmx512m
     restart: unless-stopped
     networks:
       - observability

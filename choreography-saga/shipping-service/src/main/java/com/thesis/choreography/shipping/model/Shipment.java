@@ -9,7 +9,10 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 @Entity
-@Table(name = "shipments")
+@Table(name = "shipments", indexes = {
+    @Index(name = "idx_shipment_order_id", columnList = "order_id"),
+    @Index(name = "idx_shipment_status", columnList = "status")
+})
 @Data
 @Builder
 @NoArgsConstructor
@@ -51,6 +54,10 @@ public class Shipment {
     @PreUpdate
     protected void onUpdate() {
         updatedAt = Instant.now();
+    }
+
+    public boolean isCancellable() {
+        return status == ShippingStatus.SCHEDULED || status == ShippingStatus.PENDING;
     }
 
     public enum ShippingStatus {

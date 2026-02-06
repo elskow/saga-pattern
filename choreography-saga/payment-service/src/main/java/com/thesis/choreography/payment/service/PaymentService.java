@@ -3,6 +3,7 @@ package com.thesis.choreography.payment.service;
 import com.thesis.choreography.payment.kafka.PaymentEventPublisher;
 import com.thesis.choreography.payment.model.Payment;
 import com.thesis.choreography.payment.repository.PaymentRepository;
+import com.thesis.common.config.PaymentProperties;
 import com.thesis.common.events.OrderCreatedEvent;
 import com.thesis.common.events.PaymentCompletedEvent;
 import com.thesis.common.events.PaymentFailedEvent;
@@ -10,6 +11,9 @@ import com.thesis.common.events.PaymentRefundedEvent;
 import com.thesis.common.exception.PaymentNotFoundException;
 import com.thesis.common.metrics.SagaMetrics;
 import com.thesis.common.metrics.SagaMetricsHelper;
+import com.thesis.common.util.CorrelationIdResolver;
+import com.thesis.common.util.TransactionHelper;
+import com.thesis.common.util.Validators;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -20,26 +24,20 @@ import org.slf4j.MDC;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
 @Slf4j
 public class PaymentService {
 
-    /**
-     * Maximum payment amount allowed. Orders with total amount >= this value will be rejected.
-     * This simulates real-world payment gateway behavior for high-value transactions.
-     */
-    private static final BigDecimal MAX_PAYMENT_AMOUNT = new BigDecimal("10000.00");
-
     private final PaymentRepository paymentRepository;
     private final PaymentEventPublisher eventPublisher;
+    private final PaymentProperties paymentProperties;
     private final Counter paymentSuccessCounter;
     private final Counter paymentFailedCounter;
     private final Timer paymentProcessingTimer;
@@ -53,9 +51,11 @@ public class PaymentService {
 
     public PaymentService(PaymentRepository paymentRepository,
                           PaymentEventPublisher eventPublisher,
+                          PaymentProperties paymentProperties,
                           MeterRegistry meterRegistry) {
         this.paymentRepository = paymentRepository;
         this.eventPublisher = eventPublisher;
+        this.paymentProperties = paymentProperties;
 
         this.paymentSuccessCounter = meterRegistry.counter(SagaMetrics.PAYMENTS_SUCCESS,
             SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY);
@@ -82,140 +82,115 @@ public class PaymentService {
     @Transactional
     @Observed(name = "payment.process", contextualName = "process-payment")
     public void processPayment(OrderCreatedEvent orderEvent) {
-        // Input validation
-        if (orderEvent == null) {
-            throw new IllegalArgumentException("OrderCreatedEvent cannot be null");
-        }
-        if (orderEvent.getOrderId() == null || orderEvent.getOrderId().isBlank()) {
-            throw new IllegalArgumentException("Order ID cannot be null or blank");
-        }
-        if (orderEvent.getTotalAmount() == null) {
-            throw new IllegalArgumentException("Total amount cannot be null");
-        }
-
-        String orderId = orderEvent.getOrderId();
+        validateOrderEvent(orderEvent);
+        String orderId = orderEvent.orderId();
         try {
             MDC.put("orderId", orderId);
-            
-            // Reject high-value payments (simulates real-world payment gateway limits)
-            if (orderEvent.getTotalAmount().compareTo(MAX_PAYMENT_AMOUNT) >= 0) {
-                log.warn("Payment rejected for order {}: amount {} exceeds maximum limit {}", 
-                    orderId, orderEvent.getTotalAmount(), MAX_PAYMENT_AMOUNT);
-                
-                String paymentId = UUID.randomUUID().toString();
-                Payment payment = Payment.builder()
-                    .paymentId(paymentId)
-                    .orderId(orderId)
-                    .customerId(orderEvent.getCustomerId())
-                    .amount(orderEvent.getTotalAmount())
-                    .status(Payment.PaymentStatus.FAILED)
-                    .failureReason("Payment amount " + orderEvent.getTotalAmount() + 
-                        " exceeds maximum allowed limit of " + MAX_PAYMENT_AMOUNT)
-                    .build();
-                paymentRepository.save(payment);
-                
-                handlePaymentFailure(payment, paymentId, orderId, 
-                    new IllegalArgumentException("Payment amount exceeds maximum allowed limit"));
+
+            if (exceedsMaximumAmount(orderEvent)) {
+                rejectHighValuePayment(orderEvent, orderId);
                 return;
             }
-            
-            stepPaymentDurationTimer.record(() -> {
-                log.info("Processing payment for order: {}", orderId);
 
-                // Record received message and latency
-                metricsHelper.recordMessageReceived(orderId, SagaMetrics.TYPE_EVENT);
-                if (orderEvent.getCreatedAt() != null) {
-                    Duration latency = Duration.between(orderEvent.getCreatedAt(), Instant.now());
-                    metricsHelper.recordMessageLatency("order", "payment", latency);
-                }
-
-                String paymentId = UUID.randomUUID().toString();
-
-                Payment payment = Payment.builder()
-                    .paymentId(paymentId)
-                    .orderId(orderId)
-                    .customerId(orderEvent.getCustomerId())
-                    .amount(orderEvent.getTotalAmount())
-                    .status(Payment.PaymentStatus.PENDING)
-                    .build();
-
-                try {
-                    paymentRepository.save(payment);
-                    metricsHelper.recordDbInsert(orderId, SagaMetrics.ENTITY_PAYMENT);
-                } catch (DataAccessException e) {
-                    log.error("Database error while saving payment for order: {}", orderId, e);
-                    throw e;
-                }
-
-                try {
-                    // Process payment
-                    String transactionId = "TXN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-                    payment.setTransactionId(transactionId);
-                    payment.setStatus(Payment.PaymentStatus.COMPLETED);
-                    paymentRepository.save(payment);
-                    metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_PAYMENT);
-
-                    String correlationId = MDC.get("correlationId");
-                    if (correlationId == null || correlationId.isBlank()) {
-                        correlationId = orderEvent.getCorrelationId() != null ?
-                            orderEvent.getCorrelationId() : UUID.randomUUID().toString();
-                        MDC.put("correlationId", correlationId);
-                    }
-
-                    PaymentCompletedEvent completedEvent = PaymentCompletedEvent.builder()
-                        .paymentId(paymentId)
-                        .orderId(orderId)
-                        .amount(orderEvent.getTotalAmount())
-                        .transactionId(transactionId)
-                        .completedAt(Instant.now())
-                        .correlationId(correlationId)
-                        .createdAt(Instant.now())
-                        .build();
-
-                    // Publish event after transaction commit
-                    final String finalCorrelationId = correlationId;
-                    if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                        TransactionSynchronizationManager.registerSynchronization(
-                            new TransactionSynchronization() {
-                                @Override
-                                public void afterCommit() {
-                                    try {
-                                        MDC.put("orderId", orderId);
-                                        MDC.put("correlationId", finalCorrelationId);
-                                        eventPublisher.publishPaymentCompleted(completedEvent);
-                                        metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
-                                        paymentSuccessCounter.increment();
-                                        sagaStepsExecutedCounter.increment();
-                                        log.info("Payment completed for order: {}", orderId);
-                                    } catch (Exception e) {
-                                        log.error("Failed to publish PaymentCompletedEvent after commit for order: {}", orderId, e);
-                                    } finally {
-                                        MDC.clear();
-                                    }
-                                }
-                            }
-                        );
-                    } else {
-                        eventPublisher.publishPaymentCompleted(completedEvent);
-                        metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
-                        paymentSuccessCounter.increment();
-                        sagaStepsExecutedCounter.increment();
-                        log.info("Payment completed for order: {}", orderId);
-                    }
-                } catch (IllegalArgumentException e) {
-                    log.error("Invalid argument while processing payment for order: {}", orderId, e);
-                    handlePaymentFailure(payment, paymentId, orderId, e);
-                } catch (DataAccessException e) {
-                    log.error("Database error while processing payment for order: {}", orderId, e);
-                    handlePaymentFailure(payment, paymentId, orderId, e);
-                } catch (Exception e) {
-                    log.error("Unexpected error while processing payment for order: {}", orderId, e);
-                    handlePaymentFailure(payment, paymentId, orderId, e);
-                }
-            });
+            stepPaymentDurationTimer.record(() -> executePaymentProcessing(orderEvent, orderId));
         } finally {
-            MDC.clear();
+            MDC.remove("orderId");
+            MDC.remove("correlationId");
         }
+    }
+
+    private boolean exceedsMaximumAmount(OrderCreatedEvent orderEvent) {
+        return orderEvent.totalAmount().compareTo(paymentProperties.maxPaymentAmount()) >= 0;
+    }
+
+    private void rejectHighValuePayment(OrderCreatedEvent orderEvent, String orderId) {
+        log.warn("Payment rejected for order {}: amount {} exceeds maximum limit {}",
+            orderId, orderEvent.totalAmount(), paymentProperties.maxPaymentAmount());
+
+        String paymentId = UUID.randomUUID().toString();
+        Payment payment = Payment.builder()
+            .paymentId(paymentId)
+            .orderId(orderId)
+            .customerId(orderEvent.customerId())
+            .amount(orderEvent.totalAmount())
+            .status(Payment.PaymentStatus.FAILED)
+            .failureReason("Payment amount %s exceeds maximum allowed limit of %s".formatted(
+                orderEvent.totalAmount(), paymentProperties.maxPaymentAmount()))
+            .build();
+        paymentRepository.save(payment);
+
+        handlePaymentFailure(payment, paymentId, orderId,
+            new IllegalArgumentException("Payment amount exceeds maximum allowed limit"));
+    }
+
+    private void executePaymentProcessing(OrderCreatedEvent orderEvent, String orderId) {
+        log.debug("Processing payment for order: {}", orderId);
+
+        recordMessageMetrics(orderEvent, orderId);
+
+        String paymentId = UUID.randomUUID().toString();
+        Payment payment = createPendingPayment(paymentId, orderId, orderEvent);
+
+        try {
+            completePayment(payment, paymentId, orderId, orderEvent);
+        } catch (Exception e) {
+            log.error("Error processing payment for order {}: {}", orderId, e.getMessage(), e);
+            handlePaymentFailure(payment, paymentId, orderId, e);
+        }
+    }
+
+    private void recordMessageMetrics(OrderCreatedEvent orderEvent, String orderId) {
+        metricsHelper.recordMessageReceived(orderId, SagaMetrics.TYPE_EVENT);
+        if (orderEvent.createdAt() != null) {
+            Duration latency = Duration.between(orderEvent.createdAt(), Instant.now());
+            metricsHelper.recordMessageLatency("order", "payment", latency);
+        }
+    }
+
+    private Payment createPendingPayment(String paymentId, String orderId, OrderCreatedEvent orderEvent) {
+        Payment payment = Payment.builder()
+            .paymentId(paymentId)
+            .orderId(orderId)
+            .customerId(orderEvent.customerId())
+            .amount(orderEvent.totalAmount())
+            .status(Payment.PaymentStatus.PENDING)
+            .build();
+
+        try {
+            paymentRepository.save(payment);
+            metricsHelper.recordDbInsert(orderId, SagaMetrics.ENTITY_PAYMENT);
+        } catch (DataAccessException e) {
+            log.error("Database error while saving payment for order: {}", orderId, e);
+            throw e;
+        }
+        return payment;
+    }
+
+    private void completePayment(Payment payment, String paymentId, String orderId, OrderCreatedEvent orderEvent) {
+        payment.setTransactionId(generateTransactionId());
+        payment.setStatus(Payment.PaymentStatus.COMPLETED);
+        paymentRepository.save(payment);
+        metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_PAYMENT);
+
+        String correlationId = CorrelationIdResolver.resolve(orderEvent.correlationId());
+        MDC.put("correlationId", correlationId);
+
+        PaymentCompletedEvent completedEvent = PaymentCompletedEvent.of(
+            paymentId,
+            orderId,
+            orderEvent.totalAmount(),
+            payment.getTransactionId(),
+            Instant.now(),
+            correlationId
+        );
+
+        TransactionHelper.executeAfterCommit(() -> {
+            eventPublisher.publishPaymentCompleted(completedEvent);
+            metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
+            paymentSuccessCounter.increment();
+            sagaStepsExecutedCounter.increment();
+            log.debug("Payment completed for order: {}", orderId);
+        }, orderId, correlationId);
     }
 
     private void handlePaymentFailure(Payment payment, String paymentId, String orderId, Exception e) {
@@ -225,49 +200,23 @@ public class PaymentService {
             paymentRepository.save(payment);
             metricsHelper.recordDbUpdate(orderId, SagaMetrics.ENTITY_PAYMENT);
 
-            String correlationId = MDC.get("correlationId");
-            if (correlationId == null || correlationId.isBlank()) {
-                correlationId = UUID.randomUUID().toString();
-                MDC.put("correlationId", correlationId);
-            }
+            String correlationId = CorrelationIdResolver.resolve(null);
+            MDC.put("correlationId", correlationId);
 
-            PaymentFailedEvent failedEvent = PaymentFailedEvent.builder()
-                .paymentId(paymentId)
-                .orderId(orderId)
-                .reason(e.getMessage())
-                .failedAt(Instant.now())
-                .correlationId(correlationId)
-                .createdAt(Instant.now())
-                .build();
+            PaymentFailedEvent failedEvent = PaymentFailedEvent.of(
+                paymentId,
+                orderId,
+                e.getMessage(),
+                Instant.now(),
+                correlationId
+            );
 
-            // Publish event after transaction commit
-            final String finalCorrelationId = correlationId;
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(
-                    new TransactionSynchronization() {
-                        @Override
-                        public void afterCommit() {
-                            try {
-                                MDC.put("orderId", orderId);
-                                MDC.put("correlationId", finalCorrelationId);
-                                eventPublisher.publishPaymentFailed(failedEvent);
-                                metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
-                                paymentFailedCounter.increment();
-                                sagaStepsFailedCounter.increment();
-                            } catch (Exception ex) {
-                                log.error("Failed to publish PaymentFailedEvent after commit for order: {}", orderId, ex);
-                            } finally {
-                                MDC.clear();
-                            }
-                        }
-                    }
-                );
-            } else {
+            TransactionHelper.executeAfterCommit(() -> {
                 eventPublisher.publishPaymentFailed(failedEvent);
                 metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
                 paymentFailedCounter.increment();
                 sagaStepsFailedCounter.increment();
-            }
+            }, orderId, correlationId);
         } catch (Exception ex) {
             log.error("Error while handling payment failure for order: {}", orderId, ex);
         }
@@ -276,7 +225,6 @@ public class PaymentService {
     @Transactional
     @Observed(name = "payment.refund", contextualName = "refund-payment")
     public void refundPayment(String orderId) {
-        // Input validation
         if (orderId == null || orderId.isBlank()) {
             throw new IllegalArgumentException("Order ID cannot be null or blank");
         }
@@ -284,7 +232,7 @@ public class PaymentService {
         long startTime = System.currentTimeMillis();
         try {
             MDC.put("orderId", orderId);
-            log.info("Processing refund for order: {}", orderId);
+            log.debug("Processing refund for order: {}", orderId);
 
             Payment payment;
             try {
@@ -305,54 +253,45 @@ public class PaymentService {
                     throw e;
                 }
 
-                String correlationId = MDC.get("correlationId");
-                if (correlationId == null || correlationId.isBlank()) {
-                    correlationId = UUID.randomUUID().toString();
-                    MDC.put("correlationId", correlationId);
-                }
+                String correlationId = CorrelationIdResolver.resolve(null);
+                MDC.put("correlationId", correlationId);
 
-                PaymentRefundedEvent refundedEvent = PaymentRefundedEvent.builder()
-                    .paymentId(payment.getPaymentId())
-                    .orderId(orderId)
-                    .refundAmount(payment.getAmount())
-                    .refundedAt(Instant.now())
-                    .correlationId(correlationId)
-                    .createdAt(Instant.now())
-                    .build();
+                PaymentRefundedEvent refundedEvent = PaymentRefundedEvent.of(
+                    payment.getPaymentId(),
+                    orderId,
+                    payment.getAmount(),
+                    Instant.now(),
+                    correlationId
+                );
 
-                // Publish event after transaction commit
-                final String finalCorrelationId = correlationId;
-                if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                    TransactionSynchronizationManager.registerSynchronization(
-                        new TransactionSynchronization() {
-                            @Override
-                            public void afterCommit() {
-                                try {
-                                    MDC.put("orderId", orderId);
-                                    MDC.put("correlationId", finalCorrelationId);
-                                    eventPublisher.publishPaymentRefunded(refundedEvent);
-                                    metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
-                                } catch (Exception e) {
-                                    log.error("Failed to publish PaymentRefundedEvent after commit for order: {}", orderId, e);
-                                } finally {
-                                    MDC.clear();
-                                }
-                            }
-                        }
-                    );
-                } else {
+                TransactionHelper.executeAfterCommit(() -> {
                     eventPublisher.publishPaymentRefunded(refundedEvent);
                     metricsHelper.recordMessageSent(orderId, SagaMetrics.TYPE_EVENT);
-                }
+                }, orderId, correlationId);
 
                 compensationPaymentCounter.increment();
                 compensationDurationTimer.record(java.time.Duration.ofMillis(System.currentTimeMillis() - startTime));
 
-                log.info("Payment refunded for order: {}", orderId);
+                log.debug("Payment refunded for order: {}", orderId);
+            } else {
+                log.debug("Payment refund skipped for order: {} - current status: {}", orderId, payment.getStatus());
             }
         } finally {
-            MDC.clear();
+            MDC.remove("orderId");
+            MDC.remove("correlationId");
         }
     }
 
+    private void validateOrderEvent(OrderCreatedEvent event) {
+        Validators.requireNonNull(event, "OrderCreatedEvent");
+        Validators.requireNonBlank(event.orderId(), "Order ID");
+        Validators.requireNonNull(event.totalAmount(), "Total amount");
+    }
+
+    private String generateTransactionId() {
+        return "%s%s".formatted(
+            paymentProperties.transactionIdPrefix(),
+            UUID.randomUUID().toString().substring(0, 8).toUpperCase()
+        );
+    }
 }

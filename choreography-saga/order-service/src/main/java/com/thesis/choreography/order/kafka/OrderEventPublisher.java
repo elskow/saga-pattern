@@ -1,6 +1,6 @@
 package com.thesis.choreography.order.kafka;
 
-import com.thesis.common.config.KafkaTopicsConfig;
+import com.thesis.common.config.KafkaTopicsProperties;
 import com.thesis.common.events.OrderCreatedEvent;
 import com.thesis.common.kafka.AbstractEventPublisher;
 import com.thesis.common.metrics.SagaMetrics;
@@ -11,18 +11,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class OrderEventPublisher extends AbstractEventPublisher {
 
-    private final KafkaTopicsConfig topicsConfig;
-
     public OrderEventPublisher(KafkaTemplate<String, Object> kafkaTemplate,
-                               KafkaTopicsConfig topicsConfig,
+                               KafkaTopicsProperties topics,
                                MeterRegistry meterRegistry) {
-        super(kafkaTemplate, topicsConfig, meterRegistry, SagaMetrics.SERVICE_CHOREOGRAPHY);
-        this.topicsConfig = topicsConfig;
+        super(kafkaTemplate, topics, meterRegistry);
     }
 
     @Override
     protected String getTopic() {
-        return topicsConfig.getOrderEvents();
+        return topics().orderEvents();
     }
 
     @Override
@@ -31,6 +28,6 @@ public class OrderEventPublisher extends AbstractEventPublisher {
     }
 
     public void publishOrderCreated(OrderCreatedEvent event) {
-        publishEvent("OrderCreatedEvent", event, event.getOrderId());
+        publishEvent("OrderCreatedEvent", event, event.orderId());
     }
 }

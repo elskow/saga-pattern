@@ -1,12 +1,19 @@
 -- Saga instance state persistence table
 CREATE TABLE IF NOT EXISTS saga_instances (
-    saga_id VARCHAR(255) PRIMARY KEY,
+    id VARCHAR(255) PRIMARY KEY,
     order_id VARCHAR(255) NOT NULL UNIQUE,
+    saga_id VARCHAR(255) NOT NULL,
+    saga_type VARCHAR(100) NOT NULL,
     current_state VARCHAR(50) NOT NULL,
     saga_data_json TEXT,
+    context_json TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    version BIGINT DEFAULT 0
 );
+
+CREATE INDEX IF NOT EXISTS idx_saga_instances_saga_id ON saga_instances(saga_id);
+CREATE INDEX IF NOT EXISTS idx_saga_instances_saga_type ON saga_instances(saga_type);
 
 -- Index for finding saga by order ID
 CREATE INDEX IF NOT EXISTS idx_saga_order_id ON saga_instances(order_id);

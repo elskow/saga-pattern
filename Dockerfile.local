@@ -1,25 +1,17 @@
-# Simple JVM Dockerfile for local development - faster builds
-# Usage: docker build --build-arg SERVICE_PATH=choreography-saga/order-service -t image-name .
-
-FROM maven:3.9-eclipse-temurin-17 AS builder
+FROM maven:3.9-eclipse-temurin-25 AS builder
 
 WORKDIR /build
 
-# Copy entire project (needed for multi-module build)
 COPY . .
 
-# Build arg for which service to build
 ARG SERVICE_PATH
 
-# Build the service JAR with Spring Boot repackaging
 RUN mvn install -N -DskipTests -B && \
     mvn install -pl common -DskipTests -B && \
     mvn -pl ${SERVICE_PATH} -am package spring-boot:repackage -DskipTests -B
 
-# Runtime stage
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 
-# Install curl for healthchecks
 RUN apk add --no-cache curl tzdata && \
     addgroup -S appgroup && adduser -S appuser -G appgroup
 
@@ -29,7 +21,6 @@ WORKDIR /app
 
 ARG SERVICE_PATH
 
-# Copy JAR from builder
 COPY --from=builder /build/${SERVICE_PATH}/target/*.jar /app/application.jar
 
 RUN chown appuser:appgroup /app/application.jar

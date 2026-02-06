@@ -48,7 +48,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "sum(saga_orders_created_total) or vector(0)",
+          "expr": "sum(saga_orders_created_total)",
           "refId": "A"
         }
       ],
@@ -88,7 +88,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "sum(saga_orders_completed_total) or vector(0)",
+          "expr": "sum(saga_orders_completed_total)",
           "refId": "A"
         }
       ],
@@ -128,7 +128,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "sum(saga_orders_failed_total) or vector(0)",
+          "expr": "sum(saga_orders_failed_total)",
           "refId": "A"
         }
       ],
@@ -170,7 +170,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "(sum(saga_orders_completed_total) or vector(0)) / (sum(saga_orders_created_total) or vector(1))",
+          "expr": "sum(saga_orders_completed_total) / clamp_min(sum(saga_orders_created_total), 1)",
           "refId": "A"
         }
       ],
@@ -523,7 +523,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "sum(saga_compensations_total_total) or vector(0)",
+          "expr": "sum(saga_compensations_total)",
           "refId": "A"
         }
       ],
@@ -565,7 +565,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "sum(saga_compensations_payment_total) or vector(0)",
+          "expr": "sum(saga_compensations_payment_total)",
           "refId": "A"
         }
       ],
@@ -607,7 +607,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "sum(saga_compensations_inventory_total) or vector(0)",
+          "expr": "sum(saga_compensations_inventory_total)",
           "refId": "A"
         }
       ],
@@ -649,7 +649,7 @@
       "pluginVersion": "10.1.0",
       "targets": [
         {
-          "expr": "sum(saga_compensations_shipping_total) or vector(0)",
+          "expr": "sum(saga_compensations_shipping_total)",
           "refId": "A"
         }
       ],

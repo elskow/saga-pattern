@@ -2,6 +2,8 @@
 # Build outputs
 # ================================
 **/target/
+# GraalVM native-image working directories
+**/.nativeimage-store/
 **/build/
 *.jar
 *.war

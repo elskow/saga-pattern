@@ -1,20 +1,17 @@
 package com.thesis.common.replies;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+public record InventoryReleasedReply(
+    String reservationId,
+    String orderId,
+    boolean success,
+    String reason
+) implements SagaReply {
 
-/**
- * Reply sent by inventory service after processing an inventory release compensation.
- */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class InventoryReleasedReply implements SagaReply {
-    private String reservationId;
-    private String orderId;
-    private boolean success;
-    private String reason;
+    public static InventoryReleasedReply success(String reservationId, String orderId) {
+        return new InventoryReleasedReply(reservationId, orderId, true, null);
+    }
+
+    public static InventoryReleasedReply failure(String reservationId, String orderId, String reason) {
+        return new InventoryReleasedReply(reservationId, orderId, false, reason);
+    }
 }

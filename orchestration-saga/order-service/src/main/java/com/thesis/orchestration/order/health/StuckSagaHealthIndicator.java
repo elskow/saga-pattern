@@ -1,7 +1,7 @@
 package com.thesis.orchestration.order.health;
 
 import com.thesis.orchestration.order.config.SagaOrchestratorProperties;
-import com.thesis.orchestration.order.repository.SagaInstanceRepository;
+import com.thesis.saga.persistence.SagaInstanceRepository;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +20,9 @@ import java.util.List;
 @Slf4j
 public class StuckSagaHealthIndicator implements HealthIndicator {
 
+    private static final String SAGA_TYPE = "OrderSaga";
+    private static final List<String> TERMINAL_STATES = List.of("COMPLETED", "CANCELLED");
+
     private final SagaInstanceRepository sagaInstanceRepository;
     private final SagaOrchestratorProperties sagaProperties;
     private final MeterRegistry meterRegistry;
@@ -27,30 +30,25 @@ public class StuckSagaHealthIndicator implements HealthIndicator {
 
     @Override
     public Health health() {
-        Instant timeoutCutoff = Instant.now().minus(sagaProperties.getSagaTimeout());
+        Instant timeoutCutoff = Instant.now().minus(sagaProperties.sagaTimeout());
         LocalDateTime cutoffLocal = LocalDateTime.ofInstant(timeoutCutoff, ZoneId.systemDefault());
-        List<String> terminalStates = List.of(
-            "COMPLETED",
-            "CANCELLED"
-        );
 
         long stuckCount = sagaInstanceRepository
-            .findByCurrentStateNotInAndUpdatedAtBefore(terminalStates, cutoffLocal)
+            .findStaleSagas(SAGA_TYPE, TERMINAL_STATES, cutoffLocal)
             .size();
 
         if (stuckSagasGauge == null) {
             stuckSagasGauge = Gauge.builder("saga.stuck.sagas.count", this, indicator -> {
-                Instant cutoff = Instant.now().minus(sagaProperties.getSagaTimeout());
+                Instant cutoff = Instant.now().minus(sagaProperties.sagaTimeout());
                 LocalDateTime lambdaCutoff = LocalDateTime.ofInstant(cutoff, ZoneId.systemDefault());
-                List<String> states = List.of("COMPLETED", "CANCELLED");
-                return sagaInstanceRepository.findByCurrentStateNotInAndUpdatedAtBefore(states, lambdaCutoff).size();
+                return sagaInstanceRepository.findStaleSagas(SAGA_TYPE, TERMINAL_STATES, lambdaCutoff).size();
             }).tag("service", "orchestration").register(meterRegistry);
         }
 
         if (stuckCount > 0) {
             return Health.down()
                 .withDetail("stuckSagas", stuckCount)
-                .withDetail("timeout", sagaProperties.getSagaTimeout())
+                 .withDetail("timeout", sagaProperties.sagaTimeout())
                 .withDetail("cutoffTime", timeoutCutoff)
                 .build();
         }

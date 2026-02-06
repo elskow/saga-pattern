@@ -5,58 +5,57 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class OrderCreatedEvent {
+public record OrderCreatedEvent(
     @NotBlank(message = "Order ID cannot be blank")
-    private String orderId;
+    String orderId,
 
     @NotBlank(message = "Customer ID cannot be blank")
-    private String customerId;
+    String customerId,
 
     @NotBlank(message = "Shipping address cannot be blank")
-    private String shippingAddress;
+    String shippingAddress,
 
     @NotBlank(message = "Correlation ID cannot be blank")
-    private String correlationId;
+    String correlationId,
 
     @NotEmpty(message = "Items list cannot be empty")
     @Valid
-    private List<OrderItemEvent> items;
+    List<OrderItemEvent> items,
 
     @NotNull(message = "Total amount cannot be null")
     @Positive(message = "Total amount must be positive")
-    private BigDecimal totalAmount;
+    BigDecimal totalAmount,
 
-    private Instant createdAt;
+    Instant createdAt
+) implements ChoreographyEvent {
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class OrderItemEvent {
+    public record OrderItemEvent(
         @NotBlank(message = "Product ID cannot be blank")
-        private String productId;
+        String productId,
 
         @NotBlank(message = "Product name cannot be blank")
-        private String productName;
+        String productName,
 
         @Positive(message = "Quantity must be positive")
-        private int quantity;
+        int quantity,
 
         @NotNull(message = "Price cannot be null")
         @Positive(message = "Price must be positive")
-        private BigDecimal price;
+        BigDecimal price
+    ) {
+        public static OrderItemEvent of(String productId, String productName, int quantity, BigDecimal price) {
+            return new OrderItemEvent(productId, productName, quantity, price);
+        }
+    }
+
+    public static OrderCreatedEvent of(String orderId, String customerId, String shippingAddress,
+                                       String correlationId, List<OrderItemEvent> items,
+                                       BigDecimal totalAmount, Instant createdAt) {
+        return new OrderCreatedEvent(orderId, customerId, shippingAddress, correlationId, items, totalAmount, createdAt);
     }
 }

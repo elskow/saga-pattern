@@ -6,6 +6,10 @@ spring:
   application:
     name: orchestration-order-service
 
+  threads:
+    virtual:
+      enabled: true
+
   lifecycle:
     timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
 
@@ -89,6 +93,10 @@ management:
   otlp:
     tracing:
       endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
+    metrics:
+      export:
+        enabled: ${OTEL_EXPORTER_OTLP_METRICS_ENABLED:true}
+        endpoint: ${OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/metrics}
 
 logging:
   level:
@@ -111,3 +119,21 @@ saga:
     outbox-cleanup-interval: ${SAGA_OUTBOX_CLEANUP_INTERVAL:300000}
     outbox-retention: ${SAGA_OUTBOX_RETENTION:24h}
     reply-cleanup-interval: ${SAGA_REPLY_CLEANUP_INTERVAL:3600000}
+
+  framework:
+    saga-timeout: ${SAGA_FRAMEWORK_TIMEOUT:5m}
+    timeout-check-interval: ${SAGA_FRAMEWORK_TIMEOUT_CHECK:10s}
+    outbox-publish-interval: ${SAGA_FRAMEWORK_OUTBOX_INTERVAL:1s}
+    outbox-retry-interval: ${SAGA_FRAMEWORK_OUTBOX_RETRY:30s}
+    outbox-max-attempts: ${SAGA_FRAMEWORK_OUTBOX_MAX_ATTEMPTS:5}
+    outbox-batch-size: ${SAGA_FRAMEWORK_OUTBOX_BATCH:100}
+    outbox-retention-period: ${SAGA_FRAMEWORK_OUTBOX_RETENTION:24h}
+    processed-message-retention-period: ${SAGA_FRAMEWORK_MSG_RETENTION:24h}
+    cleanup-interval: ${SAGA_FRAMEWORK_CLEANUP_INTERVAL:1h}
+    in-memory-max-age: ${SAGA_FRAMEWORK_INMEMORY_MAX_AGE:1h}
+    in-memory-cleanup-interval: ${SAGA_FRAMEWORK_INMEMORY_CLEANUP:1m}
+    kafka-send-timeout: ${SAGA_FRAMEWORK_KAFKA_TIMEOUT:10s}
+    recovery-enabled: true
+    outbox-publisher-enabled: true
+    timeout-scheduler-enabled: true
+    cleanup-scheduler-enabled: true

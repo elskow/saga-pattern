@@ -1,6 +1,6 @@
 package com.thesis.choreography.inventory.kafka;
 
-import com.thesis.common.config.KafkaTopicsConfig;
+import com.thesis.common.config.KafkaTopicsProperties;
 import com.thesis.common.events.InventoryReleasedEvent;
 import com.thesis.common.events.InventoryReservationFailedEvent;
 import com.thesis.common.events.InventoryReservedEvent;
@@ -13,18 +13,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class InventoryEventPublisher extends AbstractEventPublisher {
 
-    private final KafkaTopicsConfig topicsConfig;
-
     public InventoryEventPublisher(KafkaTemplate<String, Object> kafkaTemplate,
-                                   KafkaTopicsConfig topicsConfig,
+                                   KafkaTopicsProperties topics,
                                    MeterRegistry meterRegistry) {
-        super(kafkaTemplate, topicsConfig, meterRegistry, SagaMetrics.SERVICE_CHOREOGRAPHY);
-        this.topicsConfig = topicsConfig;
+        super(kafkaTemplate, topics, meterRegistry);
     }
 
     @Override
     protected String getTopic() {
-        return topicsConfig.getInventoryEvents();
+        return topics().inventoryEvents();
     }
 
     @Override
@@ -33,14 +30,14 @@ public class InventoryEventPublisher extends AbstractEventPublisher {
     }
 
     public void publishInventoryReserved(InventoryReservedEvent event) {
-        publishEvent("InventoryReservedEvent", event, event.getOrderId());
+        publishEvent("InventoryReservedEvent", event, event.orderId());
     }
 
     public void publishInventoryReservationFailed(InventoryReservationFailedEvent event) {
-        publishEvent("InventoryReservationFailedEvent", event, event.getOrderId());
+        publishEvent("InventoryReservationFailedEvent", event, event.orderId());
     }
 
     public void publishInventoryReleased(InventoryReleasedEvent event) {
-        publishEvent("InventoryReleasedEvent", event, event.getOrderId());
+        publishEvent("InventoryReleasedEvent", event, event.orderId());
     }
 }

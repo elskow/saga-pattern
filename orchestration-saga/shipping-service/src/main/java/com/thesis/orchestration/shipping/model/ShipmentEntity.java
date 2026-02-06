@@ -9,7 +9,10 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 @Entity
-@Table(name = "shipments")
+@Table(name = "shipments", indexes = {
+    @Index(name = "idx_shipment_order_id", columnList = "orderId"),
+    @Index(name = "idx_shipment_status", columnList = "status")
+})
 @Data
 @Builder
 @NoArgsConstructor

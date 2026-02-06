@@ -1,21 +1,16 @@
 package com.thesis.common.enums;
 
+import java.util.Arrays;
+
 public enum OutboxStatus {
 
-    PENDING,
-    SENT,
-    FAILED;
+    PENDING, SENT, FAILED;
 
     public static OutboxStatus fromValue(String value) {
-        if (value == null) {
-            return null;
-        }
-        for (OutboxStatus status : OutboxStatus.values()) {
-            if (status.name().equals(value)) {
-                return status;
-            }
-        }
-        throw new IllegalArgumentException("Unknown OutboxStatus: " + value);
+        return value == null ? null : Arrays.stream(values())
+            .filter(s -> s.name().equals(value))
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("Unknown OutboxStatus: %s".formatted(value)));
     }
 
     public String getValue() {

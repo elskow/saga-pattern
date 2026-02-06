@@ -1,15 +1,11 @@
 package com.thesis.common.replies;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+public record InventoryReservedReply(
+    String reservationId,
+    String orderId
+) implements SagaReply {
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class InventoryReservedReply implements SagaReply {
-    private String reservationId;
-    private String orderId;
+    public static InventoryReservedReply of(String reservationId, String orderId) {
+        return new InventoryReservedReply(reservationId, orderId);
+    }
 }

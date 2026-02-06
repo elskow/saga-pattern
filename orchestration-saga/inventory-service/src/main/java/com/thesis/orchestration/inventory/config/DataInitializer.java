@@ -49,23 +49,48 @@ public class DataInitializer {
                     .reservedQuantity(0)
                     .build());
 
-                // Thesis test products - Low stock items for contention testing
+                productRepository.save(ProductEntity.builder()
+                    .productId("PROD-005")
+                    .name("Monitor")
+                    .quantity(120)
+                    .reservedQuantity(0)
+                    .build());
+
+                productRepository.save(ProductEntity.builder()
+                    .productId("PROD-006")
+                    .name("Webcam")
+                    .quantity(300)
+                    .reservedQuantity(0)
+                    .build());
+
+                productRepository.save(ProductEntity.builder()
+                    .productId("PROD-007")
+                    .name("USB Hub")
+                    .quantity(400)
+                    .reservedQuantity(0)
+                    .build());
+
+                productRepository.save(ProductEntity.builder()
+                    .productId("PROD-008")
+                    .name("Mousepad")
+                    .quantity(500)
+                    .reservedQuantity(0)
+                    .build());
+
                 productRepository.save(ProductEntity.builder()
                     .productId("PROD-LOW-001")
                     .name("Rare Item")
-                    .quantity(10)  // Very limited stock for contention test
+                    .quantity(10)
                     .reservedQuantity(0)
                     .build());
 
                 productRepository.save(ProductEntity.builder()
                     .productId("PROD-LOW-002")
                     .name("Limited Edition")
-                    .quantity(15)  // Limited stock for failure scenarios
+                    .quantity(15)
                     .reservedQuantity(0)
                     .build());
 
-                // High-value product for payment failure scenarios
-                // Note: Price is handled in order service, this just needs to exist
                 productRepository.save(ProductEntity.builder()
                     .productId("PROD-PREMIUM-001")
                     .name("Premium Item")

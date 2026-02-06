@@ -16,18 +16,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import java.time.Instant;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/**
- * Service layer for inventory operations with proper transactional support.
- * This class is separate from the Kafka listener to ensure Spring AOP proxies work correctly
- * for @Transactional annotations.
- */
 @Service
 @Slf4j
 public class InventoryService {
@@ -35,8 +32,11 @@ public class InventoryService {
     private final ReservationRepository reservationRepository;
     private final ProductRepository productRepository;
     private final SagaMetricsHelper metricsHelper;
+    private final ObjectMapper objectMapper;
 
-    // Thesis testing - artificial delay configuration
+    private static final TypeReference<List<OrderCreatedEvent.OrderItemEvent>> ITEMS_TYPE_REF =
+            new TypeReference<>() {};
+
     @Value("${app.artificial-delay.enabled:false}")
     private boolean artificialDelayEnabled;
 
@@ -45,190 +45,164 @@ public class InventoryService {
 
     public InventoryService(ReservationRepository reservationRepository,
                             ProductRepository productRepository,
-                            MeterRegistry meterRegistry) {
+                            MeterRegistry meterRegistry,
+                            ObjectMapper objectMapper) {
         this.reservationRepository = reservationRepository;
         this.productRepository = productRepository;
         this.metricsHelper = new SagaMetricsHelper(meterRegistry, SagaMetrics.SERVICE_ORCHESTRATION);
+        this.objectMapper = objectMapper;
     }
 
-    /**
-     * Reserves inventory for an order. Uses pessimistic locking to prevent concurrent modifications.
-     * This method must be called from outside this class for @Transactional to work properly.
-     *
-     * @param command The reservation command containing order and item details
-     * @return ReservationResult indicating success/failure and the reservation entity
-     */
     @Transactional
     public ReservationResult reserveInventory(ReserveInventoryCommand command) {
-        log.info("Reserving inventory {} for order {}",
-            command.getReservationId(), command.getOrderId());
+        log.debug("Reserving inventory {} for order {}",
+            command.reservationId(), command.orderId());
 
-        // Thesis testing - artificial delay for timeout scenarios
         if (artificialDelayEnabled && artificialDelayMs > 0) {
             log.warn("Artificial delay enabled: sleeping for {} ms (thesis timeout test)", artificialDelayMs);
             try {
                 Thread.sleep(artificialDelayMs);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.warn("Artificial delay interrupted for order: {}", command.getOrderId());
+                log.warn("Artificial delay interrupted for order: {}", command.orderId());
             }
         }
 
-        // Idempotency check: if reservation already exists, return existing status
-        Optional<ReservationEntity> existingReservation = reservationRepository.findById(command.getReservationId());
-        if (existingReservation.isPresent()) {
-            ReservationEntity existing = existingReservation.get();
-            if (existing.getStatus() == ReservationEntity.ReservationStatus.RESERVED) {
-                log.info("Reservation {} already exists with RESERVED status",
-                    command.getReservationId());
-                return ReservationResult.alreadyExists(existing);
-            } else if (existing.getStatus() == ReservationEntity.ReservationStatus.FAILED) {
-                log.info("Reservation {} already exists with FAILED status",
-                    command.getReservationId());
-                return ReservationResult.failure("Reservation previously failed: " + existing.getFailureReason());
-            }
-            // RELEASED status - attempt re-reservation
-            log.warn("Reservation {} exists with RELEASED status, attempting re-reservation",
-                command.getReservationId());
-        }
+        var existingResultOpt = reservationRepository.findById(command.reservationId())
+            .flatMap(existing -> {
+                log.debug("Reservation {} exists with status {}", command.reservationId(), existing.getStatus());
+                return switch (existing.getStatus()) {
+                    case RESERVED -> Optional.of(ReservationResult.alreadyExists(existing));
+                    case FAILED -> Optional.of(ReservationResult.failure("Reservation previously failed: " + existing.getFailureReason()));
+                    default -> { log.warn("Attempting re-reservation"); yield Optional.empty(); }
+                };
+            });
+        if (existingResultOpt.isPresent()) return existingResultOpt.get();
 
-        List<OrderCreatedEvent.OrderItemEvent> items = command.getItems();
+        List<OrderCreatedEvent.OrderItemEvent> items = command.items();
 
-        // Batch query all products at once with pessimistic lock to avoid N+1 problem
         List<String> productIds = items.stream()
-            .map(OrderCreatedEvent.OrderItemEvent::getProductId)
+            .map(OrderCreatedEvent.OrderItemEvent::productId)
             .distinct()
             .toList();
 
         List<ProductEntity> products = productRepository.findAllByIdInForUpdate(productIds);
         Map<String, ProductEntity> productMap = products.stream()
-            .collect(Collectors.toMap(ProductEntity::getProductId, p -> p));
+            .collect(Collectors.toMap(ProductEntity::getProductId, Function.identity()));
 
-        // Check stock availability for all items
         for (OrderCreatedEvent.OrderItemEvent item : items) {
-            ProductEntity product = productMap.get(item.getProductId());
+            ProductEntity product = productMap.get(item.productId());
             if (product == null) {
-                String error = "Product not found: " + item.getProductId();
+                String error = "Product not found: %s".formatted(item.productId());
                 saveFailedReservation(command, error);
                 return ReservationResult.failure(error);
             }
             int available = product.getQuantity() -
-                (product.getReservedQuantity() != null ? product.getReservedQuantity() : 0);
-            if (available < item.getQuantity()) {
-                String error = "Insufficient stock for product: " + item.getProductId();
+                Objects.requireNonNullElse(product.getReservedQuantity(), 0);
+            if (available < item.quantity()) {
+                String error = "Insufficient stock for product: %s".formatted(item.productId());
                 saveFailedReservation(command, error);
                 return ReservationResult.failure(error);
             }
         }
 
-        // Reserve stock for all items (batch update)
-        for (OrderCreatedEvent.OrderItemEvent item : items) {
-            ProductEntity product = productMap.get(item.getProductId());
-            int currentReserved = product.getReservedQuantity() != null ? product.getReservedQuantity() : 0;
-            product.setReservedQuantity(currentReserved + item.getQuantity());
-            metricsHelper.recordDbUpdate(command.getOrderId(), SagaMetrics.ENTITY_INVENTORY);
-        }
+        items.forEach(item -> {
+            ProductEntity product = productMap.get(item.productId());
+            product.setReservedQuantity(Objects.requireNonNullElse(product.getReservedQuantity(), 0) + item.quantity());
+            metricsHelper.recordDbUpdate(command.orderId(), SagaMetrics.ENTITY_INVENTORY);
+        });
         productRepository.saveAll(products);
 
-        // Create reservation record
-        String itemsJson = serializeItems(items, command.getOrderId());
+        String itemsJson = serializeItems(items, command.orderId());
         ReservationEntity reservation = ReservationEntity.builder()
-            .reservationId(command.getReservationId())
-            .orderId(command.getOrderId())
+            .reservationId(command.reservationId())
+            .orderId(command.orderId())
             .itemsJson(itemsJson)
             .status(ReservationEntity.ReservationStatus.RESERVED)
             .reservedAt(Instant.now())
             .build();
         reservationRepository.save(reservation);
-        metricsHelper.recordDbInsert(command.getOrderId(), SagaMetrics.ENTITY_INVENTORY);
+        metricsHelper.recordDbInsert(command.orderId(), SagaMetrics.ENTITY_INVENTORY);
 
-        log.info("Inventory {} reserved successfully", command.getReservationId());
+        log.debug("Inventory {} reserved successfully", command.reservationId());
         return ReservationResult.success(reservation);
     }
 
-    /**
-     * Releases previously reserved inventory for an order.
-     *
-     * @param command The release command containing reservation details
-     * @return true if release was successful, false otherwise
-     */
     @Transactional
     public boolean releaseInventory(ReleaseInventoryCommand command) {
-        log.info("Releasing inventory {} for order {}", command.getReservationId(), command.getOrderId());
+        log.debug("Releasing inventory {} for order {}", command.reservationId(), command.orderId());
 
-        Optional<ReservationEntity> reservationOpt = reservationRepository.findById(command.getReservationId());
-        if (reservationOpt.isEmpty()) {
-            log.warn("Reservation not found: {}", command.getReservationId());
-            return false;
-        }
+        return reservationRepository.findById(command.reservationId())
+            .map(reservation -> {
+                if (reservation.getStatus() == ReservationEntity.ReservationStatus.RELEASED) {
+                    log.debug("Reservation {} already released", command.reservationId());
+                    return true;
+                }
 
-        ReservationEntity reservation = reservationOpt.get();
+                List<OrderCreatedEvent.OrderItemEvent> items = deserializeItems(reservation.getItemsJson());
+                if (items != null && !items.isEmpty()) {
+                    List<String> productIds = items.stream()
+                            .map(OrderCreatedEvent.OrderItemEvent::productId)
+                            .distinct()
+                            .toList();
 
-        // Idempotency: already released
-        if (reservation.getStatus() == ReservationEntity.ReservationStatus.RELEASED) {
-            log.info("Reservation {} already released", command.getReservationId());
-            return true;
-        }
+                    List<ProductEntity> products = productRepository.findAllById(productIds);
+                    Map<String, ProductEntity> productMap = products.stream()
+                            .collect(Collectors.toMap(ProductEntity::getProductId, Function.identity()));
 
-        // Restore stock for reserved items
-        List<OrderCreatedEvent.OrderItemEvent> items = deserializeItems(reservation.getItemsJson());
-        if (items != null) {
-            for (OrderCreatedEvent.OrderItemEvent item : items) {
-                productRepository.findById(item.getProductId()).ifPresent(product -> {
-                    int currentReserved = product.getReservedQuantity() != null ? product.getReservedQuantity() : 0;
-                    product.setReservedQuantity(Math.max(0, currentReserved - item.getQuantity()));
-                    productRepository.save(product);
-                    metricsHelper.recordDbUpdate(command.getOrderId(), SagaMetrics.ENTITY_INVENTORY);
-                });
-            }
-        }
+                    items.forEach(item -> Optional.ofNullable(productMap.get(item.productId()))
+                        .ifPresent(product -> product.setReservedQuantity(
+                            Math.max(0, Objects.requireNonNullElse(product.getReservedQuantity(), 0) - item.quantity()))));
 
-        reservation.setStatus(ReservationEntity.ReservationStatus.RELEASED);
-        reservation.setReleasedAt(Instant.now());
-        reservation.setReleaseReason("Order cancelled - saga compensation");
-        reservationRepository.save(reservation);
-        metricsHelper.recordDbUpdate(command.getOrderId(), SagaMetrics.ENTITY_INVENTORY);
+                    productRepository.saveAll(products);
+                    metricsHelper.recordDbUpdate(command.orderId(), SagaMetrics.ENTITY_INVENTORY);
+                }
 
-        log.info("Inventory {} released successfully", command.getReservationId());
-        return true;
+                reservation.setStatus(ReservationEntity.ReservationStatus.RELEASED);
+                reservation.setReleasedAt(Instant.now());
+                reservation.setReleaseReason("Order cancelled - saga compensation");
+                reservationRepository.save(reservation);
+                metricsHelper.recordDbUpdate(command.orderId(), SagaMetrics.ENTITY_INVENTORY);
+
+                log.debug("Inventory {} released successfully", command.reservationId());
+                return true;
+            })
+            .orElseGet(() -> {
+                log.warn("Reservation not found: {}", command.reservationId());
+                return false;
+            });
     }
 
     private void saveFailedReservation(ReserveInventoryCommand command, String reason) {
         ReservationEntity reservation = ReservationEntity.builder()
-            .reservationId(command.getReservationId())
-            .orderId(command.getOrderId())
-            .itemsJson(serializeItems(command.getItems(), command.getOrderId()))
+            .reservationId(command.reservationId())
+            .orderId(command.orderId())
+            .itemsJson(serializeItems(command.items(), command.orderId()))
             .status(ReservationEntity.ReservationStatus.FAILED)
             .failureReason(reason)
             .build();
         reservationRepository.save(reservation);
-        metricsHelper.recordDbInsert(command.getOrderId(), SagaMetrics.ENTITY_INVENTORY);
+        metricsHelper.recordDbInsert(command.orderId(), SagaMetrics.ENTITY_INVENTORY);
     }
 
     private String serializeItems(List<OrderCreatedEvent.OrderItemEvent> items, String orderId) {
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            return mapper.writeValueAsString(items);
+            return objectMapper.writeValueAsString(items);
         } catch (Exception e) {
             log.error("Failed to serialize items for order {}: {}", orderId, e.getMessage());
-            return "[]";
+            throw new IllegalStateException("Failed to serialize items for order " + orderId, e);
         }
     }
 
     private List<OrderCreatedEvent.OrderItemEvent> deserializeItems(String itemsJson) {
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            return mapper.readValue(itemsJson,
-                mapper.getTypeFactory().constructCollectionType(List.class, OrderCreatedEvent.OrderItemEvent.class));
+            return objectMapper.readValue(itemsJson, ITEMS_TYPE_REF);
         } catch (Exception e) {
             log.error("Failed to deserialize items: {}", e.getMessage());
-            return Collections.emptyList();
+            return List.of();
         }
     }
 
-    /**
-     * Result of an inventory reservation attempt.
-     */
     public record ReservationResult(boolean success, String errorMessage, ReservationEntity reservation) {
         public static ReservationResult success(ReservationEntity reservation) {
             return new ReservationResult(true, null, reservation);

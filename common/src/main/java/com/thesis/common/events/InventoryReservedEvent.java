@@ -5,47 +5,49 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 import java.util.List;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class InventoryReservedEvent {
+public record InventoryReservedEvent(
     @NotBlank(message = "Reservation ID cannot be blank")
-    private String reservationId;
+    String reservationId,
 
     @NotBlank(message = "Order ID cannot be blank")
-    private String orderId;
+    String orderId,
 
     @NotEmpty(message = "Reserved items list cannot be empty")
     @Valid
-    private List<ReservedItem> reservedItems;
+    List<ReservedItem> reservedItems,
 
     @NotNull(message = "Reserved at cannot be null")
-    private Instant reservedAt;
+    Instant reservedAt,
 
     @NotBlank(message = "Correlation ID cannot be blank")
-    private String correlationId;
+    String correlationId,
 
-    @Builder.Default
-    private Instant createdAt = Instant.now();
+    Instant createdAt
+) implements ChoreographyEvent {
+    public InventoryReservedEvent {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class ReservedItem {
+    public record ReservedItem(
         @NotBlank(message = "Product ID cannot be blank")
-        private String productId;
+        String productId,
 
         @Positive(message = "Quantity must be positive")
-        private int quantity;
+        int quantity
+    ) {
+        public static ReservedItem of(String productId, int quantity) {
+            return new ReservedItem(productId, quantity);
+        }
+    }
+
+    public static InventoryReservedEvent of(String reservationId, String orderId, List<ReservedItem> reservedItems,
+                                            Instant reservedAt, String correlationId) {
+        return new InventoryReservedEvent(reservationId, orderId, reservedItems, reservedAt, correlationId, Instant.now());
     }
 }

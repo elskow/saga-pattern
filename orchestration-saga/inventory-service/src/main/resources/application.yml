@@ -6,6 +6,10 @@ spring:
   application:
     name: orchestration-inventory-service
 
+  threads:
+    virtual:
+      enabled: true
+
   lifecycle:
     timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
 
@@ -86,6 +90,10 @@ management:
   otlp:
     tracing:
       endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
+    metrics:
+      export:
+        enabled: ${OTEL_EXPORTER_OTLP_METRICS_ENABLED:true}
+        endpoint: ${OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/metrics}
 
 logging:
   level:
@@ -94,7 +102,6 @@ logging:
   pattern:
     level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
 
-# Thesis testing - artificial delay for timeout scenarios
 app:
   artificial-delay:
     enabled: ${ARTIFICIAL_DELAY_ENABLED:false}

@@ -2,30 +2,31 @@ package com.thesis.common.events;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ShippingCancelledEvent {
+public record ShippingCancelledEvent(
     @NotBlank(message = "Shipping ID cannot be blank")
-    private String shippingId;
+    String shippingId,
 
     @NotBlank(message = "Order ID cannot be blank")
-    private String orderId;
+    String orderId,
 
     @NotNull(message = "Cancelled at cannot be null")
-    private Instant cancelledAt;
+    Instant cancelledAt,
 
     @NotBlank(message = "Correlation ID cannot be blank")
-    private String correlationId;
+    String correlationId,
 
-    @Builder.Default
-    private Instant createdAt = Instant.now();
+    Instant createdAt
+) implements ChoreographyEvent {
+    public ShippingCancelledEvent {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
+
+    public static ShippingCancelledEvent of(String shippingId, String orderId, Instant cancelledAt, String correlationId) {
+        return new ShippingCancelledEvent(shippingId, orderId, cancelledAt, correlationId, Instant.now());
+    }
 }

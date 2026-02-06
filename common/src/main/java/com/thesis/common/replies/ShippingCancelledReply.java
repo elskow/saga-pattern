@@ -1,20 +1,17 @@
 package com.thesis.common.replies;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+public record ShippingCancelledReply(
+    String shippingId,
+    String orderId,
+    boolean success,
+    String reason
+) implements SagaReply {
 
-/**
- * Reply sent by shipping service after processing a shipping cancellation compensation.
- */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ShippingCancelledReply implements SagaReply {
-    private String shipmentId;
-    private String orderId;
-    private boolean success;
-    private String reason;
+    public static ShippingCancelledReply success(String shippingId, String orderId) {
+        return new ShippingCancelledReply(shippingId, orderId, true, null);
+    }
+
+    public static ShippingCancelledReply failure(String shippingId, String orderId, String reason) {
+        return new ShippingCancelledReply(shippingId, orderId, false, reason);
+    }
 }

@@ -8,10 +8,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-/**
- * Entity to track processed events for idempotency.
- * Prevents duplicate processing of Kafka messages.
- */
 @Entity
 @Table(name = "processed_events", indexes = {
     @Index(name = "idx_processed_events_event_id", columnList = "event_id", unique = true)

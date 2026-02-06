@@ -8,11 +8,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-/**
- * Entity to store pending shipping addresses while waiting for inventory reservation.
- * This replaces the in-memory ConcurrentHashMap to ensure data persistence
- * across service restarts and for reliable saga execution during load testing.
- */
 @Entity
 @Table(name = "pending_shipping_addresses", indexes = {
     @Index(name = "idx_pending_shipping_addresses_order_id", columnList = "order_id"),

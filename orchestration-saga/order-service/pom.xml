@@ -105,6 +105,12 @@
             <artifactId>common</artifactId>
         </dependency>
 
+        <!-- Orchestration Framework -->
+        <dependency>
+            <groupId>com.thesis</groupId>
+            <artifactId>orchestration-framework</artifactId>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -34,7 +34,7 @@ public class OrderEntity {
     private String shippingAddress;
 
     @Column(length = 2000)
-    private String itemsJson; // JSON representation of items
+    private String itemsJson;
     
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

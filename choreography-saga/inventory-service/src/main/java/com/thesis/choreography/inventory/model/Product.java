@@ -44,13 +44,19 @@ public class Product {
 
     public void reserve(int quantity) {
         if (!canReserve(quantity)) {
-            throw new IllegalStateException("Insufficient stock for product: " + productId);
+            throw new IllegalStateException("Insufficient stock for product: %s".formatted(productId));
         }
         quantityAvailable -= quantity;
         quantityReserved += quantity;
     }
 
     public void release(int quantity) {
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("Release quantity must be positive");
+        }
+        if (quantity > quantityReserved) {
+            throw new IllegalStateException("Cannot release more than reserved for product: %s".formatted(productId));
+        }
         quantityReserved -= quantity;
         quantityAvailable += quantity;
     }

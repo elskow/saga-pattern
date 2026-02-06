@@ -1,5 +1,7 @@
 package com.thesis.choreography.shipping.config;
 
+import com.thesis.common.config.KafkaErrorHandlingProperties;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -24,10 +26,13 @@ import java.util.Map;
 
 @Configuration
 @Slf4j
+@RequiredArgsConstructor
 public class KafkaConfig {
 
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
+
+    private final KafkaErrorHandlingProperties errorHandlingProperties;
 
     @Bean
     public ProducerFactory<String, Object> producerFactory() {
@@ -77,14 +82,15 @@ public class KafkaConfig {
                     record.topic(), record.key(), ex);
                 return new org.apache.kafka.common.TopicPartition(record.topic() + ".DLT", record.partition());
             });
-        // Retry 3 times with 1 second interval
-        return new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 3L));
+        return new DefaultErrorHandler(recoverer, new FixedBackOff(
+            errorHandlingProperties.backoffIntervalMs(),
+            errorHandlingProperties.maxRetries()));
     }
 
     @Bean
     public NewTopic shippingEventsDltTopic() {
         return TopicBuilder.name("shipping-events.DLT")
-            .partitions(3)
+            .partitions(errorHandlingProperties.defaultPartitions())
             .replicas(1)
             .build();
     }
@@ -92,7 +98,7 @@ public class KafkaConfig {
     @Bean
     public NewTopic shippingEventsTopic() {
         return TopicBuilder.name("shipping-events")
-            .partitions(3)
+            .partitions(errorHandlingProperties.defaultPartitions())
             .replicas(1)
             .build();
     }

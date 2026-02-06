@@ -4,81 +4,66 @@ import com.thesis.common.exception.OrderNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.NoSuchElementException;
 
-@Slf4j
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(NoSuchElementException.class)
-    public ResponseEntity<Map<String, Object>> handleNotFound(NoSuchElementException ex) {
+    public ProblemDetail handleNotFound(NoSuchElementException ex) {
         log.warn("Resource not found: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-            .body(buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage()));
+        return buildProblem(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, Object>> handleBadRequest(IllegalArgumentException ex) {
+    public ProblemDetail handleBadRequest(IllegalArgumentException ex) {
         log.warn("Bad request: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-            .body(buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage()));
+        return buildProblem(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<Map<String, Object>> handleConflict(IllegalStateException ex) {
+    public ProblemDetail handleConflict(IllegalStateException ex) {
         log.warn("Conflict: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage()));
+        return buildProblem(HttpStatus.CONFLICT, ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
-        Map<String, String> fieldErrors = new HashMap<>();
+    public ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
+        log.warn("Validation failed: {}", ex.getBindingResult().getFieldErrors());
+        ProblemDetail problem = buildProblem(HttpStatus.BAD_REQUEST, "Validation failed");
         ex.getBindingResult().getFieldErrors().forEach(error ->
-            fieldErrors.put(error.getField(), error.getDefaultMessage())
+            problem.setProperty(error.getField(), error.getDefaultMessage())
         );
-        log.warn("Validation failed: {}", fieldErrors);
-
-        Map<String, Object> response = buildErrorResponse(HttpStatus.BAD_REQUEST, "Validation failed");
-        response.put("fieldErrors", fieldErrors);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        return problem;
     }
 
     @ExceptionHandler(OrderNotFoundException.class)
-    public ResponseEntity<Map<String, Object>> handleOrderNotFound(OrderNotFoundException ex) {
+    public ProblemDetail handleOrderNotFound(OrderNotFoundException ex) {
         log.warn("Order not found: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-            .body(buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage()));
+        return buildProblem(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
     @ExceptionHandler(DataAccessException.class)
-    public ResponseEntity<Map<String, Object>> handleDataAccess(DataAccessException ex) {
+    public ProblemDetail handleDataAccess(DataAccessException ex) {
         log.error("Database error", ex);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Database operation failed"));
+        return buildProblem(HttpStatus.INTERNAL_SERVER_ERROR, "Database operation failed");
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
+    public ProblemDetail handleGeneric(Exception ex) {
         log.error("Unexpected error", ex);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred"));
+        return buildProblem(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
     }
 
-    private Map<String, Object> buildErrorResponse(HttpStatus status, String message) {
-        Map<String, Object> error = new HashMap<>();
-        error.put("timestamp", LocalDateTime.now().toString());
-        error.put("status", status.value());
-        error.put("error", status.getReasonPhrase());
-        error.put("message", message);
-        return error;
+    private ProblemDetail buildProblem(HttpStatus status, String message) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, message);
+        problem.setTitle(status.getReasonPhrase());
+        return problem;
     }
 }

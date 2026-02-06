@@ -2,14 +2,15 @@ package com.thesis.choreography.payment.kafka;
 
 import com.thesis.choreography.payment.service.IdempotencyService;
 import com.thesis.choreography.payment.service.PaymentService;
-import com.thesis.common.dto.KafkaTopics;
+import com.thesis.common.config.KafkaTopicsProperties;
 import com.thesis.common.events.InventoryReservationFailedEvent;
 import com.thesis.common.events.OrderCreatedEvent;
+import com.thesis.common.exception.SagaCommandProcessingException;
+import com.thesis.common.util.MdcUtils;
 import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.slf4j.MDC;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,29 +27,29 @@ public class PaymentEventListener {
     private final IdempotencyService idempotencyService;
     private final Validator validator;
 
-    @KafkaListener(topics = KafkaTopics.ORDER_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:payment-service}")
+    @KafkaListener(topics = KafkaTopicsProperties.ORDER_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:payment-service}")
     @Transactional
     public void handleOrderEvents(ConsumerRecord<String, Object> record) {
         handleEvent(record, OrderCreatedEvent.class, (orderEvent, eventId) -> {
-            if (!idempotencyService.markProcessed(eventId, "OrderCreatedEvent")) {
-                log.info("Skipping duplicate OrderCreatedEvent for order: {}", orderEvent.getOrderId());
+            if (!idempotencyService.tryMarkAsProcessed(eventId, "OrderCreatedEvent")) {
+                log.trace("Skipping duplicate OrderCreatedEvent for order: {}", orderEvent.orderId());
                 return;
             }
-            log.info("Received OrderCreatedEvent for order: {}", orderEvent.getOrderId());
+            log.debug("Received OrderCreatedEvent for order: {}", orderEvent.orderId());
             paymentService.processPayment(orderEvent);
         });
     }
 
-    @KafkaListener(topics = KafkaTopics.INVENTORY_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:payment-service}")
+    @KafkaListener(topics = KafkaTopicsProperties.INVENTORY_EVENTS_TOPIC, groupId = "${app.kafka.consumer.group-id:payment-service}")
     @Transactional
     public void handleInventoryEvents(ConsumerRecord<String, Object> record) {
         handleEvent(record, InventoryReservationFailedEvent.class, (inventoryEvent, eventId) -> {
-            if (!idempotencyService.markProcessed(eventId, "InventoryReservationFailedEvent")) {
-                log.info("Skipping duplicate InventoryReservationFailedEvent for order: {}", inventoryEvent.getOrderId());
+            if (!idempotencyService.tryMarkAsProcessed(eventId, "InventoryReservationFailedEvent")) {
+                log.trace("Skipping duplicate InventoryReservationFailedEvent for order: {}", inventoryEvent.orderId());
                 return;
             }
-            log.info("Received InventoryReservationFailedEvent, initiating refund for order: {}", inventoryEvent.getOrderId());
-            paymentService.refundPayment(inventoryEvent.getOrderId());
+            log.debug("Received InventoryReservationFailedEvent, initiating refund for order: {}", inventoryEvent.orderId());
+            paymentService.refundPayment(inventoryEvent.orderId());
         });
     }
 
@@ -60,10 +61,10 @@ public class PaymentEventListener {
             log.debug("Received event of type: {}", event.getClass().getName());
             if (eventClass.isInstance(event)) {
                 T typedEvent = eventClass.cast(event);
-                String orderId = getOrderId(typedEvent);
-                String eventCorrelationId = getCorrelationId(typedEvent, correlationId);
+                String orderId = MdcUtils.getOrderId(typedEvent);
+                String eventCorrelationId = MdcUtils.getCorrelationId(typedEvent, correlationId);
 
-                setupMdc(orderId, eventCorrelationId);
+                MdcUtils.setupEventMdc(orderId, eventCorrelationId);
 
                 Set<?> violations = validator.validate(typedEvent);
                 if (!violations.isEmpty()) {
@@ -80,44 +81,18 @@ public class PaymentEventListener {
             throw e;
         } catch (Exception e) {
             log.error("Error processing event {}: {}", eventClass.getSimpleName(), e.getMessage(), e);
-            throw new RuntimeException(e);
+            throw new SagaCommandProcessingException("Event processing failed", e);
         } finally {
-            MDC.clear();
+            MdcUtils.clearEventMdc();
         }
-    }
-
-    private String getOrderId(Object event) {
-        if (event instanceof OrderCreatedEvent oce) {
-            return oce.getOrderId();
-        } else if (event instanceof InventoryReservationFailedEvent irfe) {
-            return irfe.getOrderId();
-        }
-        return "unknown";
-    }
-
-    private String getCorrelationId(Object event, String defaultCorrelationId) {
-        if (event instanceof OrderCreatedEvent oce) {
-            return oce.getCorrelationId() != null ? oce.getCorrelationId() : defaultCorrelationId;
-        } else if (event instanceof InventoryReservationFailedEvent irfe) {
-            return irfe.getCorrelationId() != null ? irfe.getCorrelationId() : defaultCorrelationId;
-        }
-        return defaultCorrelationId;
     }
 
     private String getEventIdPrefix(Class<?> eventClass) {
-        if (eventClass == OrderCreatedEvent.class) {
-            return "order-created";
-        } else if (eventClass == InventoryReservationFailedEvent.class) {
-            return "inventory-failed";
-        }
-        return eventClass.getSimpleName().toLowerCase();
-    }
-
-    private void setupMdc(String orderId, String correlationId) {
-        MDC.put("orderId", orderId != null ? orderId : "unknown");
-        if (correlationId != null) {
-            MDC.put("correlationId", correlationId);
-        }
+        return switch (eventClass.getSimpleName()) {
+            case "OrderCreatedEvent" -> "order-created";
+            case "InventoryReservationFailedEvent" -> "inventory-failed";
+            default -> eventClass.getSimpleName().toLowerCase();
+        };
     }
 
     @FunctionalInterface

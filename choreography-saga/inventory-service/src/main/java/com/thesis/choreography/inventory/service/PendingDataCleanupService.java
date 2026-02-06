@@ -13,10 +13,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
-/**
- * Service to cleanup orphaned pending order items.
- * Removes pending items that are older than retention period or belong to orders that will never complete.
- */
 @Service
 @Slf4j
 public class PendingDataCleanupService {
@@ -28,7 +24,6 @@ public class PendingDataCleanupService {
                                      MeterRegistry meterRegistry) {
         this.pendingOrderItemRepository = pendingOrderItemRepository;
 
-        // Register gauge metric for pending order items count
         meterRegistry.gauge(
             "saga.pending.order.items.count",
             List.of(io.micrometer.core.instrument.Tag.of(SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY)),
@@ -37,20 +32,13 @@ public class PendingDataCleanupService {
         );
     }
 
-    /**
-     * Scheduled cleanup job to remove pending order items older than retention period.
-     * Runs daily at 3 AM.
-     */
     @Scheduled(cron = "0 0 3 * * *")
     @Transactional
     public void cleanupOrphanedPendingItems() {
         try {
             Instant cutoff = Instant.now().minus(RETENTION_DAYS, ChronoUnit.DAYS);
             int deletedCount = pendingOrderItemRepository.deleteByCreatedAtBefore(cutoff);
-            log.info("Cleaned up {} pending order items older than {} days", deletedCount, RETENTION_DAYS);
-
-            // Additional cleanup: Remove items for orders that are in terminal states
-            // This would require integration with order service, but for now TTL cleanup is sufficient
+            log.debug("Cleaned up {} pending order items older than {} days", deletedCount, RETENTION_DAYS);
         } catch (Exception e) {
             log.error("Error during pending order items cleanup", e);
         }

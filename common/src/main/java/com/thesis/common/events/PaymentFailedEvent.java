@@ -2,32 +2,34 @@ package com.thesis.common.events;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class PaymentFailedEvent {
-    private String paymentId;
+public record PaymentFailedEvent(
+    String paymentId,
 
     @NotBlank(message = "Order ID cannot be blank")
-    private String orderId;
+    String orderId,
 
     @NotBlank(message = "Reason cannot be blank")
-    private String reason;
+    String reason,
 
     @NotNull(message = "Failed at cannot be null")
-    private Instant failedAt;
+    Instant failedAt,
 
     @NotBlank(message = "Correlation ID cannot be blank")
-    private String correlationId;
+    String correlationId,
 
-    @Builder.Default
-    private Instant createdAt = Instant.now();
+    Instant createdAt
+) implements ChoreographyEvent {
+    public PaymentFailedEvent {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
+
+    public static PaymentFailedEvent of(String paymentId, String orderId, String reason,
+                                        Instant failedAt, String correlationId) {
+        return new PaymentFailedEvent(paymentId, orderId, reason, failedAt, correlationId, Instant.now());
+    }
 }

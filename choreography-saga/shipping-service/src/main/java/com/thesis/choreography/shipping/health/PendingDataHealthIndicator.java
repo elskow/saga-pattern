@@ -7,10 +7,6 @@ import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Component;
 
-/**
- * Health indicator for pending shipping addresses.
- * Monitors pending data accumulation to detect stuck sagas or system issues.
- */
 @Component
 @RequiredArgsConstructor
 @Slf4j

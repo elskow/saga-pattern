@@ -9,25 +9,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.MDC;
 
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
-import java.util.function.Function;
 
 @Slf4j
 public abstract class AbstractEventListener<T> {
 
     private final Validator validator;
-    private final MeterRegistry meterRegistry;
     private final String serviceName;
     private final Counter eventProcessedCounter;
     private final Counter eventProcessingFailedCounter;
 
-    protected AbstractEventListener(Validator validator,
-                                 MeterRegistry meterRegistry,
-                                 String serviceName) {
+    protected AbstractEventListener(Validator validator, MeterRegistry meterRegistry, String serviceName) {
         this.validator = validator;
-        this.meterRegistry = meterRegistry;
         this.serviceName = serviceName;
         this.eventProcessedCounter = meterRegistry.counter(
             SagaMetrics.SAGA_MESSAGES_TOTAL,
@@ -68,10 +64,7 @@ public abstract class AbstractEventListener<T> {
                                BiConsumer<String, String> mdcSetup,
                                Runnable idempotencyCheck,
                                Runnable eventProcessor) {
-        String correlationId = getCorrelationId(event);
-        if (correlationId == null) {
-            correlationId = UUID.randomUUID().toString();
-        }
+        String correlationId = Objects.requireNonNullElse(getCorrelationId(event), UUID.randomUUID().toString());
 
         try {
             mdcSetup.accept(getOrderId(event), correlationId);
@@ -86,7 +79,7 @@ public abstract class AbstractEventListener<T> {
                 idempotencyCheck.run();
             }
 
-            log.info("Received {} for order: {}", getEventType(), getOrderId(event));
+            log.debug("Received {} for order: {}", getEventType(), getOrderId(event));
             eventProcessor.run();
             eventProcessedCounter.increment();
 
@@ -95,12 +88,13 @@ public abstract class AbstractEventListener<T> {
             eventProcessingFailedCounter.increment();
             throw e;
         } finally {
-            MDC.clear();
+            MDC.remove("orderId");
+            MDC.remove("correlationId");
         }
     }
 
     protected void setupMdc(String orderId, String correlationId) {
-        MDC.put("orderId", orderId != null ? orderId : "unknown");
+        MDC.put("orderId", Objects.requireNonNullElse(orderId, "unknown"));
         if (correlationId != null) {
             MDC.put("correlationId", correlationId);
         }

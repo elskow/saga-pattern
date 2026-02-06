@@ -1,21 +1,16 @@
 package com.thesis.common.enums;
 
+import java.util.Arrays;
+
 public enum CommandStatus {
 
-    PENDING,
-    SENT,
-    SKIPPED;
+    PENDING, SENT, SKIPPED;
 
     public static CommandStatus fromValue(String value) {
-        if (value == null) {
-            return null;
-        }
-        for (CommandStatus status : CommandStatus.values()) {
-            if (status.name().equals(value)) {
-                return status;
-            }
-        }
-        throw new IllegalArgumentException("Unknown CommandStatus: " + value);
+        return value == null ? null : Arrays.stream(values())
+            .filter(s -> s.name().equals(value))
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("Unknown CommandStatus: %s".formatted(value)));
     }
 
     public String getValue() {

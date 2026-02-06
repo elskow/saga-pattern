@@ -13,10 +13,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
-/**
- * Service to cleanup orphaned pending shipping addresses.
- * Removes pending addresses that are older than retention period.
- */
 @Service
 @Slf4j
 public class PendingDataCleanupService {
@@ -28,7 +24,6 @@ public class PendingDataCleanupService {
                                      MeterRegistry meterRegistry) {
         this.pendingShippingAddressRepository = pendingShippingAddressRepository;
 
-        // Register gauge metric for pending shipping addresses count
         meterRegistry.gauge(
             "saga.pending.shipping.addresses.count",
             List.of(io.micrometer.core.instrument.Tag.of(SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_CHOREOGRAPHY)),
@@ -37,17 +32,13 @@ public class PendingDataCleanupService {
         );
     }
 
-    /**
-     * Scheduled cleanup job to remove pending shipping addresses older than retention period.
-     * Runs daily at 3:15 AM (slightly offset from inventory cleanup).
-     */
     @Scheduled(cron = "0 15 3 * * *")
     @Transactional
     public void cleanupOrphanedPendingAddresses() {
         try {
             Instant cutoff = Instant.now().minus(RETENTION_DAYS, ChronoUnit.DAYS);
             int deletedCount = pendingShippingAddressRepository.deleteByCreatedAtBefore(cutoff);
-            log.info("Cleaned up {} pending shipping addresses older than {} days", deletedCount, RETENTION_DAYS);
+            log.debug("Cleaned up {} pending shipping addresses older than {} days", deletedCount, RETENTION_DAYS);
         } catch (Exception e) {
             log.error("Error during pending shipping addresses cleanup", e);
         }

@@ -1,20 +1,17 @@
 package com.thesis.common.replies;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+public record PaymentRefundedReply(
+    String paymentId,
+    String orderId,
+    boolean success,
+    String reason
+) implements SagaReply {
 
-/**
- * Reply sent by payment service after processing a refund compensation.
- */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class PaymentRefundedReply implements SagaReply {
-    private String paymentId;
-    private String orderId;
-    private boolean success;
-    private String reason;
+    public static PaymentRefundedReply success(String paymentId, String orderId) {
+        return new PaymentRefundedReply(paymentId, orderId, true, null);
+    }
+
+    public static PaymentRefundedReply failure(String paymentId, String orderId, String reason) {
+        return new PaymentRefundedReply(paymentId, orderId, false, reason);
+    }
 }

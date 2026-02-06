@@ -5,6 +5,7 @@ import com.thesis.common.retry.MetricsRetryListener;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.retry.annotation.EnableRetry;
@@ -21,6 +22,7 @@ public class OrderServiceApplication {
     }
     
     @Bean
+    @ConditionalOnBean(MeterRegistry.class)
     public MetricsRetryListener metricsRetryListener(MeterRegistry meterRegistry) {
         return new MetricsRetryListener(meterRegistry, "order-choreography");
     }

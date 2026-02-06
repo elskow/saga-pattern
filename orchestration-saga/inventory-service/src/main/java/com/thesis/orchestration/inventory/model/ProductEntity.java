@@ -25,10 +25,6 @@ public class ProductEntity {
 
     private Integer reservedQuantity;
 
-    /**
-     * Version field for optimistic locking.
-     * Prevents concurrent updates from overwriting each other.
-     */
     @Version
     private Long version;
 }

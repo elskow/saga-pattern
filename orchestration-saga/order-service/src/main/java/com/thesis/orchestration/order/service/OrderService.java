@@ -41,7 +41,6 @@ public class OrderService {
         this.orderRepository = orderRepository;
         this.objectMapper = objectMapper;
 
-        // Initialize metrics
         this.orderCreatedCounter = meterRegistry.counter(SagaMetrics.ORDERS_CREATED,
                 SagaMetrics.TAG_SERVICE, SagaMetrics.SERVICE_ORCHESTRATION);
         this.orderCompletedCounter = meterRegistry.counter(SagaMetrics.ORDERS_COMPLETED,
@@ -61,14 +60,14 @@ public class OrderService {
     public void createOrder(String orderId, String customerId, BigDecimal totalAmount,
                             String shippingAddress, List<OrderCreatedEvent.OrderItemEvent> items,
                             String paymentId, String reservationId, String shipmentId) {
-        log.info("Creating order: {} for customer: {}", orderId, customerId);
+        log.debug("Creating order: {} for customer: {}", orderId, customerId);
 
         String itemsJson;
         try {
             itemsJson = objectMapper.writeValueAsString(items);
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize order items for order {}: {}", orderId, e.getMessage());
-            itemsJson = "[]";
+            throw new IllegalStateException("Failed to serialize order items for order " + orderId, e);
         }
 
         OrderEntity order = OrderEntity.builder()
@@ -105,7 +104,7 @@ public class OrderService {
 
     @Transactional
     public void failOrder(String orderId, String reason) {
-        log.info("Failing order {} with reason: {}", orderId, reason);
+        log.debug("Failing order {} with reason: {}", orderId, reason);
         OrderEntity order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
         order.setStatus(OrderEntity.OrderStatus.CANCELLED);
@@ -117,7 +116,6 @@ public class OrderService {
         orderFailedCounter.increment();
         compensationsTotalCounter.increment();
 
-        // Record saga duration if we have creation time
         if (order.getCreatedAt() != null) {
             long durationMs = Instant.now().toEpochMilli() - order.getCreatedAt().toEpochMilli();
             sagaTotalDurationTimer.record(java.time.Duration.ofMillis(durationMs));
@@ -126,7 +124,7 @@ public class OrderService {
 
     @Transactional
     public void completeOrder(String orderId) {
-        log.info("Completing order: {}", orderId);
+        log.debug("Completing order: {}", orderId);
         OrderEntity order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
         order.setStatus(OrderEntity.OrderStatus.COMPLETED);
@@ -137,7 +135,6 @@ public class OrderService {
 
         orderCompletedCounter.increment();
 
-        // Record saga duration
         if (order.getCreatedAt() != null) {
             long durationMs = order.getCompletedAt().toEpochMilli() - order.getCreatedAt().toEpochMilli();
             sagaTotalDurationTimer.record(java.time.Duration.ofMillis(durationMs));

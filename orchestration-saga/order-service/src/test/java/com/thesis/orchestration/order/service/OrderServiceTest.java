@@ -16,7 +16,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -49,13 +48,13 @@ class OrderServiceTest {
         String customerId = "CUST-001";
         BigDecimal totalAmount = new BigDecimal("99.99");
         String shippingAddress = "123 Main Street";
-        List<OrderCreatedEvent.OrderItemEvent> items = Arrays.asList(
-                OrderCreatedEvent.OrderItemEvent.builder()
-                        .productId("PROD-001")
-                        .productName("Test Product")
-                        .quantity(2)
-                        .price(new BigDecimal("49.99"))
-                        .build()
+        List<OrderCreatedEvent.OrderItemEvent> items = List.of(
+                OrderCreatedEvent.OrderItemEvent.of(
+                        "PROD-001",
+                        "Test Product",
+                        2,
+                        new BigDecimal("49.99")
+                )
         );
 
         when(orderRepository.save(any(OrderEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -111,7 +110,7 @@ class OrderServiceTest {
     void shouldFindOrdersByCustomerId() {
         // Given
         String customerId = "CUST-001";
-        List<OrderEntity> orders = Arrays.asList(
+        List<OrderEntity> orders = List.of(
                 OrderEntity.builder().orderId("ORDER-1").customerId(customerId).build(),
                 OrderEntity.builder().orderId("ORDER-2").customerId(customerId).build()
         );
@@ -193,7 +192,7 @@ class OrderServiceTest {
     @Test
     void shouldFindAllOrders() {
         // Given
-        List<OrderEntity> orders = Arrays.asList(
+        List<OrderEntity> orders = List.of(
                 OrderEntity.builder().orderId("ORDER-1").build(),
                 OrderEntity.builder().orderId("ORDER-2").build(),
                 OrderEntity.builder().orderId("ORDER-3").build()

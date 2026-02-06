@@ -3,6 +3,7 @@ package com.thesis.choreography.payment.service;
 import com.thesis.choreography.payment.kafka.PaymentEventPublisher;
 import com.thesis.choreography.payment.model.Payment;
 import com.thesis.choreography.payment.repository.PaymentRepository;
+import com.thesis.common.config.PaymentProperties;
 import com.thesis.common.events.OrderCreatedEvent;
 import com.thesis.common.events.PaymentCompletedEvent;
 import com.thesis.common.events.PaymentFailedEvent;
@@ -40,20 +41,22 @@ class PaymentServiceTest {
 
     @BeforeEach
     void setUp() {
-        paymentService = new PaymentService(paymentRepository, eventPublisher, new SimpleMeterRegistry());
+        PaymentProperties paymentProperties = new PaymentProperties();
+        paymentService = new PaymentService(paymentRepository, eventPublisher, paymentProperties, new SimpleMeterRegistry());
     }
 
     @Test
     void shouldCreatePaymentFromOrderEvent() {
         // Given
-        OrderCreatedEvent orderEvent = OrderCreatedEvent.builder()
-            .orderId("ORDER-123")
-            .customerId("CUST-001")
-            .totalAmount(new BigDecimal("99.99"))
-            .shippingAddress("123 Main St")
-            .items(List.of())
-            .createdAt(Instant.now())
-            .build();
+        OrderCreatedEvent orderEvent = new OrderCreatedEvent(
+            "ORDER-123",
+            "CUST-001",
+            "123 Main St",
+            "CORR-123",
+            List.of(),
+            new BigDecimal("99.99"),
+            Instant.now()
+        );
 
         when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -72,14 +75,15 @@ class PaymentServiceTest {
     @Test
     void shouldProcessPaymentAndPublishEvent() {
         // Given
-        OrderCreatedEvent orderEvent = OrderCreatedEvent.builder()
-            .orderId("ORDER-456")
-            .customerId("CUST-002")
-            .totalAmount(new BigDecimal("150.00"))
-            .shippingAddress("456 Oak Ave")
-            .items(List.of())
-            .createdAt(Instant.now())
-            .build();
+        OrderCreatedEvent orderEvent = new OrderCreatedEvent(
+            "ORDER-456",
+            "CUST-002",
+            "456 Oak Ave",
+            "CORR-456",
+            List.of(),
+            new BigDecimal("150.00"),
+            Instant.now()
+        );
 
         when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -171,14 +175,15 @@ class PaymentServiceTest {
     @Test
     void shouldSavePaymentTwiceDuringProcessing() {
         // Given
-        OrderCreatedEvent orderEvent = OrderCreatedEvent.builder()
-            .orderId("ORDER-789")
-            .customerId("CUST-003")
-            .totalAmount(new BigDecimal("200.00"))
-            .shippingAddress("789 Pine Rd")
-            .items(List.of())
-            .createdAt(Instant.now())
-            .build();
+        OrderCreatedEvent orderEvent = new OrderCreatedEvent(
+            "ORDER-789",
+            "CUST-003",
+            "789 Pine Rd",
+            "CORR-789",
+            List.of(),
+            new BigDecimal("200.00"),
+            Instant.now()
+        );
 
         // Capture the status at each save call since the same object is mutated
         List<Payment.PaymentStatus> capturedStatuses = new ArrayList<>();
@@ -194,7 +199,7 @@ class PaymentServiceTest {
         // Then - Payment should be saved twice (once PENDING, once with final status)
         assertThat(capturedStatuses).hasSize(2);
         // First save is PENDING
-        assertThat(capturedStatuses.get(0)).isEqualTo(Payment.PaymentStatus.PENDING);
+        assertThat(capturedStatuses.getFirst()).isEqualTo(Payment.PaymentStatus.PENDING);
         // Second save is final status (COMPLETED or FAILED)
         assertThat(capturedStatuses.get(1)).isIn(Payment.PaymentStatus.COMPLETED, Payment.PaymentStatus.FAILED);
     }

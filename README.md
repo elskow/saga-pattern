@@ -253,8 +253,8 @@ Compensation Flow (Automatic by Saga Manager):
 
 | Component | Technology |
 |-----------|------------|
-| Language | Java 17 |
-| Framework | Spring Boot 3.2.0 |
+| Language | Java 25 (works on 21+) |
+| Framework | Spring Boot 3.5.10 |
 | Build Tool | Maven (multi-module) |
 | Choreography Messaging | Apache Kafka |
 | Orchestration Framework | Eventuate Tram Saga |
@@ -262,9 +262,55 @@ Compensation Flow (Automatic by Saga Manager):
 | Metrics | Micrometer + Prometheus |
 | Tracing | Jaeger |
 | Dashboards | Grafana |
-| Load Testing | Gatling / k6 |
+| Load Testing | Gatling (Scala) |
 | Containerization | Docker & Docker Compose |
 | Container Images | Jib (no Dockerfile needed) |
+
+### Java 21/25 Modernization Highlights
+
+This project has been modernized to take full advantage of Java 21/25 features:
+
+**Language Features:**
+- **Records** replace Lombok DTOs/events with compact validation constructors
+- **Sealed interfaces** (`ChoreographyEvent`, `SagaReply`) enable exhaustive pattern matching
+- **Pattern-matching switch** for clean event dispatch in listeners
+- **SequencedCollection** `getFirst()` in tests; `List.of()` factories replace `Arrays.asList()`
+- **`.formatted()`** string templating throughout the codebase
+
+**Concurrency (Preview Features - require `--enable-preview`):**
+- **Virtual threads** enabled via `spring.threads.virtual.enabled=true` for all services
+- **StructuredTaskScope** (`OutboxPublisherScheduler.java`) replaces `CompletableFuture.allOf()` for parallel outbox publishing with proper lifecycle management
+- **ScopedValue** (`SagaContext.java`) provides virtual-thread-safe correlation ID propagation as a modern alternative to ThreadLocal/MDC
+
+**ScopedValue Usage Example:**
+```java
+import com.thesis.common.context.SagaContext;
+import com.thesis.common.context.SagaContext.ContextData;
+
+// Run code within a saga context scope
+SagaContext.run(
+    ContextData.forChoreography("order-123", "corr-456"),
+    () -> {
+        // Context is available throughout the scope
+        String orderId = SagaContext.orderId();
+        String correlationId = SagaContext.correlationId();
+        processOrder(); // MDC is also synchronized for logging
+    }
+);
+```
+
+### Additional Performance Levers
+
+- **Generational ZGC** for heavy benchmarks: add `-XX:+UseZGC -XX:+ZGenerational` when load-testing to shrink tail latencies
+- **Virtual-thread executors** (`Executors.newVirtualThreadPerTaskExecutor()`) for any remaining blocking adapters (JDBC is already compatible; wrap Kafka client calls if done synchronously)
+- **`Stream::mapMulti`** for flatter collection transforms in event mappers to cut intermediate allocations
+
+### Spring Boot 3.5+ Cleanup Opportunities
+
+- Prefer `RestClient`/`HttpServiceProxyFactory` over legacy `RestTemplate` for external calls; pairs well with virtual threads and reduces boilerplate
+- Use record-based `@ConfigurationProperties` to drop Lombok config classes and gain constructor binding validation
+- Replace hand-rolled error payloads with `ProblemDetail` in exception handlers for shorter code and standardized responses
+- Enable lightweight observability defaults (`management.otlp.metrics.export.enabled=true`/`tracing.export.enabled=true`) to keep telemetry consistent across services
 
 ---
 
@@ -305,12 +351,8 @@ saga-pattern/
 │           └── grafana/
 │
 └── load-testing/
-    ├── gatling/                         # Gatling simulations (primary)
-    │   └── src/test/scala/simulations/  # Scala test simulations
-    └── k6/                              # k6 scripts (legacy)
-        ├── happy-path-test.js           # Basic success testing
-        ├── comparison-test.js           # Side-by-side comparison
-        └── failure-scenarios-test.js    # Compensation testing
+    └── gatling/                         # Gatling simulations
+        └── src/test/scala/simulations/  # Scala test simulations
 ```
 
 ---
@@ -319,10 +361,16 @@ saga-pattern/
 
 ### Prerequisites
 
-- Java 17+
+- Java 21+ (tested on 25)
 - Maven 3.8+
 - Docker & Docker Compose
-- (Optional) k6 for load testing
+- (Optional) Gatling runs via Maven — no separate install needed
+
+### JVM 21/25 Runtime Settings (recommended)
+
+- Enable preview when locally testing Loom-friendly features (if needed): `JAVA_TOOL_OPTIONS="--enable-preview"`
+- Prefer virtual threads for blocking IO (already on): `spring.threads.virtual.enabled=true`
+- Use G1 (default) or ZGC for lower tail latency: `-XX:+UseZGC` for heavy load tests
 
 ### Option 1: Run on VMs (Recommended for thesis testing)
 
@@ -454,36 +502,50 @@ curl http://localhost:8081/actuator/health
 
 ---
 
-## Load Testing
+## Load Testing (Gatling)
 
-### Install k6
+### Prerequisites
 
-```bash
-# macOS
-brew install k6
+- Java 17+ (Gatling runner)
+- Maven 3.8+
 
-# Ubuntu/Debian
-sudo gpg -k
-sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
-echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
-sudo apt-get update
-sudo apt-get install k6
-```
-
-### Run Tests
+### Run Tests Locally
 
 ```bash
-cd load-testing/k6
+cd load-testing/gatling
 
-# Happy path test (single pattern)
-k6 run happy-path-test.js
+# Quick smoke test (choreography)
+mvn gatling:test -Dgatling.simulationClass=simulations.HappyPathSimulation \
+  -DbaseHost=localhost -Dpattern=choreography -DtestDuration=60
 
-# Comparison test (both patterns side-by-side)
-k6 run comparison-test.js
+# Quick smoke test (orchestration)
+mvn gatling:test -Dgatling.simulationClass=simulations.HappyPathSimulation \
+  -DbaseHost=localhost -Dpattern=orchestration -DtestDuration=60
 
-# Failure scenarios (test compensation)
-k6 run failure-scenarios-test.js
+# Sustained mixed workload (primary thesis simulation)
+mvn gatling:test -Dgatling.simulationClass=simulations.SustainedMixedSimulation \
+  -DbaseHost=localhost -Dpattern=choreography -DtestDuration=300
 ```
+
+### Run via Jenkins (Recommended for Thesis)
+
+The `Jenkinsfile.benchmark` pipeline automates the full comparison workflow:
+1. Starts infrastructure (Kafka, PostgreSQL, Jaeger)
+2. Runs choreography benchmark with warmup/cooldown
+3. Runs orchestration benchmark with warmup/cooldown
+4. Collects and archives Gatling HTML reports
+
+### Available Simulations
+
+| Simulation | Purpose |
+|------------|---------|
+| `SustainedMixedSimulation` | Primary thesis test: 60% valid + 20% payment failure + 20% inventory failure |
+| `HappyPathSimulation` | Baseline: valid orders only |
+| `FailureScenariosSimulation` | Compensation testing |
+| `BurstSpikeSimulation` | Spike resilience |
+| `GradualRampupSimulation` | Scalability degradation point |
+| `ContentionSimulation` | Concurrent resource access |
+| `IdempotencySimulation` | Duplicate handling |
 
 ---
 
@@ -499,10 +561,14 @@ k6 run failure-scenarios-test.js
 
 - http://localhost:9090 - Prometheus UI
 - Query examples:
-  - `orders_created_total` - Total orders created
-  - `orders_completed_total` - Successfully completed orders
-  - `orders_failed_total` - Failed orders
-  - `order_processing_duration_seconds` - Processing time histogram
+  - `saga_orders_created_total` - Total orders created
+  - `saga_orders_completed_total` - Successfully completed orders
+  - `saga_orders_failed_total` - Failed orders
+  - `saga_total_duration_seconds` - End-to-end saga duration
+  - `saga_step_payment_duration_seconds` - Payment step duration
+  - `saga_compensations_total` - Total compensations triggered
+  - `saga_messages_total` - Kafka messages sent/received
+  - `saga_db_writes_total` - Database write operations
 
 ### Distributed Tracing (Jaeger)
 
@@ -516,11 +582,14 @@ k6 run failure-scenarios-test.js
 
 | Metric | Description | How to Measure |
 |--------|-------------|----------------|
-| **Throughput** | Orders processed per second | k6 `http_reqs` rate |
-| **Latency (p50, p95, p99)** | Response time percentiles | k6 `http_req_duration` |
-| **Success Rate** | % of orders completed successfully | `orders_completed / orders_created` |
-| **Compensation Time** | Time to rollback failed saga | Custom metric in load test |
-| **Resource Usage** | CPU, Memory per service | Docker stats / Prometheus |
+| **Saga Throughput** | Terminal sagas per second | Gatling saga metrics summary |
+| **Saga Duration (avg, p95, max)** | End-to-end saga completion time | `saga_total_duration_seconds` |
+| **Step Duration** | Per-step latency (payment, inventory, shipping) | `saga_step_*_duration_seconds` |
+| **Success Rate** | % of orders completed successfully | `saga_orders_completed / saga_orders_created` |
+| **Compensation Rate** | Compensations triggered | `saga_compensations_total` |
+| **Message Count** | Kafka messages per transaction | `saga_messages_per_transaction` |
+| **DB Write Count** | Database writes per transaction | `saga_db_writes_per_transaction` |
+| **Message Latency** | Inter-service message latency | `saga_message_latency_seconds` |
 
 ### Expected Findings
 
@@ -533,37 +602,38 @@ k6 run failure-scenarios-test.js
 | **Failure Handling** | Complex (each service handles) | Simple (orchestrator manages) |
 | **Scalability** | Better (independent services) | Limited by orchestrator |
 
-### Running the Comparison
+### Running the Comparison (via Jenkins)
+
+The recommended approach uses the Jenkins benchmark pipeline for reproducible A/B testing:
 
 ```bash
-# 1. SSH to saga-node and start choreography services
-ssh ubuntu@<saga-node-ip>
-cd ~/saga
-sudo docker compose -f docker-compose.infra.yml up -d
-sudo docker compose -f docker-compose.choreography.yml up -d
+# Trigger via Jenkins UI or CLI:
+# Job: saga-pattern-benchmark
+# Parameters:
+#   PROFILE: thesis-baseline (5min) or thesis-stress (15min)
+#   SIMULATION: SustainedMixedSimulation
+#   RUN_CHOREOGRAPHY: true
+#   RUN_ORCHESTRATION: true
+#   WARMUP_REQUESTS: 100
+#   COOLDOWN_SECONDS: 30
 
-# 2. Run choreography load test from k6-runner
-ssh ubuntu@<k6-runner-ip>
-cd ~/k6
-k6 run comparison-test.js
-
-# 3. Stop choreography, start orchestration
-ssh ubuntu@<saga-node-ip>
-cd ~/saga
-sudo docker compose -f docker-compose.choreography.yml down
-sudo docker compose -f docker-compose.orchestration.yml up -d
-
-# 4. Run orchestration load test
-ssh ubuntu@<k6-runner-ip>
-cd ~/k6
-k6 run comparison-test.js
-
-# 5. Collect results from:
-#    - k6 output (console)
-#    - Grafana dashboards at http://<observability-ip>:3000
-#    - Jaeger traces at http://<observability-ip>:16686
-#    - Prometheus queries at http://<observability-ip>:9090
+# The pipeline will:
+# 1. Clean up previous state
+# 2. Start infra (Kafka, PostgreSQL, Jaeger)
+# 3. Start choreography -> warmup -> run Gatling -> stop
+# 4. Cooldown between patterns
+# 5. Start orchestration -> warmup -> run Gatling -> stop
+# 6. Collect Gatling HTML reports as build artifacts
+# 7. Clean up
 ```
+
+### Collecting Results
+
+After a benchmark run, results are available from:
+- **Gatling HTML reports** - Archived as Jenkins build artifacts
+- **Grafana dashboards** - `http://<observability-ip>:3000` (Thesis - Saga Pattern Comparison)
+- **Jaeger traces** - `http://<observability-ip>:16686`
+- **Prometheus queries** - `http://<observability-ip>:9090`
 
 ---
 

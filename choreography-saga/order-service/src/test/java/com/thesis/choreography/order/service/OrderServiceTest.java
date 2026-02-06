@@ -20,7 +20,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -62,9 +61,9 @@ class OrderServiceTest {
 
         // Then
         assertThat(response).isNotNull();
-        assertThat(response.getOrderId()).isNotNull();
-        assertThat(response.getCustomerId()).isEqualTo("CUST-001");
-        assertThat(response.getStatus()).isEqualTo("PENDING");
+        assertThat(response.orderId()).isNotNull();
+        assertThat(response.customerId()).isEqualTo("CUST-001");
+        assertThat(response.status()).isEqualTo("PENDING");
 
         verify(orderRepository).save(any(Order.class));
         verify(eventPublisher).publishOrderCreated(any(OrderCreatedEvent.class));
@@ -100,9 +99,9 @@ class OrderServiceTest {
         // Then
         verify(eventPublisher).publishOrderCreated(eventCaptor.capture());
         OrderCreatedEvent event = eventCaptor.getValue();
-        assertThat(event.getCustomerId()).isEqualTo("CUST-001");
-        assertThat(event.getShippingAddress()).isEqualTo("123 Main Street");
-        assertThat(event.getItems()).hasSize(1);
+        assertThat(event.customerId()).isEqualTo("CUST-001");
+        assertThat(event.shippingAddress()).isEqualTo("123 Main Street");
+        assertThat(event.items()).hasSize(1);
     }
 
     @Test
@@ -204,8 +203,8 @@ class OrderServiceTest {
         OrderResponse response = orderService.getOrder(orderId);
 
         // Then
-        assertThat(response.getOrderId()).isEqualTo(orderId);
-        assertThat(response.getCustomerId()).isEqualTo("CUST-001");
+        assertThat(response.orderId()).isEqualTo(orderId);
+        assertThat(response.customerId()).isEqualTo("CUST-001");
     }
 
     @Test
@@ -224,7 +223,7 @@ class OrderServiceTest {
     void shouldGetOrdersByCustomer() {
         // Given
         String customerId = "CUST-001";
-        List<Order> orders = Arrays.asList(
+        List<Order> orders = List.of(
                 Order.builder().orderId("ORDER-1").customerId(customerId).status(Order.OrderStatus.PENDING).build(),
                 Order.builder().orderId("ORDER-2").customerId(customerId).status(Order.OrderStatus.COMPLETED).build()
         );
@@ -238,17 +237,15 @@ class OrderServiceTest {
     }
 
     private CreateOrderRequest createOrderRequest() {
-        CreateOrderRequest.OrderItemRequest item = new CreateOrderRequest.OrderItemRequest();
-        item.setProductId("PROD-001");
-        item.setProductName("Test Product");
-        item.setQuantity(2);
-        item.setPrice(new BigDecimal("49.99"));
+        var item = new CreateOrderRequest.OrderItemRequest(
+                "PROD-001",
+                "Test Product",
+                2,
+                new BigDecimal("49.99"));
 
-        CreateOrderRequest request = new CreateOrderRequest();
-        request.setCustomerId("CUST-001");
-        request.setShippingAddress("123 Main Street");
-        request.setItems(Arrays.asList(item));
-
-        return request;
+        return new CreateOrderRequest(
+                "CUST-001",
+                "123 Main Street",
+                List.of(item));
     }
 }

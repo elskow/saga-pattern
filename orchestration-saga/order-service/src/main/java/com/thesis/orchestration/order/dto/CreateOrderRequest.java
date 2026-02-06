@@ -6,32 +6,28 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.util.List;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class CreateOrderRequest {
+public record CreateOrderRequest(
+    @NotBlank(message = "Customer ID cannot be blank")
+    String customerId,
 
-    @NotBlank(message = "Customer ID is required")
-    private String customerId;
-
-    @NotNull(message = "Total amount is required")
+    @NotNull(message = "Total amount cannot be null")
     @Positive(message = "Total amount must be positive")
-    private BigDecimal totalAmount;
+    BigDecimal totalAmount,
 
-    @NotBlank(message = "Shipping address is required")
-    private String shippingAddress;
+    @NotBlank(message = "Shipping address cannot be blank")
+    String shippingAddress,
 
-    @NotNull(message = "Items are required")
-    @NotEmpty(message = "Items list cannot be empty")
+    @NotNull(message = "Items cannot be null")
+    @NotEmpty(message = "Items cannot be empty")
     @Valid
-    private List<OrderCreatedEvent.OrderItemEvent> items;
+    List<OrderCreatedEvent.OrderItemEvent> items
+) {
+    public static CreateOrderRequest of(String customerId, BigDecimal totalAmount,
+                                        String shippingAddress, List<OrderCreatedEvent.OrderItemEvent> items) {
+        return new CreateOrderRequest(customerId, totalAmount, shippingAddress, items);
+    }
 }

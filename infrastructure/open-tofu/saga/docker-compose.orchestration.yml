@@ -1,7 +1,3 @@
-# Orchestration Pattern Services - THESIS TESTING
-# Uses a central orchestrator to coordinate the saga
-# Supports scaling with: docker compose up -d --scale order-service=2
-
 x-service-defaults: &service-defaults
   restart: unless-stopped
   deploy:
@@ -13,51 +9,103 @@ x-service-defaults: &service-defaults
         cpus: '0.25'
         memory: 512M
 
+x-order-service-base: &order-service-base
+  <<: *service-defaults
+  image: ghcr.io/elskow/saga-pattern/orchestration-order-service:${IMAGE_TAG:-latest}
+  environment: &order-service-env
+    DB_HOST: orch-order-db
+    DB_PORT: 5432
+    DB_NAME: order_db
+    DB_USERNAME: postgres
+    DB_PASSWORD: postgres
+    KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    OTEL_SERVICE_NAME: orchestration-order-service
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    SPRING_PROFILES_ACTIVE: docker
+    SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+    PAYMENT_SERVICE_URL: http://payment-service:8091
+    INVENTORY_SERVICE_URL: http://inventory-service:8092
+    SHIPPING_SERVICE_URL: http://shipping-service:8093
+  labels:
+    - "prometheus.scrape=true"
+    - "prometheus.path=/actuator/prometheus"
+
 services:
-  # ============================================
-  # Order Service (Orchestrator - port 8085)
-  # ============================================
-  order-service:
-    <<: *service-defaults
-    image: ghcr.io/elskow/saga-pattern/orchestration-order-service:${IMAGE_TAG:-latest}
+  order-service-1:
+    <<: *order-service-base
+    container_name: orch-order-service-1
     ports:
       - "8085:8085"
     environment:
+      <<: *order-service-env
       SERVER_PORT: 8085
-      DB_HOST: orch-order-db
-      DB_PORT: 5432
-      DB_NAME: order_db
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
-      OTEL_SERVICE_NAME: orchestration-order-service
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      SPRING_PROFILES_ACTIVE: docker
-      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-      # Service URLs for orchestration (using Docker DNS)
-      PAYMENT_SERVICE_URL: http://payment-service:8086
-      INVENTORY_SERVICE_URL: http://inventory-service:8087
-      SHIPPING_SERVICE_URL: http://shipping-service:8088
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8085/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
-    labels:
-      - "prometheus.scrape=true"
-      - "prometheus.port=8085"
-      - "prometheus.path=/actuator/prometheus"
 
-  # ============================================
-  # Payment Service
-  # ============================================
+  order-service-2:
+    <<: *order-service-base
+    container_name: orch-order-service-2
+    ports:
+      - "8086:8086"
+    environment:
+      <<: *order-service-env
+      SERVER_PORT: 8086
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8086/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    profiles:
+      - scale2
+      - scale3
+      - scale4
+
+  order-service-3:
+    <<: *order-service-base
+    container_name: orch-order-service-3
+    ports:
+      - "8087:8087"
+    environment:
+      <<: *order-service-env
+      SERVER_PORT: 8087
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8087/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    profiles:
+      - scale3
+      - scale4
+
+  order-service-4:
+    <<: *order-service-base
+    container_name: orch-order-service-4
+    ports:
+      - "8088:8088"
+    environment:
+      <<: *order-service-env
+      SERVER_PORT: 8088
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8088/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    profiles:
+      - scale4
+
   payment-service:
     <<: *service-defaults
     image: ghcr.io/elskow/saga-pattern/orchestration-payment-service:${IMAGE_TAG:-latest}
     environment:
-      SERVER_PORT: 8086
+      SERVER_PORT: 8091
       DB_HOST: orch-payment-db
       DB_PORT: 5432
       DB_NAME: payment_db
@@ -70,24 +118,21 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8086/actuator/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8091/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
     labels:
       - "prometheus.scrape=true"
-      - "prometheus.port=8086"
+      - "prometheus.port=8091"
       - "prometheus.path=/actuator/prometheus"
 
-  # ============================================
-  # Inventory Service
-  # ============================================
   inventory-service:
     <<: *service-defaults
     image: ghcr.io/elskow/saga-pattern/orchestration-inventory-service:${IMAGE_TAG:-latest}
     environment:
-      SERVER_PORT: 8087
+      SERVER_PORT: 8092
       DB_HOST: orch-inventory-db
       DB_PORT: 5432
       DB_NAME: inventory_db
@@ -100,24 +145,21 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8087/actuator/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8092/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
     labels:
       - "prometheus.scrape=true"
-      - "prometheus.port=8087"
+      - "prometheus.port=8092"
       - "prometheus.path=/actuator/prometheus"
 
-  # ============================================
-  # Shipping Service
-  # ============================================
   shipping-service:
     <<: *service-defaults
     image: ghcr.io/elskow/saga-pattern/orchestration-shipping-service:${IMAGE_TAG:-latest}
     environment:
-      SERVER_PORT: 8088
+      SERVER_PORT: 8093
       DB_HOST: orch-shipping-db
       DB_PORT: 5432
       DB_NAME: shipping_db
@@ -130,14 +172,14 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8088/actuator/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8093/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
     labels:
       - "prometheus.scrape=true"
-      - "prometheus.port=8088"
+      - "prometheus.port=8093"
       - "prometheus.path=/actuator/prometheus"
 
 networks:

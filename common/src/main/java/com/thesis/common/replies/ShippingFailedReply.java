@@ -1,16 +1,12 @@
 package com.thesis.common.replies;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+public record ShippingFailedReply(
+    String shippingId,
+    String orderId,
+    String reason
+) implements SagaReply {
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ShippingFailedReply implements SagaReply {
-    private String shipmentId;
-    private String orderId;
-    private String reason;
+    public static ShippingFailedReply of(String shippingId, String orderId, String reason) {
+        return new ShippingFailedReply(shippingId, orderId, reason);
+    }
 }

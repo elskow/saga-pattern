@@ -15,11 +15,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -43,34 +41,38 @@ class InventoryServiceTest {
     @BeforeEach
     void setUp() {
         inventoryService = new InventoryService(
-                productRepository,
-                reservationRepository,
-                eventPublisher,
-                new SimpleMeterRegistry()
+            productRepository,
+            reservationRepository,
+            eventPublisher,
+            new SimpleMeterRegistry()
         );
     }
 
     @Test
     void shouldReserveInventorySuccessfully() {
         // Given
-        PaymentCompletedEvent paymentEvent = PaymentCompletedEvent.builder()
-                .paymentId("PAY-123")
-                .orderId("ORDER-456")
-                .completedAt(Instant.now())
-                .build();
-
-        Product product = Product.builder()
-                .productId("PROD-001")
-                .productName("Test Product")
-                .quantityAvailable(100)
-                .quantityReserved(0)
-                .build();
-
-        List<InventoryService.ItemToReserve> items = Arrays.asList(
-                new InventoryService.ItemToReserve("PROD-001", 5)
+        PaymentCompletedEvent paymentEvent = new PaymentCompletedEvent(
+            "PAY-123",
+            "ORDER-456",
+            java.math.BigDecimal.valueOf(100),
+            "TXN-123",
+            Instant.now(),
+            "CORR-123",
+            Instant.now()
         );
 
-        when(productRepository.findAllByProductIdIn(Arrays.asList("PROD-001"))).thenReturn(Arrays.asList(product));
+        Product product = Product.builder()
+            .productId("PROD-001")
+            .productName("Test Product")
+            .quantityAvailable(100)
+            .quantityReserved(0)
+            .build();
+
+        List<InventoryService.ItemToReserve> items = List.of(
+            new InventoryService.ItemToReserve("PROD-001", 5)
+        );
+
+        when(productRepository.findAllByProductIdIn(List.of("PROD-001"))).thenReturn(List.of(product));
 
         // When
         inventoryService.reserveInventory(paymentEvent, items);
@@ -84,24 +86,28 @@ class InventoryServiceTest {
     @Test
     void shouldDecrementAvailableQuantityWhenReserving() {
         // Given
-        PaymentCompletedEvent paymentEvent = PaymentCompletedEvent.builder()
-                .paymentId("PAY-123")
-                .orderId("ORDER-456")
-                .completedAt(Instant.now())
-                .build();
-
-        Product product = Product.builder()
-                .productId("PROD-001")
-                .productName("Test Product")
-                .quantityAvailable(100)
-                .quantityReserved(10)
-                .build();
-
-        List<InventoryService.ItemToReserve> items = Arrays.asList(
-                new InventoryService.ItemToReserve("PROD-001", 5)
+        PaymentCompletedEvent paymentEvent = new PaymentCompletedEvent(
+            "PAY-123",
+            "ORDER-456",
+            java.math.BigDecimal.valueOf(100),
+            "TXN-123",
+            Instant.now(),
+            "CORR-123",
+            Instant.now()
         );
 
-        when(productRepository.findAllByProductIdIn(Arrays.asList("PROD-001"))).thenReturn(Arrays.asList(product));
+        Product product = Product.builder()
+            .productId("PROD-001")
+            .productName("Test Product")
+            .quantityAvailable(100)
+            .quantityReserved(10)
+            .build();
+
+        List<InventoryService.ItemToReserve> items = List.of(
+            new InventoryService.ItemToReserve("PROD-001", 5)
+        );
+
+        when(productRepository.findAllByProductIdIn(List.of("PROD-001"))).thenReturn(List.of(product));
 
         // When
         inventoryService.reserveInventory(paymentEvent, items);
@@ -110,7 +116,7 @@ class InventoryServiceTest {
         ArgumentCaptor<List<Product>> productCaptor = ArgumentCaptor.forClass(List.class);
         verify(productRepository).saveAll(productCaptor.capture());
 
-        Product savedProduct = productCaptor.getValue().get(0);
+        Product savedProduct = productCaptor.getValue().getFirst();
         // After reserve(5): quantityAvailable goes from 100 to 95, quantityReserved goes from 10 to 15
         assertThat(savedProduct.getQuantityReserved()).isEqualTo(15);
         assertThat(savedProduct.getQuantityAvailable()).isEqualTo(95);
@@ -119,17 +125,21 @@ class InventoryServiceTest {
     @Test
     void shouldPublishFailedEventWhenProductNotFound() {
         // Given
-        PaymentCompletedEvent paymentEvent = PaymentCompletedEvent.builder()
-                .paymentId("PAY-123")
-                .orderId("ORDER-456")
-                .completedAt(Instant.now())
-                .build();
-
-        List<InventoryService.ItemToReserve> items = Arrays.asList(
-                new InventoryService.ItemToReserve("NON-EXISTENT", 5)
+        PaymentCompletedEvent paymentEvent = new PaymentCompletedEvent(
+            "PAY-123",
+            "ORDER-456",
+            java.math.BigDecimal.valueOf(100),
+            "TXN-123",
+            Instant.now(),
+            "CORR-123",
+            Instant.now()
         );
 
-        when(productRepository.findAllByProductIdIn(Arrays.asList("NON-EXISTENT"))).thenReturn(java.util.Collections.emptyList());
+        List<InventoryService.ItemToReserve> items = List.of(
+            new InventoryService.ItemToReserve("NON-EXISTENT", 5)
+        );
+
+        when(productRepository.findAllByProductIdIn(List.of("NON-EXISTENT"))).thenReturn(List.of());
 
         // When
         inventoryService.reserveInventory(paymentEvent, items);
@@ -143,22 +153,22 @@ class InventoryServiceTest {
         // Given
         String orderId = "ORDER-123";
         InventoryReservation reservation = InventoryReservation.builder()
-                .reservationId("RES-001")
-                .orderId(orderId)
-                .productId("PROD-001")
-                .quantity(5)
-                .status(InventoryReservation.ReservationStatus.RESERVED)
-                .build();
+            .reservationId("RES-001")
+            .orderId(orderId)
+            .productId("PROD-001")
+            .quantity(5)
+            .status(InventoryReservation.ReservationStatus.RESERVED)
+            .build();
 
         Product product = Product.builder()
-                .productId("PROD-001")
-                .productName("Test Product")
-                .quantityAvailable(95)
-                .quantityReserved(15)
-                .build();
+            .productId("PROD-001")
+            .productName("Test Product")
+            .quantityAvailable(95)
+            .quantityReserved(15)
+            .build();
 
-        when(reservationRepository.findByOrderId(orderId)).thenReturn(Arrays.asList(reservation));
-        when(productRepository.findAllByProductIdIn(Arrays.asList("PROD-001"))).thenReturn(Arrays.asList(product));
+        when(reservationRepository.findByOrderId(orderId)).thenReturn(List.of(reservation));
+        when(productRepository.findAllByProductIdIn(List.of("PROD-001"))).thenReturn(List.of(product));
 
         // When
         inventoryService.releaseInventory(orderId);
@@ -174,22 +184,22 @@ class InventoryServiceTest {
         // Given
         String orderId = "ORDER-123";
         InventoryReservation reservation = InventoryReservation.builder()
-                .reservationId("RES-001")
-                .orderId(orderId)
-                .productId("PROD-001")
-                .quantity(5)
-                .status(InventoryReservation.ReservationStatus.RESERVED)
-                .build();
+            .reservationId("RES-001")
+            .orderId(orderId)
+            .productId("PROD-001")
+            .quantity(5)
+            .status(InventoryReservation.ReservationStatus.RESERVED)
+            .build();
 
         Product product = Product.builder()
-                .productId("PROD-001")
-                .productName("Test Product")
-                .quantityAvailable(95)
-                .quantityReserved(15)
-                .build();
+            .productId("PROD-001")
+            .productName("Test Product")
+            .quantityAvailable(95)
+            .quantityReserved(15)
+            .build();
 
-        when(reservationRepository.findByOrderId(orderId)).thenReturn(Arrays.asList(reservation));
-        when(productRepository.findAllByProductIdIn(Arrays.asList("PROD-001"))).thenReturn(Arrays.asList(product));
+        when(reservationRepository.findByOrderId(orderId)).thenReturn(List.of(reservation));
+        when(productRepository.findAllByProductIdIn(List.of("PROD-001"))).thenReturn(List.of(product));
 
         // When
         inventoryService.releaseInventory(orderId);
@@ -203,14 +213,14 @@ class InventoryServiceTest {
         // Given
         String orderId = "ORDER-123";
         InventoryReservation reservation = InventoryReservation.builder()
-                .reservationId("RES-001")
-                .orderId(orderId)
-                .productId("PROD-001")
-                .quantity(5)
-                .status(InventoryReservation.ReservationStatus.RELEASED) // Already released
-                .build();
+            .reservationId("RES-001")
+            .orderId(orderId)
+            .productId("PROD-001")
+            .quantity(5)
+            .status(InventoryReservation.ReservationStatus.RELEASED) // Already released
+            .build();
 
-        when(reservationRepository.findByOrderId(orderId)).thenReturn(Arrays.asList(reservation));
+        when(reservationRepository.findByOrderId(orderId)).thenReturn(List.of(reservation));
 
         // When
         inventoryService.releaseInventory(orderId);
@@ -223,24 +233,28 @@ class InventoryServiceTest {
     @Test
     void shouldPublishFailedEventWhenInsufficientStock() {
         // Given
-        PaymentCompletedEvent paymentEvent = PaymentCompletedEvent.builder()
-                .paymentId("PAY-123")
-                .orderId("ORDER-456")
-                .completedAt(Instant.now())
-                .build();
-
-        Product product = Product.builder()
-                .productId("PROD-001")
-                .productName("Low Stock Product")
-                .quantityAvailable(3) // Only 3 available
-                .quantityReserved(0)
-                .build();
-
-        List<InventoryService.ItemToReserve> items = Arrays.asList(
-                new InventoryService.ItemToReserve("PROD-001", 10) // Requesting 10
+        PaymentCompletedEvent paymentEvent = new PaymentCompletedEvent(
+            "PAY-123",
+            "ORDER-456",
+            java.math.BigDecimal.valueOf(100),
+            "TXN-123",
+            Instant.now(),
+            "CORR-123",
+            Instant.now()
         );
 
-        when(productRepository.findAllByProductIdIn(Arrays.asList("PROD-001"))).thenReturn(Arrays.asList(product));
+        Product product = Product.builder()
+            .productId("PROD-001")
+            .productName("Low Stock Product")
+            .quantityAvailable(3) // Only 3 available
+            .quantityReserved(0)
+            .build();
+
+        List<InventoryService.ItemToReserve> items = List.of(
+            new InventoryService.ItemToReserve("PROD-001", 10) // Requesting 10
+        );
+
+        when(productRepository.findAllByProductIdIn(List.of("PROD-001"))).thenReturn(List.of(product));
 
         // When
         inventoryService.reserveInventory(paymentEvent, items);

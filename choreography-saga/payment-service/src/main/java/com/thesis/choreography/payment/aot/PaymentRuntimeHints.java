@@ -7,10 +7,6 @@ import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
 
-/**
- * GraalVM Native Image runtime hints for choreography payment-service.
- * Registers reflection hints for JPA entities and related classes.
- */
 public class PaymentRuntimeHints implements RuntimeHintsRegistrar {
 
     private static final MemberCategory[] ENTITY_CATEGORIES = {
@@ -23,10 +19,8 @@ public class PaymentRuntimeHints implements RuntimeHintsRegistrar {
 
     @Override
     public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
-        // Register common module hints
         new CommonRuntimeHints().registerHints(hints, classLoader);
 
-        // JPA Entities
         hints.reflection().registerType(Payment.class, ENTITY_CATEGORIES);
         hints.reflection().registerType(Payment.PaymentStatus.class, ENTITY_CATEGORIES);
         hints.reflection().registerType(ProcessedEvent.class, ENTITY_CATEGORIES);

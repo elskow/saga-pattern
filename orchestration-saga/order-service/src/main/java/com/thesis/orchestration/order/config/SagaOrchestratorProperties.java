@@ -1,31 +1,27 @@
 package com.thesis.orchestration.order.config;
 
-import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 
 import java.time.Duration;
 
-@Data
-@Component
 @ConfigurationProperties(prefix = "saga.orchestrator")
-public class SagaOrchestratorProperties {
-    private long pendingCommandRetryInterval = 10000L;
-    private Duration pendingCommandRetryDelay = Duration.ofSeconds(10);
-    private Duration inMemorySagaTtl = Duration.ofHours(1);
-    private long inMemoryCleanupInterval = 60000L;
-    private Duration sagaTimeout = Duration.ofSeconds(30);
-    private long sagaTimeoutCheckInterval = 10000L;
-    private long outboxPollInterval = 5000L;
-    private Duration outboxRetryDelay = Duration.ofSeconds(10);
-    private int outboxMaxAttempts = 10;
-    private long outboxCleanupInterval = 300000L;
-    private Duration outboxRetention = Duration.ofHours(24);
-    private long outboxRetentionDays = 7;
-    private long replyCleanupInterval = 3600000L;
-    
-    // Kafka send retry configuration
-    private int kafkaSendMaxRetries = 3;
-    private Duration kafkaSendRetryDelay = Duration.ofSeconds(2);
-    private Duration kafkaSendTimeout = Duration.ofSeconds(10);
+public record SagaOrchestratorProperties(
+    @DefaultValue("10000") long pendingCommandRetryInterval,
+    @DefaultValue("PT10S") Duration pendingCommandRetryDelay,
+    @DefaultValue("PT1H") Duration inMemorySagaTtl,
+    @DefaultValue("60000") long inMemoryCleanupInterval,
+    @DefaultValue("PT30S") Duration sagaTimeout,
+    @DefaultValue("10000") long sagaTimeoutCheckInterval,
+    @DefaultValue("5000") long outboxPollInterval,
+    @DefaultValue("PT10S") Duration outboxRetryDelay,
+    @DefaultValue("10") int outboxMaxAttempts,
+    @DefaultValue("300000") long outboxCleanupInterval,
+    @DefaultValue("PT24H") Duration outboxRetention,
+    @DefaultValue("7") long outboxRetentionDays,
+    @DefaultValue("3600000") long replyCleanupInterval,
+    @DefaultValue("3") int kafkaSendMaxRetries,
+    @DefaultValue("PT2S") Duration kafkaSendRetryDelay,
+    @DefaultValue("PT10S") Duration kafkaSendTimeout
+) {
 }

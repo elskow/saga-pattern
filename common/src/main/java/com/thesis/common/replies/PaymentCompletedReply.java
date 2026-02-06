@@ -1,15 +1,11 @@
 package com.thesis.common.replies;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+public record PaymentCompletedReply(
+    String paymentId,
+    String orderId
+) implements SagaReply {
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class PaymentCompletedReply implements SagaReply {
-    private String paymentId;
-    private String orderId;
+    public static PaymentCompletedReply of(String paymentId, String orderId) {
+        return new PaymentCompletedReply(paymentId, orderId);
+    }
 }

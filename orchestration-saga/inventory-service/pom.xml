@@ -30,6 +30,12 @@
             <artifactId>common</artifactId>
         </dependency>
 
+        <!-- Orchestration Framework -->
+        <dependency>
+            <groupId>com.thesis</groupId>
+            <artifactId>orchestration-framework</artifactId>
+        </dependency>
+
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -3,6 +3,7 @@ package com.thesis.choreography.shipping.service;
 import com.thesis.choreography.shipping.kafka.ShippingEventPublisher;
 import com.thesis.choreography.shipping.model.Shipment;
 import com.thesis.choreography.shipping.repository.ShipmentRepository;
+import com.thesis.common.config.ShippingProperties;
 import com.thesis.common.events.InventoryReservedEvent;
 import com.thesis.common.events.ShippingScheduledEvent;
 import com.thesis.common.exception.ShipmentNotFoundException;
@@ -37,17 +38,21 @@ class ShippingServiceTest {
 
     @BeforeEach
     void setUp() {
-        shippingService = new ShippingService(shipmentRepository, eventPublisher, new SimpleMeterRegistry());
+        ShippingProperties shippingProperties = new ShippingProperties();
+        shippingService = new ShippingService(shipmentRepository, eventPublisher, shippingProperties, new SimpleMeterRegistry());
     }
 
     @Test
     void shouldScheduleShippingSuccessfully() {
         // Given
-        InventoryReservedEvent inventoryEvent = InventoryReservedEvent.builder()
-            .reservationId("RES-123")
-            .orderId("ORDER-456")
-            .reservedAt(Instant.now())
-            .build();
+        InventoryReservedEvent inventoryEvent = new InventoryReservedEvent(
+            "RES-123",
+            "ORDER-456",
+            List.of(),
+            Instant.now(),
+            "CORR-123",
+            Instant.now()
+        );
 
         String shippingAddress = "123 Main Street, City, Country";
 
@@ -64,11 +69,14 @@ class ShippingServiceTest {
     @Test
     void shouldCreateShipmentWithCorrectData() {
         // Given
-        InventoryReservedEvent inventoryEvent = InventoryReservedEvent.builder()
-            .reservationId("RES-123")
-            .orderId("ORDER-456")
-            .reservedAt(Instant.now())
-            .build();
+        InventoryReservedEvent inventoryEvent = new InventoryReservedEvent(
+            "RES-123",
+            "ORDER-456",
+            List.of(),
+            Instant.now(),
+            "CORR-123",
+            Instant.now()
+        );
 
         String shippingAddress = "123 Main Street";
 
@@ -92,7 +100,7 @@ class ShippingServiceTest {
         assertThat(savedShipment.getShippingAddress()).isEqualTo(shippingAddress);
         // First save is PENDING, second save is SCHEDULED
         assertThat(capturedStatuses).hasSize(2);
-        assertThat(capturedStatuses.get(0)).isEqualTo(Shipment.ShippingStatus.PENDING);
+        assertThat(capturedStatuses.getFirst()).isEqualTo(Shipment.ShippingStatus.PENDING);
         assertThat(capturedStatuses.get(1)).isEqualTo(Shipment.ShippingStatus.SCHEDULED);
     }
 
@@ -133,11 +141,14 @@ class ShippingServiceTest {
     @Test
     void shouldGenerateTrackingNumber() {
         // Given
-        InventoryReservedEvent inventoryEvent = InventoryReservedEvent.builder()
-            .reservationId("RES-123")
-            .orderId("ORDER-456")
-            .reservedAt(Instant.now())
-            .build();
+        InventoryReservedEvent inventoryEvent = new InventoryReservedEvent(
+            "RES-123",
+            "ORDER-456",
+            List.of(),
+            Instant.now(),
+            "CORR-123",
+            Instant.now()
+        );
 
         ArgumentCaptor<Shipment> shipmentCaptor = ArgumentCaptor.forClass(Shipment.class);
         when(shipmentRepository.save(any(Shipment.class))).thenAnswer(invocation -> invocation.getArgument(0));

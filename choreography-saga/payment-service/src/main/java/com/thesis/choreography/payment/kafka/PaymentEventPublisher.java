@@ -1,6 +1,6 @@
 package com.thesis.choreography.payment.kafka;
 
-import com.thesis.common.config.KafkaTopicsConfig;
+import com.thesis.common.config.KafkaTopicsProperties;
 import com.thesis.common.events.PaymentCompletedEvent;
 import com.thesis.common.events.PaymentFailedEvent;
 import com.thesis.common.events.PaymentRefundedEvent;
@@ -13,18 +13,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class PaymentEventPublisher extends AbstractEventPublisher {
 
-    private final KafkaTopicsConfig topicsConfig;
-
     public PaymentEventPublisher(KafkaTemplate<String, Object> kafkaTemplate,
-                                 KafkaTopicsConfig topicsConfig,
+                                 KafkaTopicsProperties topics,
                                  MeterRegistry meterRegistry) {
-        super(kafkaTemplate, topicsConfig, meterRegistry, SagaMetrics.SERVICE_CHOREOGRAPHY);
-        this.topicsConfig = topicsConfig;
+        super(kafkaTemplate, topics, meterRegistry);
     }
 
     @Override
     protected String getTopic() {
-        return topicsConfig.getPaymentEvents();
+        return topics().paymentEvents();
     }
 
     @Override
@@ -33,14 +30,14 @@ public class PaymentEventPublisher extends AbstractEventPublisher {
     }
 
     public void publishPaymentCompleted(PaymentCompletedEvent event) {
-        publishEvent("PaymentCompletedEvent", event, event.getOrderId());
+        publishEvent("PaymentCompletedEvent", event, event.orderId());
     }
 
     public void publishPaymentFailed(PaymentFailedEvent event) {
-        publishEvent("PaymentFailedEvent", event, event.getOrderId());
+        publishEvent("PaymentFailedEvent", event, event.orderId());
     }
 
     public void publishPaymentRefunded(PaymentRefundedEvent event) {
-        publishEvent("PaymentRefundedEvent", event, event.getOrderId());
+        publishEvent("PaymentRefundedEvent", event, event.orderId());
     }
 }
