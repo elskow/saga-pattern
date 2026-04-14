@@ -219,6 +219,7 @@ def buildAndPushService(String svcPath, String svcName) {
         def pattern = svcPath.split('/')[0].replace('-saga', '')
         def servicePart = svcPath.split('/')[1]
         def artifactId = "${pattern}-${servicePart}"
+        def dockerfile = 'Dockerfile.choreography'
 
         echo "=== Building ${svcName} (artifactId: ${artifactId}) ==="
 
@@ -228,7 +229,7 @@ def buildAndPushService(String svcPath, String svcName) {
                     --build-arg SERVICE_PATH=${svcPath} \
                     --build-arg ARTIFACT_ID=${artifactId} \
                     -t ${imageTag} \
-                    -f Dockerfile \
+                    -f ${dockerfile} \
                     .
             """
         }

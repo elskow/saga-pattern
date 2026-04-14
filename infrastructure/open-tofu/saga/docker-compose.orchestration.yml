@@ -18,7 +18,9 @@ x-order-service-base: &order-service-base
     DB_NAME: order_db
     DB_USERNAME: postgres
     DB_PASSWORD: postgres
+    DATABASE_URL: postgres://postgres:postgres@orch-order-db:5432/order_db?sslmode=disable
     KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    KAFKA_BROKERS: kafka:29092
     OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     OTEL_SERVICE_NAME: orchestration-order-service
     LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -111,7 +113,9 @@ services:
       DB_NAME: payment_db
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
+      DATABASE_URL: postgres://postgres:postgres@orch-payment-db:5432/payment_db?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BROKERS: kafka:29092
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       OTEL_SERVICE_NAME: orchestration-payment-service
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -138,7 +142,9 @@ services:
       DB_NAME: inventory_db
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
+      DATABASE_URL: postgres://postgres:postgres@orch-inventory-db:5432/inventory_db?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BROKERS: kafka:29092
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       OTEL_SERVICE_NAME: orchestration-inventory-service
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -165,7 +171,9 @@ services:
       DB_NAME: shipping_db
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
+      DATABASE_URL: postgres://postgres:postgres@orch-shipping-db:5432/shipping_db?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BROKERS: kafka:29092
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       OTEL_SERVICE_NAME: orchestration-shipping-service
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

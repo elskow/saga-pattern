@@ -1,457 +1,92 @@
-# Saga Pattern Comparison: Choreography vs Orchestration
+# Saga Pattern Comparison, Choreography vs Orchestration
 
-A thesis project comparing two implementations of the Saga Pattern for managing distributed transactions in microservices architecture.
+This repository compares two saga styles for the same order workflow under one thesis measurement method.
 
-## Table of Contents
+The default runtime is now Go for both variants.
 
-- [Overview](#overview)
-- [Architecture Diagrams](#architecture-diagrams)
-- [Technology Stack](#technology-stack)
-- [Project Structure](#project-structure)
-- [Quick Start](#quick-start)
-- [Service Ports](#service-ports)
-- [API Testing](#api-testing)
-- [Load Testing](#load-testing)
-- [Monitoring & Observability](#monitoring--observability)
-- [Thesis Comparison Metrics](#thesis-comparison-metrics)
+## What is being compared
 
----
+* **Choreography**: Go services communicate through Kafka events.
+* **Orchestration**: Go services use an order service orchestrator over Kafka and Postgres.
+* **Methodology**: both variants are exercised with the same API shape, the same Gatling simulations, and the same observability surface.
 
-## Overview
+The business flow stays the same in both variants:
 
-This project implements an **e-commerce order processing system** using two different Saga Pattern approaches:
+1. create order
+2. process payment
+3. reserve inventory
+4. schedule shipping
+5. compensate in reverse order on failure
 
-1. **Choreography-based Saga** - Decentralized approach where services communicate through Kafka events
-2. **Orchestration-based Saga** - Centralized approach using Eventuate Tram with a Saga orchestrator
+## Runtime truth
 
-Both implementations handle the same business flow with full compensation (rollback) on failure.
+### Go default path
 
----
+* Choreography is a Go deployment on ports `8081` to `8084`.
+* Orchestration is a Go deployment with a benchmark entrypoint on `8085`.
+* In scaled orchestration benchmark runs, order service replicas are scraped on `8085`, `8086`, `8087`, and `8088`. The exact replica list is `8085, 8086, 8087, 8088`.
+* Internal orchestration participants stay on `8091`, `8092`, and `8093`. The exact participant list is `8091, 8092, 8093`.
+* Kafka is the transport for both variants.
+* Postgres backs the orchestration runtime and the service state used by the benchmark stack.
 
-## Architecture Diagrams
+## Root Make commands
 
-### Business Flow (Same for Both Patterns)
+These are the root commands you should reach for first:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           HAPPY PATH (Success)                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│   ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐             │
-│   │  Create  │───▶│  Process │───▶│  Reserve │───▶│ Schedule │───▶ COMPLETED│
-│   │  Order   │    │  Payment │    │ Inventory│    │ Shipping │             │
-│   └──────────┘    └──────────┘    └──────────┘    └──────────┘             │
-│                                                                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                        COMPENSATION (On Failure)                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│   ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐             │
-│   │  Reject  │◀───│  Refund  │◀───│  Release │◀───│  Cancel  │◀─── FAILURE │
-│   │  Order   │    │  Payment │    │ Inventory│    │ Shipping │             │
-│   └──────────┘    └──────────┘    └──────────┘    └──────────┘             │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+* `make help` prints the target summary.
+* `make tidy` syncs the root Go workspace.
+* `make build` builds all Go service binaries into `build/bin/`.
+* `make test` runs the root Go test suite.
+* `make up-infra` starts the shared local infrastructure.
+* `make up-choreography` starts the local choreography stack.
+* `make up-orchestration` starts the local orchestration stack.
+* `make down` stops local stacks.
+* `make smoke-choreography` runs the Go choreography smoke harness.
+* `make smoke-orchestration` runs the Go orchestration smoke harness.
+* `make gatling-choreography-quick` runs the quick Gatling choreography suite.
+* `make gatling-orchestration-quick` runs the quick Gatling orchestration suite.
+* `make verify-thesis-surface` checks docs and frozen benchmark references against the compatibility matrix.
+* `make verify-jenkins-benchmark` checks `Jenkinsfile.benchmark` surface expectations.
 
----
+## Service ports
 
-### Choreography Pattern (Event-Driven)
+### Local default surface
 
-Each service publishes events and reacts to events from other services. **No central coordinator.**
+| Pattern | Order | Payment | Inventory | Shipping |
+|---|---:|---:|---:|---:|
+| Choreography | 8081 | 8082 | 8083 | 8084 |
+| Orchestration | 8085 | 8086 | 8087 | 8088 |
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         CHOREOGRAPHY PATTERN                                 │
-│                    (Decentralized Event-Driven)                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌─────────────────┐                           ┌─────────────────┐          │
-│  │  Order Service  │──── OrderCreatedEvent ───▶│ Payment Service │          │
-│  │    (8081)       │◀── PaymentCompletedEvent ─│    (8082)       │          │
-│  └────────┬────────┘                           └────────┬────────┘          │
-│           │                                             │                    │
-│           │ OrderCompletedEvent              PaymentCompletedEvent           │
-│           │                                             │                    │
-│           ▼                                             ▼                    │
-│  ┌─────────────────┐                           ┌─────────────────┐          │
-│  │Shipping Service │◀── InventoryReservedEvent─│Inventory Service│          │
-│  │    (8084)       │                           │    (8083)       │          │
-│  └─────────────────┘                           └─────────────────┘          │
-│           │                                                                  │
-│           └──────────── ShippingScheduledEvent ──────────▶ Order Service    │
-│                                                                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                           ┌─────────────────┐                                │
-│                           │   Apache Kafka  │                                │
-│                           │  (Message Bus)  │                                │
-│                           └─────────────────┘                                │
-│                                                                              │
-│  Topics: order-events, payment-events, inventory-events, shipping-events    │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+Health path: `/actuator/health`  
+Prometheus path: `/actuator/prometheus`
 
-Event Flow (Happy Path):
-═══════════════════════
+### VM benchmark surface
 
-  Order          Payment         Inventory        Shipping
-    │                │                │                │
-    │ OrderCreated   │                │                │
-    │───────────────▶│                │                │
-    │                │ PaymentCompleted                │
-    │                │───────────────▶│                │
-    │                │                │ InventoryReserved
-    │                │                │───────────────▶│
-    │                │                │                │ ShippingScheduled
-    │◀───────────────┼────────────────┼────────────────│
-    │ (Order Completed)               │                │
-    ▼                ▼                ▼                ▼
+| Pattern | Benchmark entrypoint | Replica scrape targets | Internal participants |
+|---|---:|---|---|
+| Choreography | 8081 | 8081, 8082, 8083, 8084 | 8091, 8092, 8093 |
+| Orchestration | 8085 | 8085, 8086, 8087, 8088 | 8091, 8092, 8093 |
 
-Compensation Flow (On Failure):
-═══════════════════════════════
+For orchestration, the benchmark client sends traffic to `8085`. Prometheus and benchmark health checks may still hit the full `8085` to `8088` replica range during scaled runs.
 
-  If Inventory fails after Payment succeeded:
-    
-    │ InventoryReservationFailed     │
-    │◀───────────────────────────────│
-    │                                │
-    │ (Triggers PaymentRefund)       │
-    │───────────────▶│               │
-    │ PaymentRefunded│               │
-    │◀───────────────│               │
-    │ (Order Rejected)               │
-    ▼                ▼               ▼
-```
+## API surface
 
----
+Common routes:
 
-### Orchestration Pattern (Central Coordinator)
+* `POST /api/orders`
+* `GET /api/orders/{orderId}`
 
-The Order Service acts as the **Saga Orchestrator**, controlling the entire flow.
+Request asymmetry preserved for parity work:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        ORCHESTRATION PATTERN                                 │
-│                    (Centralized Saga Manager)                                │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│                      ┌───────────────────────────┐                          │
-│                      │      Order Service        │                          │
-│                      │    ┌─────────────────┐    │                          │
-│                      │    │  SAGA MANAGER   │    │                          │
-│                      │    │  (Orchestrator) │    │                          │
-│                      │    └────────┬────────┘    │                          │
-│                      │             │ (8085)      │                          │
-│                      └─────────────┼─────────────┘                          │
-│                                    │                                         │
-│              ┌─────────────────────┼─────────────────────┐                  │
-│              │                     │                     │                  │
-│              ▼                     ▼                     ▼                  │
-│     ┌────────────────┐   ┌────────────────┐   ┌────────────────┐           │
-│     │Payment Service │   │Inventory Service│  │Shipping Service│           │
-│     │   (8086)       │   │   (8087)        │  │   (8088)       │           │
-│     │                │   │                 │  │                │           │
-│     │ ProcessPayment │   │ ReserveInventory│  │ ScheduleShip   │           │
-│     │ RefundPayment  │   │ ReleaseInventory│  │ CancelShipping │           │
-│     └────────────────┘   └─────────────────┘  └────────────────┘           │
-│                                                                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│     ┌─────────────────┐          ┌─────────────────┐                        │
-│     │  Eventuate Tram │          │   Eventuate     │                        │
-│     │   (Commands)    │◀────────▶│   CDC Service   │                        │
-│     └─────────────────┘          └─────────────────┘                        │
-│              │                            │                                  │
-│              └────────────┬───────────────┘                                  │
-│                           ▼                                                  │
-│                    ┌─────────────┐                                           │
-│                    │Apache Kafka │                                           │
-│                    └─────────────┘                                           │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+* Choreography create order omits `totalAmount`.
+* Orchestration create order requires `totalAmount`.
+* Choreography returns `201` with a full order response.
+* Orchestration returns `202` with `status=SAGA_STARTED`.
 
-Command/Reply Flow (Happy Path):
-════════════════════════════════
-
-  Saga Manager      Payment         Inventory        Shipping
-       │                │                │                │
-       │ ProcessPayment │                │                │
-       │───────────────▶│                │                │
-       │ PaymentProcessed               │                │
-       │◀───────────────│                │                │
-       │                │                │                │
-       │ ReserveInventory               │                │
-       │────────────────────────────────▶│                │
-       │                InventoryReserved│                │
-       │◀────────────────────────────────│                │
-       │                │                │                │
-       │ ScheduleShipping               │                │
-       │─────────────────────────────────────────────────▶│
-       │                               ShippingScheduled │
-       │◀─────────────────────────────────────────────────│
-       │                │                │                │
-       ▼ (Saga Complete)                 │                │
-
-Compensation Flow (Automatic by Saga Manager):
-══════════════════════════════════════════════
-
-  If Shipping fails after Payment & Inventory succeeded:
-
-       │ ShippingFailed │                │                │
-       │◀────────────────────────────────────────────────│
-       │                │                │                │
-       │ ReleaseInventory (Compensation) │                │
-       │────────────────────────────────▶│                │
-       │                InventoryReleased│                │
-       │◀────────────────────────────────│                │
-       │                │                │                │
-       │ RefundPayment (Compensation)    │                │
-       │───────────────▶│                │                │
-       │ PaymentRefunded│                │                │
-       │◀───────────────│                │                │
-       │                │                │                │
-       ▼ (Saga Compensated - Order Rejected)              │
-```
-
----
-
-### Side-by-Side Comparison
-
-```
-┌─────────────────────────────┬─────────────────────────────┐
-│       CHOREOGRAPHY          │       ORCHESTRATION         │
-├─────────────────────────────┼─────────────────────────────┤
-│                             │                             │
-│  ┌───┐ ┌───┐ ┌───┐ ┌───┐   │         ┌───────┐          │
-│  │ O │ │ P │ │ I │ │ S │   │         │SAGA   │          │
-│  │ R │ │ A │ │ N │ │ H │   │         │MANAGER│          │
-│  │ D │ │ Y │ │ V │ │ I │   │         └───┬───┘          │
-│  │ E │ │ M │ │ E │ │ P │   │      ┌──────┼──────┐       │
-│  │ R │ │ T │ │ N │ │   │   │      │      │      │       │
-│  └─┬─┘ └─┬─┘ └─┬─┘ └─┬─┘   │    ┌─┴─┐  ┌─┴─┐  ┌─┴─┐    │
-│    │     │     │     │     │    │PAY│  │INV│  │SHP│    │
-│    └──┬──┴──┬──┴──┬──┘     │    └───┘  └───┘  └───┘    │
-│       │     │     │        │                             │
-│   ════╧═════╧═════╧════    │        (Commands via       │
-│       EVENT BUS            │         Eventuate Tram)    │
-│      (Kafka Topics)        │                             │
-│                             │                             │
-├─────────────────────────────┼─────────────────────────────┤
-│ - Decentralized control     │ - Centralized control      │
-│ - Loose coupling            │ - Clear transaction state  │
-│ - Each service knows        │ - Only orchestrator knows  │
-│   its next step             │   the full workflow        │
-│ - Complex failure tracking  │ - Simple failure handling  │
-│ - No single point of failure│ - Orchestrator is critical │
-│ - Better for simple flows   │ - Better for complex flows │
-└─────────────────────────────┴─────────────────────────────┘
-```
-
----
-
-## Technology Stack
-
-| Component | Technology |
-|-----------|------------|
-| Language | Java 25 (works on 21+) |
-| Framework | Spring Boot 3.5.10 |
-| Build Tool | Maven (multi-module) |
-| Choreography Messaging | Apache Kafka |
-| Orchestration Framework | Eventuate Tram Saga |
-| Database | PostgreSQL (database per service) |
-| Metrics | Micrometer + Prometheus |
-| Tracing | Jaeger |
-| Dashboards | Grafana |
-| Load Testing | Gatling (Scala) |
-| Containerization | Docker & Docker Compose |
-| Container Images | Jib (no Dockerfile needed) |
-
-### Java 21/25 Modernization Highlights
-
-This project has been modernized to take full advantage of Java 21/25 features:
-
-**Language Features:**
-- **Records** replace Lombok DTOs/events with compact validation constructors
-- **Sealed interfaces** (`ChoreographyEvent`, `SagaReply`) enable exhaustive pattern matching
-- **Pattern-matching switch** for clean event dispatch in listeners
-- **SequencedCollection** `getFirst()` in tests; `List.of()` factories replace `Arrays.asList()`
-- **`.formatted()`** string templating throughout the codebase
-
-**Concurrency (Preview Features - require `--enable-preview`):**
-- **Virtual threads** enabled via `spring.threads.virtual.enabled=true` for all services
-- **StructuredTaskScope** (`OutboxPublisherScheduler.java`) replaces `CompletableFuture.allOf()` for parallel outbox publishing with proper lifecycle management
-- **ScopedValue** (`SagaContext.java`) provides virtual-thread-safe correlation ID propagation as a modern alternative to ThreadLocal/MDC
-
-**ScopedValue Usage Example:**
-```java
-import com.thesis.common.context.SagaContext;
-import com.thesis.common.context.SagaContext.ContextData;
-
-// Run code within a saga context scope
-SagaContext.run(
-    ContextData.forChoreography("order-123", "corr-456"),
-    () -> {
-        // Context is available throughout the scope
-        String orderId = SagaContext.orderId();
-        String correlationId = SagaContext.correlationId();
-        processOrder(); // MDC is also synchronized for logging
-    }
-);
-```
-
-### Additional Performance Levers
-
-- **Generational ZGC** for heavy benchmarks: add `-XX:+UseZGC -XX:+ZGenerational` when load-testing to shrink tail latencies
-- **Virtual-thread executors** (`Executors.newVirtualThreadPerTaskExecutor()`) for any remaining blocking adapters (JDBC is already compatible; wrap Kafka client calls if done synchronously)
-- **`Stream::mapMulti`** for flatter collection transforms in event mappers to cut intermediate allocations
-
-### Spring Boot 3.5+ Cleanup Opportunities
-
-- Prefer `RestClient`/`HttpServiceProxyFactory` over legacy `RestTemplate` for external calls; pairs well with virtual threads and reduces boilerplate
-- Use record-based `@ConfigurationProperties` to drop Lombok config classes and gain constructor binding validation
-- Replace hand-rolled error payloads with `ProblemDetail` in exception handlers for shorter code and standardized responses
-- Enable lightweight observability defaults (`management.otlp.metrics.export.enabled=true`/`tracing.export.enabled=true`) to keep telemetry consistent across services
-
----
-
-## Project Structure
-
-```
-saga-pattern/
-├── pom.xml                              # Root POM (multi-module)
-├── common/                              # Shared classes (commands, events, DTOs)
-│   └── src/main/java/com/thesis/common/
-│       ├── commands/                    # Saga commands (orchestration)
-│       ├── events/                      # Domain events (choreography)
-│       ├── dto/                         # Shared DTOs
-│       └── exception/                   # Custom exceptions
-│
-├── choreography-saga/                   # Kafka-based implementation
-│   ├── order-service/                   # Port 8081
-│   ├── payment-service/                 # Port 8082
-│   ├── inventory-service/               # Port 8083
-│   └── shipping-service/                # Port 8084
-│
-├── orchestration-saga/                  # Eventuate Tram implementation
-│   ├── order-service/                   # Port 8085 (contains Saga Manager)
-│   ├── payment-service/                 # Port 8086
-│   ├── inventory-service/               # Port 8087
-│   └── shipping-service/                # Port 8088
-│
-├── infrastructure/
-│   └── open-tofu/                             # VM deployment (OpenTofu/Terraform)
-│       ├── main.tf                            # Infrastructure provisioning
-│       ├── saga/                              # Service compose files
-│       │   ├── docker-compose.infra.yml       # Databases, Kafka, Zookeeper
-│       │   ├── docker-compose.choreography.yml
-│       │   └── docker-compose.orchestration.yml
-│       └── observability/                     # Monitoring stack
-│           ├── docker-compose.yml             # Prometheus, Grafana, Jaeger
-│           ├── prometheus/prometheus.yml
-│           └── grafana/
-│
-└── load-testing/
-    └── gatling/                         # Gatling simulations
-        └── src/test/scala/simulations/  # Scala test simulations
-```
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- Java 21+ (tested on 25)
-- Maven 3.8+
-- Docker & Docker Compose
-- (Optional) Gatling runs via Maven — no separate install needed
-
-### JVM 21/25 Runtime Settings (recommended)
-
-- Enable preview when locally testing Loom-friendly features (if needed): `JAVA_TOOL_OPTIONS="--enable-preview"`
-- Prefer virtual threads for blocking IO (already on): `spring.threads.virtual.enabled=true`
-- Use G1 (default) or ZGC for lower tail latency: `-XX:+UseZGC` for heavy load tests
-
-### Option 1: Run on VMs (Recommended for thesis testing)
-
-This project uses a 3-VM setup deployed via OpenTofu. See [docs/SETUP-GUIDE.md](docs/SETUP-GUIDE.md) for full details.
+### Example create order requests
 
 ```bash
-# 1. Provision infrastructure with OpenTofu
-cd infrastructure/open-tofu
-tofu init && tofu apply
-
-# 2. SSH to saga-node and start services
-ssh ubuntu@<saga-node-ip>
-cd ~/saga
-
-# Start infrastructure (databases, Kafka)
-sudo docker compose -f docker-compose.infra.yml up -d
-
-# Start Choreography services
-sudo docker compose -f docker-compose.choreography.yml up -d
-
-# OR Start Orchestration services
-sudo docker compose -f docker-compose.orchestration.yml up -d
-
-# Check services are healthy
-sudo docker compose -f docker-compose.choreography.yml ps
-```
-
-### Option 2: Run Locally (for development)
-
-```bash
-# Build all services
-mvn clean package -DskipTests
-
-# Use the VM compose files locally (requires Docker)
-cd infrastructure/open-tofu/saga
-docker compose -f docker-compose.infra.yml up -d
-docker compose -f docker-compose.choreography.yml up -d
-```
-
----
-
-## Service Ports
-
-### Choreography Pattern
-
-| Service | App Port | DB Port | Actuator |
-|---------|----------|---------|----------|
-| Order Service | 8081 | 5432 | /actuator/health |
-| Payment Service | 8082 | 5433 | /actuator/health |
-| Inventory Service | 8083 | 5434 | /actuator/health |
-| Shipping Service | 8084 | 5435 | /actuator/health |
-| Kafka | 9092 | - | - |
-| Jaeger UI | 16686 | - | - |
-
-### Orchestration Pattern
-
-| Service | App Port | DB Port | Actuator |
-|---------|----------|---------|----------|
-| Order Service | 8085 | 5436 | /actuator/health |
-| Payment Service | 8086 | 5437 | /actuator/health |
-| Inventory Service | 8087 | 5438 | /actuator/health |
-| Shipping Service | 8088 | 5439 | /actuator/health |
-| Eventuate CDC | 8099 | - | - |
-| Kafka | 9093 | - | - |
-| Jaeger UI | 16686 | - | - |
-
-### Monitoring (Shared)
-
-| Service | Port | Credentials |
-|---------|------|-------------|
-| Prometheus | 9090 | - |
-| Grafana | 3000 | admin/admin |
-
----
-
-## API Testing
-
-### Create Order
-
-```bash
-# Choreography (port 8081)
+# Choreography
 curl -X POST http://localhost:8081/api/orders \
   -H 'Content-Type: application/json' \
   -d '{
@@ -460,214 +95,109 @@ curl -X POST http://localhost:8081/api/orders \
     "items": [
       {
         "productId": "PROD-001",
-        "productName": "Sample Product",
-        "quantity": 2,
-        "price": 49.99
+        "productName": "Laptop",
+        "quantity": 1,
+        "price": 999.99
       }
     ]
   }'
 
-# Orchestration (port 8085)
+# Orchestration
 curl -X POST http://localhost:8085/api/orders \
   -H 'Content-Type: application/json' \
   -d '{
     "customerId": "CUST-001",
+    "totalAmount": 999.99,
     "shippingAddress": "123 Main Street, City, Country",
     "items": [
       {
         "productId": "PROD-001",
-        "productName": "Sample Product",
-        "quantity": 2,
-        "price": 49.99
+        "productName": "Laptop",
+        "quantity": 1,
+        "price": 999.99
       }
     ]
   }'
 ```
 
-### Get Order Status
+## Testing and benchmarking
+
+### Go test and verification
 
 ```bash
-# Choreography
-curl http://localhost:8081/api/orders/{orderId}
-
-# Orchestration
-curl http://localhost:8085/api/orders/{orderId}
+make test
+make verify-thesis-surface
+make verify-jenkins-benchmark
+go test ./test/compatibility/... -run TestDocsMatchCompatibilityMatrix
 ```
 
-### Health Check
+### Quick Gatling runs
 
 ```bash
-curl http://localhost:8081/actuator/health
+make gatling-choreography-quick
+make gatling-orchestration-quick
 ```
 
----
+### Jenkins benchmark contract
 
-## Load Testing (Gatling)
+`Jenkinsfile.benchmark` keeps the benchmark parameter names frozen for reproducible thesis runs:
 
-### Prerequisites
+* `BUILD_LABEL`
+* `PROFILE`
+* `SIMULATION`
+* `RUN_CHOREOGRAPHY`
+* `RUN_ORCHESTRATION`
+* `WARMUP_REQUESTS`
+* `COOLDOWN_SECONDS`
+* `SAGA_NODE_IP`
+* `GATLING_RUNNER_IP`
+* `PULL_FRESH_IMAGES`
+* `SCALE_FACTOR`
 
-- Java 17+ (Gatling runner)
-- Maven 3.8+
+Supported benchmark profiles stay:
 
-### Run Tests Locally
+* `quick`
+* `thesis-baseline`
+* `thesis-stress`
 
-```bash
-cd load-testing/gatling
+## Metrics used by the thesis surface
 
-# Quick smoke test (choreography)
-mvn gatling:test -Dgatling.simulationClass=simulations.HappyPathSimulation \
-  -DbaseHost=localhost -Dpattern=choreography -DtestDuration=60
+The docs, scripts, and compatibility checks treat these as required metric names:
 
-# Quick smoke test (orchestration)
-mvn gatling:test -Dgatling.simulationClass=simulations.HappyPathSimulation \
-  -DbaseHost=localhost -Dpattern=orchestration -DtestDuration=60
+* `saga_orders_created_total`
+* `saga_orders_completed_total`
+* `saga_orders_failed_total`
+* `saga_order_processing_time_seconds`
+* `saga_total_duration_seconds`
+* `saga_framework_duration_seconds`
+* `saga_framework_step_duration_seconds`
+* `saga_compensations_total`
+* `saga_compensations_payment_total`
+* `saga_compensations_inventory_total`
+* `saga_compensations_shipping_total`
+* `saga_framework_compensation_started_total`
+* `saga_framework_compensation_completed_total`
 
-# Sustained mixed workload (primary thesis simulation)
-mvn gatling:test -Dgatling.simulationClass=simulations.SustainedMixedSimulation \
-  -DbaseHost=localhost -Dpattern=choreography -DtestDuration=300
+Example PromQL surfaces preserved by the matrix:
+
+```promql
+rate(saga_orders_completed_total{pattern="choreography",service="choreography"}[5m])
+rate(saga_orders_completed_total{pattern="orchestration",service="orchestration"}[5m])
+rate(saga_order_processing_time_seconds_sum{pattern="choreography",service="choreography"}[5m]) /
+rate(saga_order_processing_time_seconds_count{pattern="choreography",service="choreography"}[5m])
+rate(saga_total_duration_seconds_sum{pattern="orchestration",service="orchestration"}[5m]) /
+rate(saga_total_duration_seconds_count{pattern="orchestration",service="orchestration"}[5m])
 ```
 
-### Run via Jenkins (Recommended for Thesis)
+## Repository guide
 
-The `Jenkinsfile.benchmark` pipeline automates the full comparison workflow:
-1. Starts infrastructure (Kafka, PostgreSQL, Jaeger)
-2. Runs choreography benchmark with warmup/cooldown
-3. Runs orchestration benchmark with warmup/cooldown
-4. Collects and archives Gatling HTML reports
+* `docs/README.md` is the short project guide.
+* `docs/TESTING.md` describes compatibility, metrics, Make targets, and benchmark flows.
+* `docs/THESIS.md` keeps the research framing and measurement method.
+* `test/compatibility/fixtures/compatibility-matrix.json` is the frozen compatibility source of truth.
 
-### Available Simulations
+## Thesis framing
 
-| Simulation | Purpose |
-|------------|---------|
-| `SustainedMixedSimulation` | Primary thesis test: 60% valid + 20% payment failure + 20% inventory failure |
-| `HappyPathSimulation` | Baseline: valid orders only |
-| `FailureScenariosSimulation` | Compensation testing |
-| `BurstSpikeSimulation` | Spike resilience |
-| `GradualRampupSimulation` | Scalability degradation point |
-| `ContentionSimulation` | Concurrent resource access |
-| `IdempotencySimulation` | Duplicate handling |
+The thesis question has not changed. This repository still compares choreography and orchestration under the same workload model, the same benchmark profiles, and the same observable outputs.
 
----
-
-## Monitoring & Observability
-
-### Grafana Dashboards
-
-1. Open http://localhost:3000
-2. Login with `admin` / `admin`
-3. Navigate to Dashboards > Saga Metrics
-
-### Prometheus Metrics
-
-- http://localhost:9090 - Prometheus UI
-- Query examples:
-  - `saga_orders_created_total` - Total orders created
-  - `saga_orders_completed_total` - Successfully completed orders
-  - `saga_orders_failed_total` - Failed orders
-  - `saga_total_duration_seconds` - End-to-end saga duration
-  - `saga_step_payment_duration_seconds` - Payment step duration
-  - `saga_compensations_total` - Total compensations triggered
-  - `saga_messages_total` - Kafka messages sent/received
-  - `saga_db_writes_total` - Database write operations
-
-### Distributed Tracing (Jaeger)
-
-- Jaeger UI: http://localhost:16686
-
----
-
-## Thesis Comparison Metrics
-
-### Key Metrics to Compare
-
-| Metric | Description | How to Measure |
-|--------|-------------|----------------|
-| **Saga Throughput** | Terminal sagas per second | Gatling saga metrics summary |
-| **Saga Duration (avg, p95, max)** | End-to-end saga completion time | `saga_total_duration_seconds` |
-| **Step Duration** | Per-step latency (payment, inventory, shipping) | `saga_step_*_duration_seconds` |
-| **Success Rate** | % of orders completed successfully | `saga_orders_completed / saga_orders_created` |
-| **Compensation Rate** | Compensations triggered | `saga_compensations_total` |
-| **Message Count** | Kafka messages per transaction | `saga_messages_per_transaction` |
-| **DB Write Count** | Database writes per transaction | `saga_db_writes_per_transaction` |
-| **Message Latency** | Inter-service message latency | `saga_message_latency_seconds` |
-
-### Expected Findings
-
-| Aspect | Choreography | Orchestration |
-|--------|--------------|---------------|
-| **Latency** | Lower (no central coordinator) | Higher (extra hop to orchestrator) |
-| **Throughput** | Higher (parallel event processing) | Lower (sequential command/reply) |
-| **Debugging** | Harder (distributed logs) | Easier (centralized saga state) |
-| **Coupling** | Loose (event-driven) | Tighter (orchestrator knows all) |
-| **Failure Handling** | Complex (each service handles) | Simple (orchestrator manages) |
-| **Scalability** | Better (independent services) | Limited by orchestrator |
-
-### Running the Comparison (via Jenkins)
-
-The recommended approach uses the Jenkins benchmark pipeline for reproducible A/B testing:
-
-```bash
-# Trigger via Jenkins UI or CLI:
-# Job: saga-pattern-benchmark
-# Parameters:
-#   PROFILE: thesis-baseline (5min) or thesis-stress (15min)
-#   SIMULATION: SustainedMixedSimulation
-#   RUN_CHOREOGRAPHY: true
-#   RUN_ORCHESTRATION: true
-#   WARMUP_REQUESTS: 100
-#   COOLDOWN_SECONDS: 30
-
-# The pipeline will:
-# 1. Clean up previous state
-# 2. Start infra (Kafka, PostgreSQL, Jaeger)
-# 3. Start choreography -> warmup -> run Gatling -> stop
-# 4. Cooldown between patterns
-# 5. Start orchestration -> warmup -> run Gatling -> stop
-# 6. Collect Gatling HTML reports as build artifacts
-# 7. Clean up
-```
-
-### Collecting Results
-
-After a benchmark run, results are available from:
-- **Gatling HTML reports** - Archived as Jenkins build artifacts
-- **Grafana dashboards** - `http://<observability-ip>:3000` (Thesis - Saga Pattern Comparison)
-- **Jaeger traces** - `http://<observability-ip>:16686`
-- **Prometheus queries** - `http://<observability-ip>:9090`
-
----
-
-## Stopping Services
-
-```bash
-# SSH to saga-node
-ssh ubuntu@<saga-node-ip>
-cd ~/saga
-
-# Stop choreography services
-sudo docker compose -f docker-compose.choreography.yml down
-
-# Stop orchestration services
-sudo docker compose -f docker-compose.orchestration.yml down
-
-# Stop infrastructure (databases, Kafka)
-sudo docker compose -f docker-compose.infra.yml down
-
-# Remove all data (clean start)
-sudo docker compose -f docker-compose.infra.yml down -v
-```
-
----
-
-## Credentials (Development Only)
-
-| Service | Username | Password |
-|---------|----------|----------|
-| PostgreSQL | postgres | postgres |
-| Grafana | admin | admin |
-
----
-
-## License
-
-This project is part of a thesis research and is provided for educational purposes.
+What changed is the implementation reality: the active runtime path is Go for both variants.

@@ -9,174 +9,125 @@ x-service-defaults: &service-defaults
         cpus: '0.25'
         memory: 512M
 
-x-order-service-base: &order-service-base
-  <<: *service-defaults
-  image: ghcr.io/elskow/saga-pattern/choreography-order-service:${IMAGE_TAG:-latest}
-  environment: &order-service-env
-    DB_HOST: chor-order-db
-    DB_PORT: 5432
-    DB_NAME: order_db
-    DB_USERNAME: postgres
-    DB_PASSWORD: postgres
-    KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-    OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
-    OTEL_SERVICE_NAME: choreography-order-service
-    LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    SPRING_PROFILES_ACTIVE: docker
-    SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-  labels:
-    - "prometheus.scrape=true"
-    - "prometheus.path=/actuator/prometheus"
-
 services:
-  order-service-1:
-    <<: *order-service-base
-    container_name: chor-order-service-1
+  order-service:
+    <<: *service-defaults
+    image: ghcr.io/elskow/saga-pattern/choreography-order-service:${IMAGE_TAG:-latest}
+    container_name: chor-order-service
     ports:
       - "8081:8081"
     environment:
-      <<: *order-service-env
       SERVER_PORT: 8081
+      DB_HOST: chor-order-db
+      DB_PORT: 5432
+      DB_NAME: order_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DATABASE_URL: postgres://postgres:postgres@chor-order-db:5432/order_db?sslmode=disable
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BROKERS: kafka:29092
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: choreography-order-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8081/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8081"
+      - "prometheus.path=/actuator/prometheus"
 
-  order-service-2:
-    <<: *order-service-base
-    container_name: chor-order-service-2
+  payment-service:
+    <<: *service-defaults
+    image: ghcr.io/elskow/saga-pattern/choreography-payment-service:${IMAGE_TAG:-latest}
+    container_name: chor-payment-service
     ports:
       - "8082:8082"
     environment:
-      <<: *order-service-env
       SERVER_PORT: 8082
+      DB_HOST: chor-payment-db
+      DB_PORT: 5432
+      DB_NAME: payment_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DATABASE_URL: postgres://postgres:postgres@chor-payment-db:5432/payment_db?sslmode=disable
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BROKERS: kafka:29092
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: choreography-payment-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8082/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
-    profiles:
-      - scale2
-      - scale3
-      - scale4
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8082"
+      - "prometheus.path=/actuator/prometheus"
 
-  order-service-3:
-    <<: *order-service-base
-    container_name: chor-order-service-3
+  inventory-service:
+    <<: *service-defaults
+    image: ghcr.io/elskow/saga-pattern/choreography-inventory-service:${IMAGE_TAG:-latest}
+    container_name: chor-inventory-service
     ports:
       - "8083:8083"
     environment:
-      <<: *order-service-env
       SERVER_PORT: 8083
+      DB_HOST: chor-inventory-db
+      DB_PORT: 5432
+      DB_NAME: inventory_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DATABASE_URL: postgres://postgres:postgres@chor-inventory-db:5432/inventory_db?sslmode=disable
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BROKERS: kafka:29092
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: choreography-inventory-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8083/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
-    profiles:
-      - scale3
-      - scale4
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8083"
+      - "prometheus.path=/actuator/prometheus"
 
-  order-service-4:
-    <<: *order-service-base
-    container_name: chor-order-service-4
+  shipping-service:
+    <<: *service-defaults
+    image: ghcr.io/elskow/saga-pattern/choreography-shipping-service:${IMAGE_TAG:-latest}
+    container_name: chor-shipping-service
     ports:
       - "8084:8084"
     environment:
-      <<: *order-service-env
       SERVER_PORT: 8084
+      DB_HOST: chor-shipping-db
+      DB_PORT: 5432
+      DB_NAME: shipping_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DATABASE_URL: postgres://postgres:postgres@chor-shipping-db:5432/shipping_db?sslmode=disable
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BROKERS: kafka:29092
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_SERVICE_NAME: choreography-shipping-service
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8084/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
-    profiles:
-      - scale4
-
-  payment-service:
-    <<: *service-defaults
-    image: ghcr.io/elskow/saga-pattern/choreography-payment-service:${IMAGE_TAG:-latest}
-    environment:
-      SERVER_PORT: 8091
-      DB_HOST: chor-payment-db
-      DB_PORT: 5432
-      DB_NAME: payment_db
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
-      OTEL_SERVICE_NAME: choreography-payment-service
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      SPRING_PROFILES_ACTIVE: docker
-      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8091/actuator/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
     labels:
       - "prometheus.scrape=true"
-      - "prometheus.port=8091"
-      - "prometheus.path=/actuator/prometheus"
-
-  inventory-service:
-    <<: *service-defaults
-    image: ghcr.io/elskow/saga-pattern/choreography-inventory-service:${IMAGE_TAG:-latest}
-    environment:
-      SERVER_PORT: 8092
-      DB_HOST: chor-inventory-db
-      DB_PORT: 5432
-      DB_NAME: inventory_db
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
-      OTEL_SERVICE_NAME: choreography-inventory-service
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      SPRING_PROFILES_ACTIVE: docker
-      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8092/actuator/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    labels:
-      - "prometheus.scrape=true"
-      - "prometheus.port=8092"
-      - "prometheus.path=/actuator/prometheus"
-
-  shipping-service:
-    <<: *service-defaults
-    image: ghcr.io/elskow/saga-pattern/choreography-shipping-service:${IMAGE_TAG:-latest}
-    environment:
-      SERVER_PORT: 8093
-      DB_HOST: chor-shipping-db
-      DB_PORT: 5432
-      DB_NAME: shipping_db
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
-      OTEL_SERVICE_NAME: choreography-shipping-service
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      SPRING_PROFILES_ACTIVE: docker
-      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8093/actuator/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    labels:
-      - "prometheus.scrape=true"
-      - "prometheus.port=8093"
+      - "prometheus.port=8084"
       - "prometheus.path=/actuator/prometheus"
 
 networks:

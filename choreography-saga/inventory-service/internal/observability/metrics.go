@@ -1,0 +1,65 @@
+package observability
+
+import (
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+const (
+	metricStepInventoryDuration = "saga_step_inventory_duration_seconds"
+	metricCompensations         = "saga_compensations_inventory_total"
+
+	labelPattern = "pattern"
+	labelService = "service"
+
+	labelValuePattern = "choreography"
+	labelValueService = "choreography"
+)
+
+type Metrics struct {
+	registry      *prometheus.Registry
+	stepDuration  prometheus.Observer
+	compensations prometheus.Counter
+}
+
+func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
+	if registry == nil {
+		registry = prometheus.NewRegistry()
+	}
+
+	labels := prometheus.Labels{labelPattern: labelValuePattern, labelService: labelValueService}
+	stepDuration := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{Name: metricStepInventoryDuration, Help: "Inventory step duration in seconds.", Buckets: prometheus.DefBuckets},
+		[]string{labelPattern, labelService},
+	)
+	compensations := prometheus.NewCounterVec(
+		prometheus.CounterOpts{Name: metricCompensations, Help: "Total inventory compensations."},
+		[]string{labelPattern, labelService},
+	)
+
+	for _, collector := range []prometheus.Collector{stepDuration, compensations} {
+		if err := registry.Register(collector); err != nil {
+			return nil, err
+		}
+	}
+
+	return &Metrics{
+		registry:      registry,
+		stepDuration:  stepDuration.With(labels),
+		compensations: compensations.With(labels),
+	}, nil
+}
+
+func (m *Metrics) Registry() *prometheus.Registry {
+	return m.registry
+}
+
+func (m *Metrics) RecordInventoryStep(duration time.Duration) {
+	m.stepDuration.Observe(duration.Seconds())
+}
+
+func (m *Metrics) RecordInventoryCompensation(duration time.Duration) {
+	m.compensations.Inc()
+	m.stepDuration.Observe(duration.Seconds())
+}

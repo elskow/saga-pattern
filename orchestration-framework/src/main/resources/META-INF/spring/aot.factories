@@ -1,2 +1,0 @@
-org.springframework.aot.hint.RuntimeHintsRegistrar=\
-com.thesis.saga.aot.SagaFrameworkRuntimeHints

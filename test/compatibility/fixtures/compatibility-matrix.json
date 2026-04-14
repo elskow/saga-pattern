@@ -1,0 +1,411 @@
+{
+  "generatedFrom": [
+    "README.md",
+    "docs/README.md",
+    "docs/GETTING-STARTED.md",
+    "docs/TESTING.md",
+    "docs/THESIS.md",
+    "Makefile",
+    "load-testing/gatling/pom.xml",
+    "load-testing/gatling/src/test/scala/simulations/SagaConfig.scala",
+    "Jenkinsfile",
+    "Jenkinsfile.benchmark",
+    "infrastructure/open-tofu/observability/prometheus/prometheus.yml",
+    "load-testing/scripts/collect-metrics.sh",
+    "load-testing/scripts/run-thesis-tests.sh",
+    "load-testing/scripts/prometheus-template.yml",
+    "local-testing/docker-compose.choreography.local.yml",
+    "local-testing/docker-compose.orchestration.local.yml",
+    "infrastructure/open-tofu/saga/docker-compose.choreography.yml",
+    "infrastructure/open-tofu/saga/docker-compose.orchestration.yml",
+    "common/dto/order.go",
+    "common/events/choreography.go",
+    "common/replies/saga_reply.go",
+    "common/commands/saga_command.go",
+    "common/metrics/constants.go",
+    "choreography-saga/order-service/internal/httpapi/router.go",
+    "orchestration-saga/order-service/internal/httpapi/router.go",
+    "orchestration-framework/runtime/runtime.go"
+  ],
+  "classification": {
+    "fixedContracts": [
+      "actuator health path",
+      "actuator prometheus path",
+      "order API base routes",
+      "Gatling accepted create-order statuses",
+      "Gatling accepted polling statuses",
+      "external terminal statuses",
+      "Kafka topic names",
+      "wire event type names",
+      "wire reply type names",
+      "Prometheus metric names used by docs and scripts",
+      "Jenkins benchmark parameter names",
+      "Gatling simulation names",
+      "product fixture identifiers and expected outcomes"
+    ],
+    "internalOnly": [
+      "choreography intermediate order statuses",
+      "orchestration intermediate order statuses",
+      "orchestration saga/framework timers and scheduler settings",
+      "Go repository, Kafka client, and scheduler internals",
+      "order-service customer and list endpoints"
+    ],
+    "allowedAsymmetries": [
+      "choreography create-order request omits totalAmount",
+      "orchestration create-order request requires totalAmount",
+      "choreography create-order returns 201 and full order response",
+      "orchestration create-order returns 202 and SAGA_STARTED envelope",
+      "choreography internal initial status is PENDING",
+      "orchestration internal initial status is CREATED"
+    ],
+    "knownConflicts": [
+      "local/docs/prometheus assumptions expose choreography on 8081-8084 and orchestration on 8085-8088 as four distinct services per pattern",
+      "VM benchmark compose files reuse 8081-8084 and 8085-8088 as scaled order-service replicas and move payment/inventory/shipping to 8091-8093",
+      "metrics and PromQL surfaces mix pattern=choreography|orchestration with service=choreography|orchestration labels"
+    ]
+  },
+  "ports": {
+    "localSurface": {
+      "choreography": {
+        "order": 8081,
+        "payment": 8082,
+        "inventory": 8083,
+        "shipping": 8084
+      },
+      "orchestration": {
+        "order": 8085,
+        "payment": 8086,
+        "inventory": 8087,
+        "shipping": 8088
+      },
+      "healthPath": "/actuator/health",
+      "prometheusPath": "/actuator/prometheus"
+    },
+    "vmBenchmarkSurface": {
+      "choreography": {
+        "orderReplicas": [8081, 8082, 8083, 8084],
+        "payment": 8091,
+        "inventory": 8092,
+        "shipping": 8093
+      },
+      "orchestration": {
+        "orderReplicas": [8085, 8086, 8087, 8088],
+        "payment": 8091,
+        "inventory": 8092,
+        "shipping": 8093
+      }
+    },
+    "shared": {
+      "prometheus": 9090,
+      "grafana": 3000,
+      "jaegerUi": 16686,
+      "localKafka": {
+        "choreography": 9092,
+        "orchestration": 9093
+      }
+    }
+  },
+  "http": {
+    "baseRoute": "/api/orders",
+    "healthPath": "/actuator/health",
+    "prometheusPath": "/actuator/prometheus",
+    "commonRoutes": [
+      "POST /api/orders",
+      "GET /api/orders/{orderId}"
+    ],
+    "variantRoutes": {
+      "choreography": [
+        "GET /api/orders/customer/{customerId}"
+      ],
+      "orchestration": [
+        "GET /api/orders/customer/{customerId}",
+        "GET /api/orders"
+      ]
+    },
+    "createOrder": {
+      "acceptedStatusCodes": [200, 201, 202],
+      "variants": {
+        "choreography": {
+          "requiredRequestFields": [
+            "customerId",
+            "shippingAddress",
+            "items"
+          ],
+          "requiredItemFields": [
+            "productId",
+            "productName",
+            "quantity",
+            "price"
+          ],
+          "forbiddenRequestFields": [
+            "totalAmount"
+          ],
+          "responseStatusCode": 201,
+          "requiredResponseFields": [
+            "orderId",
+            "customerId",
+            "status",
+            "items",
+            "totalAmount",
+            "createdAt",
+            "updatedAt"
+          ],
+          "statusSemantics": "returns full order response immediately"
+        },
+        "orchestration": {
+          "requiredRequestFields": [
+            "customerId",
+            "totalAmount",
+            "shippingAddress",
+            "items"
+          ],
+          "requiredItemFields": [
+            "productId",
+            "productName",
+            "quantity",
+            "price"
+          ],
+          "responseStatusCode": 202,
+          "requiredResponseFields": [
+            "orderId",
+            "customerId",
+            "totalAmount",
+            "status"
+          ],
+          "fixedResponseStatus": "SAGA_STARTED"
+        }
+      }
+    },
+    "polling": {
+      "acceptedStatusCodes": [200, 404],
+      "terminalStatuses": [
+        "COMPLETED",
+        "CANCELLED",
+        "FAILED"
+      ]
+    },
+    "internalStatuses": {
+      "choreography": [
+        "PENDING",
+        "PAYMENT_PENDING",
+        "PAYMENT_COMPLETED",
+        "PAYMENT_FAILED",
+        "INVENTORY_RESERVED",
+        "INVENTORY_FAILED",
+        "SHIPPING_SCHEDULED",
+        "SHIPPING_FAILED",
+        "COMPLETED",
+        "CANCELLED"
+      ],
+      "orchestration": [
+        "CREATED",
+        "PAYMENT_PENDING",
+        "PAYMENT_COMPLETED",
+        "PAYMENT_FAILED",
+        "INVENTORY_RESERVED",
+        "INVENTORY_FAILED",
+        "SHIPPING_SCHEDULED",
+        "SHIPPING_FAILED",
+        "COMPLETED",
+        "CANCELLED"
+      ]
+    }
+  },
+  "kafka": {
+    "topics": {
+      "orderEvents": "order-events",
+      "paymentEvents": "payment-events",
+      "inventoryEvents": "inventory-events",
+      "shippingEvents": "shipping-events",
+      "paymentCommands": "orchestration.payment.commands",
+      "inventoryCommands": "orchestration.inventory.commands",
+      "shippingCommands": "orchestration.shipping.commands",
+      "paymentReplies": "orchestration.payment.replies",
+      "inventoryReplies": "orchestration.inventory.replies",
+      "shippingReplies": "orchestration.shipping.replies"
+    },
+    "choreographyEventTypes": [
+      "ORDER_CREATED",
+      "ORDER_COMPLETED",
+      "ORDER_CANCELLED",
+      "PAYMENT_COMPLETED",
+      "PAYMENT_FAILED",
+      "PAYMENT_REFUNDED",
+      "INVENTORY_RESERVED",
+      "INVENTORY_RESERVATION_FAILED",
+      "INVENTORY_RELEASED",
+      "SHIPPING_SCHEDULED",
+      "SHIPPING_FAILED",
+      "SHIPPING_CANCELLED"
+    ],
+    "orchestrationReplyTypes": [
+      "PAYMENT_COMPLETED",
+      "PAYMENT_FAILED",
+      "PAYMENT_REFUNDED",
+      "INVENTORY_RESERVED",
+      "INVENTORY_FAILED",
+      "INVENTORY_RELEASED",
+      "SHIPPING_SCHEDULED",
+      "SHIPPING_FAILED",
+      "SHIPPING_CANCELLED"
+    ]
+  },
+  "metrics": {
+    "requiredMetricNames": [
+      "saga_orders_created_total",
+      "saga_orders_completed_total",
+      "saga_orders_failed_total",
+      "saga_order_processing_time_seconds",
+      "saga_total_duration_seconds",
+      "saga_framework_duration_seconds",
+      "saga_framework_step_duration_seconds",
+      "saga_compensations_total",
+      "saga_compensations_payment_total",
+      "saga_compensations_inventory_total",
+      "saga_compensations_shipping_total",
+      "saga_framework_compensation_started_total",
+      "saga_framework_compensation_completed_total",
+      "saga_messages_total",
+      "saga_db_writes_total",
+      "saga_messages_per_transaction",
+      "saga_db_writes_per_transaction",
+      "saga_message_latency_seconds"
+    ],
+    "labelKeys": [
+      "service",
+      "pattern",
+      "service_group",
+      "direction",
+      "type",
+      "outcome",
+      "step",
+      "operation",
+      "entity",
+      "from_service",
+      "to_service",
+      "event_type",
+      "topic"
+    ],
+    "labelAssumptions": [
+      "Prometheus scrape configs add pattern and service_group labels",
+      "application metrics commonly tag service=choreography|orchestration",
+      "some queries require both pattern and service labels simultaneously",
+      "message metrics use direction and type labels",
+      "framework timers/counters use type and step labels"
+    ],
+    "querySurfaces": [
+      "rate(saga_orders_completed_total{pattern=\"choreography\",service=\"choreography\"}[5m])",
+      "rate(saga_orders_completed_total{pattern=\"orchestration\",service=\"orchestration\"}[5m])",
+      "rate(saga_order_processing_time_seconds_sum{pattern=\"choreography\",service=\"choreography\"}[5m]) / rate(saga_order_processing_time_seconds_count{pattern=\"choreography\",service=\"choreography\"}[5m])",
+      "rate(saga_total_duration_seconds_sum{pattern=\"orchestration\",service=\"orchestration\"}[5m]) / rate(saga_total_duration_seconds_count{pattern=\"orchestration\",service=\"orchestration\"}[5m])",
+      "sum(saga_orders_created_total{service=\"choreography\"})",
+      "sum(saga_orders_created_total{service=\"orchestration\"})"
+    ]
+  },
+  "jenkins": {
+    "pipelineFile": "Jenkinsfile.benchmark",
+    "parameters": [
+      "BUILD_LABEL",
+      "PROFILE",
+      "SIMULATION",
+      "RUN_CHOREOGRAPHY",
+      "RUN_ORCHESTRATION",
+      "WARMUP_REQUESTS",
+      "COOLDOWN_SECONDS",
+      "SAGA_NODE_IP",
+      "GATLING_RUNNER_IP",
+      "PULL_FRESH_IMAGES",
+      "SCALE_FACTOR"
+    ],
+    "profiles": [
+      "quick",
+      "thesis-baseline",
+      "thesis-stress"
+    ],
+    "simulations": [
+      "SustainedMixedSimulation",
+      "HappyPathSimulation",
+      "FailureScenariosSimulation",
+      "BurstSpikeSimulation",
+      "GradualRampupSimulation",
+      "ContentionSimulation",
+      "IdempotencySimulation"
+    ],
+    "environmentPorts": {
+      "choreography": 8081,
+      "orchestration": 8085
+    }
+  },
+  "gatling": {
+    "patternPropertyValues": [
+      "choreography",
+      "orchestration"
+    ],
+    "acceptedCreateOrderStatuses": [200, 201, 202],
+    "acceptedPollStatuses": [200, 404],
+    "terminalStatuses": [
+      "COMPLETED",
+      "CANCELLED",
+      "FAILED"
+    ],
+    "defaultBasePorts": {
+      "choreography": 8081,
+      "orchestration": 8085
+    },
+    "scaleFactor": {
+      "min": 1,
+      "max": 4,
+      "usesRoundRobinAcrossBasePortRange": true
+    },
+    "defaults": {
+      "testDurationSeconds": 120,
+      "usersPerSecond": 5,
+      "rampDurationSeconds": 30,
+      "maxPollAttemptsPom": 20,
+      "maxPollAttemptsRuntime": 60,
+      "pollIntervalMs": 500,
+      "warmUp": true,
+      "warmUpUsers": 3,
+      "warmUpDurationSeconds": 10,
+      "baseHost": "localhost"
+    },
+    "namedSimulations": [
+      "LightLoadSimulation",
+      "HappyPathSimulation",
+      "SustainedMixedSimulation",
+      "BurstSpikeSimulation",
+      "FailureScenariosSimulation",
+      "GradualRampupSimulation",
+      "ContentionSimulation",
+      "IdempotencySimulation"
+    ]
+  },
+  "products": {
+    "standard": [
+      {"productId": "PROD-001", "productName": "Laptop", "price": 999.99, "quantity": 1, "expectedOutcome": "COMPLETED"},
+      {"productId": "PROD-002", "productName": "Headphones", "price": 149.99, "quantity": 1, "expectedOutcome": "COMPLETED"},
+      {"productId": "PROD-003", "productName": "Keyboard", "price": 79.99, "quantity": 1, "expectedOutcome": "COMPLETED"},
+      {"productId": "PROD-004", "productName": "Mouse", "price": 49.99, "quantity": 1, "expectedOutcome": "COMPLETED"},
+      {"productId": "PROD-005", "productName": "Monitor", "price": 299.99, "quantity": 1, "expectedOutcome": "COMPLETED"},
+      {"productId": "PROD-006", "productName": "Webcam", "price": 89.99, "quantity": 2, "expectedOutcome": "COMPLETED"},
+      {"productId": "PROD-007", "productName": "USB Hub", "price": 29.99, "quantity": 1, "expectedOutcome": "COMPLETED"},
+      {"productId": "PROD-008", "productName": "Mousepad", "price": 19.99, "quantity": 1, "expectedOutcome": "COMPLETED"}
+    ],
+    "lowStock": {
+      "productId": "PROD-LOW-001",
+      "productName": "Rare Item",
+      "price": 25,
+      "quantity": 100,
+      "expectedOutcome": "CANCELLED",
+      "failureReason": "inventory_failure"
+    },
+    "highValue": {
+      "productId": "PROD-PREMIUM-001",
+      "productName": "Premium Item",
+      "price": 10000,
+      "quantity": 1,
+      "expectedOutcome": "CANCELLED",
+      "failureReason": "payment_failure"
+    }
+  }
+}

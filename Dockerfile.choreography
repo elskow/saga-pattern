@@ -1,0 +1,35 @@
+FROM golang:1.25.0-alpine AS builder
+
+WORKDIR /build
+
+RUN apk add --no-cache git
+
+COPY . .
+
+ARG SERVICE_PATH
+
+ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64
+
+RUN go build -buildvcs=false -o /out/application ./${SERVICE_PATH}/cmd/server
+
+FROM alpine:3.21
+
+RUN apk add --no-cache curl ca-certificates tzdata && \
+    addgroup -S appgroup && adduser -S appuser -G appgroup
+
+ENV TZ=UTC
+
+WORKDIR /app
+
+COPY --from=builder /out/application /app/application
+
+RUN chown appuser:appgroup /app/application && chmod 755 /app/application
+
+USER appuser
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=5 \
+    CMD curl -f http://localhost:${SERVER_PORT:-8080}/actuator/health || exit 1
+
+ENTRYPOINT ["/app/application"]
