@@ -6,13 +6,13 @@
     "docs/TESTING.md",
     "docs/THESIS.md",
     "Makefile",
-    "load-testing/gatling/pom.xml",
-    "load-testing/gatling/src/test/scala/simulations/SagaConfig.scala",
+    "load-testing/k6/thesis.js",
+    "load-testing/thesis/run-k6-thesis.sh",
     "Jenkinsfile",
     "Jenkinsfile.benchmark",
-    "infrastructure/open-tofu/observability/prometheus/prometheus.yml",
+    "infrastructure/open-tofu/observability/signoz/otel-collector-config.yaml",
     "load-testing/scripts/collect-metrics.sh",
-    "load-testing/scripts/run-thesis-tests.sh",
+    "load-testing/thesis/collect-db-state.sh",
     "load-testing/scripts/prometheus-template.yml",
     "local-testing/docker-compose.choreography.local.yml",
     "local-testing/docker-compose.orchestration.local.yml",
@@ -32,16 +32,16 @@
       "actuator health path",
       "actuator prometheus path",
       "order API base routes",
-      "Gatling accepted create-order statuses",
-      "Gatling accepted polling statuses",
+      "k6 accepted create-order statuses",
+      "k6 accepted polling statuses",
       "external terminal statuses",
       "Kafka topic names",
       "wire event type names",
       "wire reply type names",
       "Prometheus metric names used by docs and scripts",
       "Jenkins benchmark parameter names",
-      "Gatling simulation names",
-      "product fixture identifiers and expected outcomes"
+      "k6 scenario names",
+      "benchmark product scenarios and expected outcomes"
     ],
     "internalOnly": [
       "choreography intermediate order statuses",
@@ -59,8 +59,8 @@
       "orchestration internal initial status is CREATED"
     ],
     "knownConflicts": [
-      "local/docs/prometheus assumptions expose choreography on 8081-8084 and orchestration on 8085-8088 as four distinct services per pattern",
-      "VM benchmark compose files reuse 8081-8084 and 8085-8088 as scaled order-service replicas and move payment/inventory/shipping to 8091-8093",
+      "local/docs/prometheus assumptions expose choreography on 8081-8084 and orchestration on 8091-8094 as four distinct services per pattern",
+      "VM benchmark compose files use choreography 8081-8084 and orchestration 8091,8095,8096,8097 as scaled order-service replicas while keeping orchestration participants on 8092-8094",
       "metrics and PromQL surfaces mix pattern=choreography|orchestration with service=choreography|orchestration labels"
     ]
   },
@@ -73,10 +73,10 @@
         "shipping": 8084
       },
       "orchestration": {
-        "order": 8085,
-        "payment": 8086,
-        "inventory": 8087,
-        "shipping": 8088
+        "order": 8091,
+        "payment": 8092,
+        "inventory": 8093,
+        "shipping": 8094
       },
       "healthPath": "/actuator/health",
       "prometheusPath": "/actuator/prometheus"
@@ -89,16 +89,16 @@
         "shipping": 8093
       },
       "orchestration": {
-        "orderReplicas": [8085, 8086, 8087, 8088],
-        "payment": 8091,
-        "inventory": 8092,
-        "shipping": 8093
+        "orderReplicas": [8091, 8095, 8096, 8097],
+        "payment": 8092,
+        "inventory": 8093,
+        "shipping": 8094
       }
     },
     "shared": {
-      "prometheus": 9090,
-      "grafana": 3000,
-      "jaegerUi": 16686,
+      "signozUi": 8080,
+      "otlpHttp": 4318,
+      "otlpGrpc": 4317,
       "localKafka": {
         "choreography": 9092,
         "orchestration": 9093
@@ -307,36 +307,31 @@
     "parameters": [
       "BUILD_LABEL",
       "PROFILE",
-      "SIMULATION",
+      "SCENARIO",
       "RUN_CHOREOGRAPHY",
       "RUN_ORCHESTRATION",
-      "WARMUP_REQUESTS",
-      "COOLDOWN_SECONDS",
       "SAGA_NODE_IP",
-      "GATLING_RUNNER_IP",
-      "PULL_FRESH_IMAGES",
-      "SCALE_FACTOR"
+      "PULL_FRESH_IMAGES"
     ],
     "profiles": [
       "quick",
+      "thesis-targeted",
       "thesis-baseline",
       "thesis-stress"
     ],
-    "simulations": [
-      "SustainedMixedSimulation",
-      "HappyPathSimulation",
-      "FailureScenariosSimulation",
-      "BurstSpikeSimulation",
-      "GradualRampupSimulation",
-      "ContentionSimulation",
-      "IdempotencySimulation"
+    "scenarios": [
+      "successful-order",
+      "inventory-reservation-failure",
+      "shipping-scheduling-failure",
+      "contention",
+      "gradual-rampup"
     ],
     "environmentPorts": {
       "choreography": 8081,
-      "orchestration": 8085
+      "orchestration": 8091
     }
   },
-  "gatling": {
+  "k6": {
     "patternPropertyValues": [
       "choreography",
       "orchestration"
@@ -350,62 +345,40 @@
     ],
     "defaultBasePorts": {
       "choreography": 8081,
-      "orchestration": 8085
-    },
-    "scaleFactor": {
-      "min": 1,
-      "max": 4,
-      "usesRoundRobinAcrossBasePortRange": true
+      "orchestration": 8091
     },
     "defaults": {
-      "testDurationSeconds": 120,
-      "usersPerSecond": 5,
-      "rampDurationSeconds": 30,
-      "maxPollAttemptsPom": 20,
-      "maxPollAttemptsRuntime": 60,
+      "maxPollAttempts": 240,
       "pollIntervalMs": 500,
-      "warmUp": true,
-      "warmUpUsers": 3,
-      "warmUpDurationSeconds": 10,
       "baseHost": "localhost"
     },
-    "namedSimulations": [
-      "LightLoadSimulation",
-      "HappyPathSimulation",
-      "SustainedMixedSimulation",
-      "BurstSpikeSimulation",
-      "FailureScenariosSimulation",
-      "GradualRampupSimulation",
-      "ContentionSimulation",
-      "IdempotencySimulation"
+    "scenarios": [
+      "successful-order",
+      "inventory-reservation-failure",
+      "shipping-scheduling-failure",
+      "happy-path",
+      "failure",
+      "inventory-failure",
+      "shipping-failure",
+      "contention",
+      "gradual-rampup"
     ]
   },
   "products": {
     "standard": [
-      {"productId": "PROD-001", "productName": "Laptop", "price": 999.99, "quantity": 1, "expectedOutcome": "COMPLETED"},
-      {"productId": "PROD-002", "productName": "Headphones", "price": 149.99, "quantity": 1, "expectedOutcome": "COMPLETED"},
-      {"productId": "PROD-003", "productName": "Keyboard", "price": 79.99, "quantity": 1, "expectedOutcome": "COMPLETED"},
-      {"productId": "PROD-004", "productName": "Mouse", "price": 49.99, "quantity": 1, "expectedOutcome": "COMPLETED"},
-      {"productId": "PROD-005", "productName": "Monitor", "price": 299.99, "quantity": 1, "expectedOutcome": "COMPLETED"},
-      {"productId": "PROD-006", "productName": "Webcam", "price": 89.99, "quantity": 2, "expectedOutcome": "COMPLETED"},
-      {"productId": "PROD-007", "productName": "USB Hub", "price": 29.99, "quantity": 1, "expectedOutcome": "COMPLETED"},
-      {"productId": "PROD-008", "productName": "Mousepad", "price": 19.99, "quantity": 1, "expectedOutcome": "COMPLETED"}
+      {"productId": "PROD-001", "productName": "Laptop", "price": 15999000, "quantity": 1, "expectedOutcome": "COMPLETED"},
+      {"productId": "PROD-002", "productName": "Headphones", "price": 2399000, "quantity": 1, "expectedOutcome": "COMPLETED"},
+      {"productId": "PROD-003", "productName": "Keyboard", "price": 1299000, "quantity": 1, "expectedOutcome": "COMPLETED"},
+      {"productId": "PROD-004", "productName": "Mouse", "price": 799000, "quantity": 1, "expectedOutcome": "COMPLETED"},
+      {"productId": "PROD-005", "productName": "Monitor", "price": 4799000, "quantity": 1, "expectedOutcome": "COMPLETED"}
     ],
-    "lowStock": {
-      "productId": "PROD-LOW-001",
-      "productName": "Rare Item",
-      "price": 25,
-      "quantity": 100,
+    "inventoryShortage": {
+      "productId": "PROD-001",
+      "productName": "Laptop",
+      "price": 15999000,
+      "quantity": 1000,
       "expectedOutcome": "CANCELLED",
       "failureReason": "inventory_failure"
-    },
-    "highValue": {
-      "productId": "PROD-PREMIUM-001",
-      "productName": "Premium Item",
-      "price": 10000,
-      "quantity": 1,
-      "expectedOutcome": "CANCELLED",
-      "failureReason": "payment_failure"
     }
   }
 }

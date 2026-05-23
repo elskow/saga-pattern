@@ -1,5 +1,13 @@
 x-service-defaults: &service-defaults
   restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+      env: OTEL_SERVICE_NAME,LOG_LEVEL
+      labels: com.docker.compose.service
+      tag: "{{.Name}}"
   deploy:
     resources:
       limits:
@@ -10,14 +18,15 @@ x-service-defaults: &service-defaults
         memory: 256M
 
 services:
-  order-service:
+  order-service-choreography:
     <<: *service-defaults
+    container_name: order-service-choreography
     build:
       context: ..
       dockerfile: Dockerfile.choreography
       args:
         SERVICE_PATH: choreography-saga/order-service
-    image: saga-pattern/choreography-order-service:local
+    image: saga-pattern/order-service-choreography:local
     ports:
       - "8081:8081"
     environment:
@@ -28,9 +37,10 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       DATABASE_URL: postgres://postgres:postgres@chor-order-db:5432/order_db?sslmode=disable
+      INVENTORY_SERVICE_URL: http://inventory-service-choreography:8083
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_BROKERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4318}
       OTEL_SERVICE_NAME: choreography-order-service
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     healthcheck:
@@ -44,14 +54,15 @@ services:
       - "prometheus.port=8081"
       - "prometheus.path=/actuator/prometheus"
 
-  payment-service:
+  payment-service-choreography:
     <<: *service-defaults
+    container_name: payment-service-choreography
     build:
       context: ..
       dockerfile: Dockerfile.choreography
       args:
         SERVICE_PATH: choreography-saga/payment-service
-    image: saga-pattern/choreography-payment-service:local
+    image: saga-pattern/payment-service-choreography:local
     ports:
       - "8082:8082"
     environment:
@@ -64,7 +75,7 @@ services:
       DATABASE_URL: postgres://postgres:postgres@chor-payment-db:5432/payment_db?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_BROKERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4318}
       OTEL_SERVICE_NAME: choreography-payment-service
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     healthcheck:
@@ -78,14 +89,15 @@ services:
       - "prometheus.port=8082"
       - "prometheus.path=/actuator/prometheus"
 
-  inventory-service:
+  inventory-service-choreography:
     <<: *service-defaults
+    container_name: inventory-service-choreography
     build:
       context: ..
       dockerfile: Dockerfile.choreography
       args:
         SERVICE_PATH: choreography-saga/inventory-service
-    image: saga-pattern/choreography-inventory-service:local
+    image: saga-pattern/inventory-service-choreography:local
     ports:
       - "8083:8083"
     environment:
@@ -98,7 +110,7 @@ services:
       DATABASE_URL: postgres://postgres:postgres@chor-inventory-db:5432/inventory_db?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_BROKERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4318}
       OTEL_SERVICE_NAME: choreography-inventory-service
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       ARTIFICIAL_DELAY_ENABLED: ${ARTIFICIAL_DELAY_ENABLED:-false}
@@ -114,14 +126,15 @@ services:
       - "prometheus.port=8083"
       - "prometheus.path=/actuator/prometheus"
 
-  shipping-service:
+  shipping-service-choreography:
     <<: *service-defaults
+    container_name: shipping-service-choreography
     build:
       context: ..
       dockerfile: Dockerfile.choreography
       args:
         SERVICE_PATH: choreography-saga/shipping-service
-    image: saga-pattern/choreography-shipping-service:local
+    image: saga-pattern/shipping-service-choreography:local
     ports:
       - "8084:8084"
     environment:
@@ -134,7 +147,7 @@ services:
       DATABASE_URL: postgres://postgres:postgres@chor-shipping-db:5432/shipping_db?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_BROKERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4318}
       OTEL_SERVICE_NAME: choreography-shipping-service
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     healthcheck:

@@ -2,18 +2,14 @@ package main
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
-	"log/slog"
-	"net/http"
 	"os"
 
 	_ "github.com/lib/pq"
-	"github.com/prometheus/client_golang/prometheus"
 
-	"saga-pattern/common/httpcompat"
 	commonkafka "saga-pattern/common/kafka"
+	"saga-pattern/orchestration-saga/internal/healthutil"
+	"saga-pattern/orchestration-saga/internal/serverutil"
 	serviceconfig "saga-pattern/orchestration-saga/shipping-service/internal/config"
 	"saga-pattern/orchestration-saga/shipping-service/internal/httpapi"
 	"saga-pattern/orchestration-saga/shipping-service/internal/messaging"
@@ -29,36 +25,30 @@ func main() {
 	}
 }
 
-func run() error {
+func run() (err error) {
 	cfg, err := serviceconfig.Load()
 	if err != nil {
 		return err
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	db, err := sql.Open("postgres", cfg.Runtime.DatabaseURL)
+	resources, err := serverutil.BootstrapParticipant(cfg, "orchestration-shipping-service", "orchestration-saga/shipping-service/db/migrations")
 	if err != nil {
-		return fmt.Errorf("open postgres connection: %w", err)
+		return err
 	}
-	defer db.Close()
-	if err := db.Ping(); err != nil {
-		return fmt.Errorf("ping postgres connection: %w", err)
-	}
-	repo, err := repository.NewPostgresRepository(db)
+	defer func() {
+		if closeErr := resources.Close(); err == nil && closeErr != nil {
+			err = fmt.Errorf("close participant resources: %w", closeErr)
+		}
+	}()
+	repo, err := repository.NewPostgresRepository(resources.DB)
 	if err != nil {
 		return fmt.Errorf("create shipping postgres repository: %w", err)
 	}
-	registry := prometheus.NewRegistry()
-	metrics, err := observability.NewMetrics(registry)
+	metrics, err := observability.NewMetrics(resources.Registry)
 	if err != nil {
 		return fmt.Errorf("create metrics: %w", err)
 	}
-	runtimePublisher, err := commonkafka.NewRuntimePublisher(cfg.Runtime.KafkaBrokers)
-	if err != nil {
-		return fmt.Errorf("create runtime publisher: %w", err)
-	}
-	defer runtimePublisher.Close()
-	replyPublisher := messaging.NewReplyPublisher(runtimePublisher)
+	replyPublisher := messaging.NewReplyPublisher(resources.RuntimePublisher)
 	service, err := shipping.NewService(repo, replyPublisher, metrics)
 	if err != nil {
 		return fmt.Errorf("create shipping service: %w", err)
@@ -67,36 +57,19 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("create shipping command consumer: %w", err)
 	}
-	consumerGroup, err := commonkafka.NewSubscriberGroup(cfg.Runtime.KafkaBrokers, cfg.ServiceName, consumer.Topics(), logger, func(ctx context.Context, topic, key string, value []byte) error {
+	consumerGroup, err := commonkafka.NewSubscriberGroup(cfg.Runtime.KafkaBrokers, cfg.ServiceName, consumer.Topics(), resources.Logger, func(ctx context.Context, topic, key string, value []byte) error {
 		return consumer.Consume(ctx, messaging.CommandEnvelope{Topic: topic, Key: key, Value: value})
 	})
 	if err != nil {
 		return fmt.Errorf("create kafka subscriber group: %w", err)
 	}
-	defer consumerGroup.Close()
-	consumerGroup.Start(context.Background())
 	handler := httpapi.NewHandler(httpapi.HandlerDependencies{
-		Config:   cfg,
-		Logger:   logger,
-		Registry: metrics.Registry(),
-		HealthProvider: func(ctx context.Context) httpcompat.HealthResponse {
-			response := httpcompat.HealthResponse{Status: httpcompat.StatusUp, Components: map[string]httpcompat.HealthComponent{
-				"db":    {Status: httpcompat.StatusUp},
-				"kafka": {Status: httpcompat.StatusUp, Details: map[string]any{"brokers": cfg.Runtime.KafkaBrokers}},
-			}}
-			if err := service.HealthStatus(ctx); err != nil {
-				response.Status = "DOWN"
-				response.Components["db"] = httpcompat.HealthComponent{Status: "DOWN", Details: map[string]any{"error": err.Error()}}
-			}
-			return response
-		},
+		Config:         cfg,
+		Logger:         resources.Logger,
+		Registry:       metrics.Registry(),
+		HealthProvider: healthutil.ParticipantHealthProvider(service, cfg.Runtime.KafkaBrokers),
+		Repo:           repo,
+		Service:        service,
 	})
-	server := &http.Server{Addr: cfg.Address(), Handler: handler}
-
-	logger.Info("starting orchestration shipping service", "service", cfg.ServiceName, "pattern", cfg.Pattern, "addr", cfg.Address(), "consumerTopics", consumer.Topics(), "replyTopic", replyPublisher.Topic())
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("listen and serve: %w", err)
-	}
-
-	return nil
+	return serverutil.RunParticipantServer(cfg, resources.Logger, handler, consumer.Topics(), replyPublisher.Topic(), consumerGroup)
 }

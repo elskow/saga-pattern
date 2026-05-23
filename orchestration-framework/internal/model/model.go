@@ -1,22 +1,12 @@
 package model
 
-import (
-	"encoding/json"
-	"time"
-
-	"saga-pattern/common/dto"
-)
+import "time"
 
 type SagaState string
 
 const (
-	SagaStateCreated          SagaState = "CREATED"
-	SagaStatePaymentPending   SagaState = "PAYMENT_PENDING"
-	SagaStateInventoryPending SagaState = "INVENTORY_PENDING"
-	SagaStateShippingPending  SagaState = "SHIPPING_PENDING"
-	SagaStateCompensating     SagaState = "COMPENSATING"
-	SagaStateCompleted        SagaState = "COMPLETED"
-	SagaStateCancelled        SagaState = "CANCELLED"
+	SagaStateCompleted SagaState = "COMPLETED"
+	SagaStateCancelled SagaState = "CANCELLED"
 )
 
 type StepDirection string
@@ -46,18 +36,6 @@ const (
 	OutboxStatusFailed  OutboxStatus = "failed"
 )
 
-type SagaData struct {
-	OrderID         string                 `json:"orderId"`
-	CustomerID      string                 `json:"customerId"`
-	PaymentID       string                 `json:"paymentId"`
-	ReservationID   string                 `json:"reservationId"`
-	ShippingID      string                 `json:"shippingId"`
-	CorrelationID   string                 `json:"correlationId"`
-	ShippingAddress string                 `json:"shippingAddress"`
-	TotalAmount     json.Number            `json:"totalAmount"`
-	Items           []dto.OrderItemRequest `json:"items"`
-}
-
 type SagaInstanceRow struct {
 	ID                 string
 	SagaType           string
@@ -73,7 +51,12 @@ type SagaInstanceRow struct {
 	RetryCount         int
 	MaxRetryCount      int
 	LastError          string
-	Data               SagaData
+	Data               []byte
+	RequestID          string
+	CorrelationID      string
+	BenchmarkRun       string
+	BenchmarkScene     string
+	BenchmarkPhase     string
 }
 
 type StepHistoryRow struct {
@@ -92,25 +75,31 @@ type StepHistoryRow struct {
 }
 
 type OutboxRow struct {
-	ID           string
-	SagaID       string
-	SagaType     string
-	Step         string
-	Direction    StepDirection
-	Topic        string
-	Key          string
-	MessageType  string
-	Payload      []byte
-	Status       OutboxStatus
-	AvailableAt  time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	AttemptCount int
-	MaxAttempts  int
-	LastError    string
-	SentAt       *time.Time
-	ClaimedBy    string
-	ClaimedUntil *time.Time
+	ID             string
+	SagaID         string
+	SagaType       string
+	Step           string
+	Direction      StepDirection
+	Topic          string
+	Key            string
+	MessageType    string
+	Payload        []byte
+	Status         OutboxStatus
+	AvailableAt    time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	AttemptCount   int
+	MaxAttempts    int
+	LastError      string
+	SentAt         *time.Time
+	ClaimedBy      string
+	ClaimedUntil   *time.Time
+	RequestID      string
+	CorrelationID  string
+	BenchmarkRun   string
+	BenchmarkScene string
+	BenchmarkPhase string
+	TraceHeaders   map[string]string
 }
 
 type ProcessedReplyRow struct {

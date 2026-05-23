@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"saga-pattern/common/tracking"
 )
 
 type ShipmentStatus string
@@ -17,6 +19,7 @@ const (
 type Shipment struct {
 	ShippingID         string
 	OrderID            string
+	TrackingNumber     string
 	ShippingAddress    string
 	Status             ShipmentStatus
 	FailureReason      string
@@ -35,6 +38,7 @@ func NewScheduledShipment(shippingID, orderID, shippingAddress string, at time.T
 	return Shipment{
 		ShippingID:      shippingID,
 		OrderID:         orderID,
+		TrackingNumber:  tracking.NumberForShippingID(shippingID),
 		ShippingAddress: shippingAddress,
 		Status:          ShipmentStatusScheduled,
 		CreatedAt:       at,
@@ -54,6 +58,7 @@ func NewFailedShipment(shippingID, orderID, shippingAddress, reason string, at t
 	return Shipment{
 		ShippingID:      shippingID,
 		OrderID:         orderID,
+		TrackingNumber:  tracking.NumberForShippingID(shippingID),
 		ShippingAddress: shippingAddress,
 		Status:          ShipmentStatusFailed,
 		FailureReason:   reason,

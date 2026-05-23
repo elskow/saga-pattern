@@ -1,11 +1,13 @@
 package events
 
 import (
+	stdcontext "context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"time"
 
+	commoncontext "saga-pattern/common/context"
 	"saga-pattern/common/dto"
 	"saga-pattern/common/validate"
 )
@@ -28,6 +30,49 @@ const (
 type ChoreographyEvent interface {
 	EventType() string
 	Validate() error
+}
+
+func ContextWithMetadata(ctx stdcontext.Context, event ChoreographyEvent) stdcontext.Context {
+	data := commoncontext.Current(ctx)
+	orderID, correlationID := EventIdentifiers(event)
+	if orderID != "" {
+		data.OrderID = orderID
+	}
+	if correlationID != "" {
+		data.CorrelationID = correlationID
+	}
+	return commoncontext.With(ctx, data)
+}
+
+func EventIdentifiers(event ChoreographyEvent) (string, string) {
+	switch e := event.(type) {
+	case OrderCreatedEvent:
+		return e.OrderID, e.CorrelationID
+	case OrderCompletedEvent:
+		return e.OrderID, e.CorrelationID
+	case OrderCancelledEvent:
+		return e.OrderID, e.CorrelationID
+	case PaymentCompletedEvent:
+		return e.OrderID, e.CorrelationID
+	case PaymentFailedEvent:
+		return e.OrderID, e.CorrelationID
+	case PaymentRefundedEvent:
+		return e.OrderID, e.CorrelationID
+	case InventoryReservedEvent:
+		return e.OrderID, e.CorrelationID
+	case InventoryReservationFailedEvent:
+		return e.OrderID, e.CorrelationID
+	case InventoryReleasedEvent:
+		return e.OrderID, e.CorrelationID
+	case ShippingScheduledEvent:
+		return e.OrderID, e.CorrelationID
+	case ShippingFailedEvent:
+		return e.OrderID, e.CorrelationID
+	case ShippingCancelledEvent:
+		return e.OrderID, e.CorrelationID
+	default:
+		return "", ""
+	}
 }
 
 type OrderCreatedEvent struct {

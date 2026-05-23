@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,17 +19,21 @@ import (
 	ordersvc "saga-pattern/choreography-saga/order-service/internal/orders"
 	"saga-pattern/choreography-saga/order-service/internal/repository"
 	commonconfig "saga-pattern/common/config"
+	commoncontext "saga-pattern/common/context"
 	"saga-pattern/common/dto"
 	"saga-pattern/common/events"
+	"saga-pattern/common/inventorycatalog"
 	commonkafka "saga-pattern/common/kafka"
+	"saga-pattern/common/testutil"
 )
 
 func TestCreateAndPollOrderLifecycle(t *testing.T) {
 	server, consumer, _, publisher := newTestServer(t)
 
-	body := `{"customerId":"CUST-001","shippingAddress":"123 Main Street","items":[{"productId":"PROD-001","productName":"Widget","quantity":2,"price":49.99}]}`
+	body := `{"customerId":"CUST-001","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Widget","quantity":2,"price":799000}]}`
 	createReq := httptest.NewRequest(http.MethodPost, "/api/orders", strings.NewReader(body))
 	createReq.Header.Set("Content-Type", "application/json")
+	createReq = createReq.WithContext(commoncontext.With(createReq.Context(), commoncontext.Data{RequestID: "request-1", CorrelationID: "http-correlation"}))
 	createResp := httptest.NewRecorder()
 	server.ServeHTTP(createResp, createReq)
 
@@ -49,6 +55,19 @@ func TestCreateAndPollOrderLifecycle(t *testing.T) {
 	if msg.Topic != messaging.NewOrderTopicPublisher(publisher).Topic() {
 		t.Fatalf("published topic = %q", msg.Topic)
 	}
+	if msg.RequestID != "request-1" {
+		t.Fatalf("published request id = %q, want request-1", msg.RequestID)
+	}
+	if msg.OrderID != created.OrderID {
+		t.Fatalf("published order id = %q, want %q", msg.OrderID, created.OrderID)
+	}
+	publishedEvent, ok := msg.Body.(events.OrderCreatedEvent)
+	if !ok {
+		t.Fatalf("published body type = %T, want OrderCreatedEvent", msg.Body)
+	}
+	if msg.CorrelationID != publishedEvent.CorrelationID {
+		t.Fatalf("published correlation id = %q, want event correlation %q", msg.CorrelationID, publishedEvent.CorrelationID)
+	}
 
 	now := time.Now().UTC()
 	if err := deliverEvent(consumer, commonkafka.DefaultPaymentEventsTopic, created.OrderID, events.NewPaymentCompletedEvent("PAY-1", created.OrderID, json.Number("99.98"), "TX-1", now, "corr-1", now)); err != nil {
@@ -57,7 +76,7 @@ func TestCreateAndPollOrderLifecycle(t *testing.T) {
 	if err := deliverEvent(consumer, commonkafka.DefaultInventoryEventsTopic, created.OrderID, events.NewInventoryReservedEvent("RES-1", created.OrderID, []events.InventoryReservedItem{{ProductID: "PROD-001", Quantity: 2}}, now, "corr-1", now)); err != nil {
 		t.Fatalf("handle inventory reserved: %v", err)
 	}
-	if err := deliverEvent(consumer, commonkafka.DefaultShippingEventsTopic, created.OrderID, events.NewShippingScheduledEvent("SHIP-1", created.OrderID, "TRACK-1", "123 Main Street", now.Add(24*time.Hour), now, "corr-1", now)); err != nil {
+	if err := deliverEvent(consumer, commonkafka.DefaultShippingEventsTopic, created.OrderID, events.NewShippingScheduledEvent("SHIP-1", created.OrderID, "TRACK-1", "Jl. Ketintang Wiyata, Surabaya 60231", now.Add(24*time.Hour), now, "corr-1", now)); err != nil {
 		t.Fatalf("handle shipping scheduled: %v", err)
 	}
 
@@ -79,7 +98,7 @@ func TestCreateAndPollOrderLifecycle(t *testing.T) {
 
 func TestDuplicateCreateOrderUsesIdempotencyKey(t *testing.T) {
 	server, _, _, publisher := newTestServer(t)
-	body := `{"customerId":"CUST-001","shippingAddress":"123 Main Street","items":[{"productId":"PROD-001","productName":"Widget","quantity":1,"price":49.99}]}`
+	body := `{"customerId":"CUST-001","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Widget","quantity":1,"price":799000}]}`
 
 	first := httptest.NewRequest(http.MethodPost, "/api/orders", strings.NewReader(body))
 	first.Header.Set("Content-Type", "application/json")
@@ -116,6 +135,113 @@ func TestDuplicateCreateOrderUsesIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestDuplicateCreateOrderRejectsDifferentPayloadForSameIdempotencyKey(t *testing.T) {
+	server, _, _, publisher := newTestServer(t)
+	firstBody := `{"customerId":"CUST-001","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Widget","quantity":1,"price":799000}]}`
+	secondBody := `{"customerId":"CUST-002","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Widget","quantity":1,"price":799000}]}`
+
+	first := httptest.NewRequest(http.MethodPost, "/api/orders", strings.NewReader(firstBody))
+	first.Header.Set("Content-Type", "application/json")
+	first.Header.Set(idempotencyHeader, "IDEM-CONFLICT")
+	firstResp := httptest.NewRecorder()
+	server.ServeHTTP(firstResp, first)
+
+	second := httptest.NewRequest(http.MethodPost, "/api/orders", strings.NewReader(secondBody))
+	second.Header.Set("Content-Type", "application/json")
+	second.Header.Set(idempotencyHeader, "IDEM-CONFLICT")
+	secondResp := httptest.NewRecorder()
+	server.ServeHTTP(secondResp, second)
+
+	if firstResp.Code != http.StatusCreated {
+		t.Fatalf("first create status = %d", firstResp.Code)
+	}
+	if secondResp.Code != http.StatusConflict {
+		t.Fatalf("second create status = %d, want %d, body=%s", secondResp.Code, http.StatusConflict, secondResp.Body.String())
+	}
+	if len(publisher.Messages()) != 1 {
+		t.Fatalf("published message count = %d, want 1", len(publisher.Messages()))
+	}
+}
+
+func TestCreateOrderStagesOutboxWhenInitialPublishFails(t *testing.T) {
+	db := testutil.OpenPostgres(t, testutil.DefaultChoreographyOrderDatabaseURL, "choreography_order_outbox_test", testutil.Migration{Scope: "choreography-order-service", Dir: "choreography-saga/order-service/db/migrations"})
+	repo, err := repository.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatalf("new postgres repository: %v", err)
+	}
+	metrics, err := observability.NewMetrics(nil)
+	if err != nil {
+		t.Fatalf("new metrics: %v", err)
+	}
+	recording := testutil.NewRecordingPublisher()
+	publisher := &failOncePublisher{delegate: recording}
+	service, err := ordersvc.NewService(repo, messaging.NewOrderTopicPublisher(publisher), fakeCatalogResolver{}, metrics)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	service.WithClock(func() time.Time { return time.Date(2026, 4, 14, 12, 0, 0, 0, time.UTC) })
+	request := dto.ChoreographyCreateOrderRequest{
+		CustomerID:      "CUST-001",
+		ShippingAddress: "Jl. Ketintang Wiyata, Surabaya 60231",
+		Items:           []dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Widget", Quantity: 1, Price: json.Number("799000")}},
+	}
+
+	response, created, err := service.CreateOrder(context.Background(), request, "")
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if !created || response.OrderID == "" {
+		t.Fatalf("created=%v response=%+v", created, response)
+	}
+	if len(recording.Messages()) != 0 {
+		t.Fatalf("published messages after failed attempt = %d, want 0", len(recording.Messages()))
+	}
+
+	if err := service.PublishPendingOrderEvents(context.Background()); err != nil {
+		t.Fatalf("publish pending order events: %v", err)
+	}
+	if len(recording.Messages()) != 1 {
+		t.Fatalf("published messages after retry = %d, want 1", len(recording.Messages()))
+	}
+	if recording.Messages()[0].Key != response.OrderID {
+		t.Fatalf("published key = %q, want %q", recording.Messages()[0].Key, response.OrderID)
+	}
+}
+
+func TestCreateOrderRejectsInsufficientAvailabilityBeforePublishing(t *testing.T) {
+	server, _, _, publisher := newTestServerWithCatalog(t, fakeCatalogResolver{err: inventorycatalog.InsufficientAvailabilityError{ProductID: "PROD-001", Requested: 1, Available: 0}})
+	body := `{"customerId":"CUST-001","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Widget","quantity":1,"price":799000}]}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/orders", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	server.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("create status = %d, want %d, body=%s", resp.Code, http.StatusConflict, resp.Body.String())
+	}
+	if len(publisher.Messages()) != 0 {
+		t.Fatalf("published message count = %d, want 0", len(publisher.Messages()))
+	}
+}
+
+func TestCreateOrderRejectsJudgeCustomerInsufficientAvailabilityBeforePublishing(t *testing.T) {
+	server, _, _, publisher := newTestServerWithCatalog(t, fakeCatalogResolver{err: inventorycatalog.InsufficientAvailabilityError{ProductID: "PROD-001", Requested: 1, Available: 0}})
+	body := `{"customerId":"CUST-JUDGE-001","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Widget","quantity":1,"price":799000}]}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/orders", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	server.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("create status = %d, want %d, body=%s", resp.Code, http.StatusConflict, resp.Body.String())
+	}
+	if len(publisher.Messages()) != 0 {
+		t.Fatalf("published message count = %d, want 0", len(publisher.Messages()))
+	}
+}
+
 func TestDownstreamTerminalEventsUpdateOrders(t *testing.T) {
 	server, consumer, _, _ := newTestServer(t)
 	orderID := createOrderForTest(t, server)
@@ -140,6 +266,44 @@ func TestDownstreamTerminalEventsUpdateOrders(t *testing.T) {
 	if payload.Status != string(dto.OrderStatusCancelled) {
 		t.Fatalf("status = %q, want %q", payload.Status, dto.OrderStatusCancelled)
 	}
+	if payload.FailureStep != "payment" {
+		t.Fatalf("failure step = %q, want payment", payload.FailureStep)
+	}
+}
+
+func TestInventoryFailureResponseShowsPaymentCompensation(t *testing.T) {
+	server, consumer, _, _ := newTestServer(t)
+	orderID := createOrderForTest(t, server)
+	now := time.Now().UTC()
+
+	if err := deliverEvent(consumer, commonkafka.DefaultPaymentEventsTopic, orderID, events.NewPaymentCompletedEvent("PAY-1", orderID, json.Number("799000"), "TX-1", now, "corr-5", now)); err != nil {
+		t.Fatalf("handle payment completed: %v", err)
+	}
+	if err := deliverEvent(consumer, commonkafka.DefaultInventoryEventsTopic, orderID, events.NewInventoryReservationFailedEvent(orderID, "PROD-001", "out of stock", now, "corr-5", now)); err != nil {
+		t.Fatalf("handle inventory failed: %v", err)
+	}
+
+	resp := httptest.NewRecorder()
+	server.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/orders/"+orderID, nil))
+	if resp.Code != http.StatusOK {
+		t.Fatalf("get status = %d", resp.Code)
+	}
+	var payload dto.OrderResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Status != string(dto.OrderStatusCancelled) {
+		t.Fatalf("status = %q, want %q", payload.Status, dto.OrderStatusCancelled)
+	}
+	if payload.PaymentID != "PAY-1" {
+		t.Fatalf("payment id = %q, want PAY-1", payload.PaymentID)
+	}
+	if payload.FailureStep != "inventory" {
+		t.Fatalf("failure step = %q, want inventory", payload.FailureStep)
+	}
+	if strings.Join(payload.CompensatedSteps, ",") != "payment" {
+		t.Fatalf("compensated steps = %v, want [payment]", payload.CompensatedSteps)
+	}
 }
 
 func TestPrometheusEndpointExposesRequiredOrderMetrics(t *testing.T) {
@@ -162,6 +326,7 @@ func TestPrometheusEndpointExposesRequiredOrderMetrics(t *testing.T) {
 		"saga_orders_failed_total",
 		"saga_compensations_total",
 		"saga_order_processing_time_seconds",
+		"saga_total_duration_seconds",
 	} {
 		if !strings.Contains(body, metricName) {
 			t.Fatalf("metrics body missing %s", metricName)
@@ -178,15 +343,24 @@ func TestDownstreamConsumerRejectsTopicEventMismatch(t *testing.T) {
 	}
 }
 
-func newTestServer(t *testing.T) (http.Handler, *messaging.DownstreamConsumer, *ordersvc.Service, *messaging.RecordingPublisher) {
+func newTestServer(t *testing.T) (http.Handler, *messaging.DownstreamConsumer, *ordersvc.Service, *testutil.RecordingPublisher) {
 	t.Helper()
-	repo := repository.NewMemoryRepository()
+	return newTestServerWithCatalog(t, fakeCatalogResolver{})
+}
+
+func newTestServerWithCatalog(t *testing.T, catalog fakeCatalogResolver) (http.Handler, *messaging.DownstreamConsumer, *ordersvc.Service, *testutil.RecordingPublisher) {
+	t.Helper()
+	db := testutil.OpenPostgres(t, testutil.DefaultChoreographyOrderDatabaseURL, "choreography_order_service_test", testutil.Migration{Scope: "choreography-order-service", Dir: "choreography-saga/order-service/db/migrations"})
+	repo, err := repository.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatalf("new postgres repository: %v", err)
+	}
 	metrics, err := observability.NewMetrics(nil)
 	if err != nil {
 		t.Fatalf("new metrics: %v", err)
 	}
-	publisher := messaging.NewRecordingPublisher()
-	service, err := ordersvc.NewService(repo, messaging.NewOrderTopicPublisher(publisher), metrics)
+	publisher := testutil.NewRecordingPublisher()
+	service, err := ordersvc.NewService(repo, messaging.NewOrderTopicPublisher(publisher), catalog, metrics)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
@@ -204,9 +378,27 @@ func newTestServer(t *testing.T) (http.Handler, *messaging.DownstreamConsumer, *
 	return handler, consumer, service, publisher
 }
 
+type fakeCatalogResolver struct {
+	err error
+}
+
+func (r fakeCatalogResolver) NormalizeOrderItems(_ context.Context, items []dto.OrderItemRequest) ([]dto.OrderItemRequest, json.Number, error) {
+	if r.err != nil {
+		return nil, "", r.err
+	}
+	normalized := make([]dto.OrderItemRequest, len(items))
+	copy(normalized, items)
+	total := 0.0
+	for _, item := range items {
+		price, _ := item.Price.Float64()
+		total += price * float64(item.Quantity)
+	}
+	return normalized, json.Number(fmt.Sprintf("%.2f", total)), nil
+}
+
 func createOrderForTest(t *testing.T, server http.Handler) string {
 	t.Helper()
-	body := []byte(`{"customerId":"CUST-001","shippingAddress":"123 Main Street","items":[{"productId":"PROD-001","productName":"Widget","quantity":1,"price":49.99}]}`)
+	body := []byte(`{"customerId":"CUST-001","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Widget","quantity":1,"price":799000}]}`)
 	resp := httptest.NewRecorder()
 	server.ServeHTTP(resp, httptest.NewRequest(http.MethodPost, "/api/orders", bytes.NewReader(body)))
 	if resp.Code != http.StatusCreated {
@@ -225,4 +417,17 @@ func deliverEvent(consumer *messaging.DownstreamConsumer, topic string, key stri
 		return err
 	}
 	return consumer.Consume(context.Background(), messaging.DownstreamEnvelope{Topic: topic, Key: key, Value: payload})
+}
+
+type failOncePublisher struct {
+	delegate *testutil.RecordingPublisher
+	failed   bool
+}
+
+func (p *failOncePublisher) Publish(ctx context.Context, topic string, key string, body any) error {
+	if !p.failed {
+		p.failed = true
+		return errors.New("publish failed once")
+	}
+	return p.delegate.Publish(ctx, topic, key, body)
 }

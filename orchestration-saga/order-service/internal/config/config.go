@@ -3,9 +3,9 @@ package config
 import commonconfig "saga-pattern/common/config"
 
 var spec = commonconfig.ServiceSpec{
-	Name:     "orchestration-order-service",
+	Name:     "order-service-orchestration",
 	Pattern:  "orchestration",
-	HTTPPort: 8085,
+	HTTPPort: 8091,
 }
 
 func Load() (commonconfig.ServiceConfig, error) {

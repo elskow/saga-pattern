@@ -15,15 +15,18 @@ import (
 
 	ordersvc "saga-pattern/choreography-saga/order-service/internal/orders"
 	commonconfig "saga-pattern/common/config"
+	commoncontext "saga-pattern/common/context"
 	"saga-pattern/common/dto"
 	"saga-pattern/common/httpcompat"
+	"saga-pattern/common/inventorycatalog"
 )
 
-const idempotencyHeader = "X-Idempotency-Key"
+const idempotencyHeader = commoncontext.HeaderIdempotencyKey
 
 type OrderService interface {
 	CreateOrder(context.Context, dto.ChoreographyCreateOrderRequest, string) (dto.OrderResponse, bool, error)
 	GetOrder(context.Context, string) (dto.OrderResponse, error)
+	ListOrders(context.Context) ([]dto.OrderResponse, error)
 }
 
 type HandlerDependencies struct {
@@ -43,6 +46,7 @@ func NewHandler(deps HandlerDependencies) http.Handler {
 	router.Handle(deps.Config.HealthPath, httpcompat.NewStaticHealthHandler(httpcompat.StatusUp))
 	router.Handle(deps.Config.PrometheusPath, httpcompat.NewPrometheusHandler(deps.Registry, promhttp.HandlerOpts{}))
 	router.Post("/api/orders", createOrderHandler(logger, deps.Orders))
+	router.Get("/api/orders", listOrdersHandler(logger, deps.Orders))
 	router.Get("/api/orders/{orderId}", getOrderHandler(logger, deps.Orders))
 	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
@@ -50,6 +54,22 @@ func NewHandler(deps HandlerDependencies) http.Handler {
 	})
 
 	return router
+}
+
+func listOrdersHandler(logger *slog.Logger, service OrderService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if service == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "order service unavailable"})
+			return
+		}
+		response, err := service.ListOrders(r.Context())
+		if err != nil {
+			logger.Error("list orders", "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, response)
+	}
 }
 
 func createOrderHandler(logger *slog.Logger, service OrderService) http.HandlerFunc {
@@ -67,6 +87,14 @@ func createOrderHandler(logger *slog.Logger, service OrderService) http.HandlerF
 
 		response, created, err := service.CreateOrder(r.Context(), request, strings.TrimSpace(r.Header.Get(idempotencyHeader)))
 		if err != nil {
+			if errors.Is(err, ordersvc.ErrIdempotencyConflict) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+				return
+			}
+			if inventorycatalog.IsInsufficientAvailability(err) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+				return
+			}
 			logger.Error("create order", "error", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return

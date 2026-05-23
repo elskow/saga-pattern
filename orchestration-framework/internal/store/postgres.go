@@ -4,8 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
+
+	"github.com/lib/pq"
 
 	"saga-pattern/orchestration-framework/internal/model"
 )
@@ -16,88 +19,6 @@ type PostgresStore struct {
 
 func NewPostgresStore(db *sql.DB) *PostgresStore {
 	return &PostgresStore{db: db}
-}
-
-func (s *PostgresStore) InitSchema(ctx context.Context) error {
-	if s.db == nil {
-		return fmt.Errorf("postgres db is required")
-	}
-	_, err := s.db.ExecContext(ctx, `
-	CREATE TABLE IF NOT EXISTS scheduler_leases (
-	    name VARCHAR(255) PRIMARY KEY,
-	    owner VARCHAR(255) NOT NULL,
-	    leased_until TIMESTAMP NOT NULL,
-	    updated_at TIMESTAMP NOT NULL
-	);
-	CREATE TABLE IF NOT EXISTS saga_instances (
-	    id VARCHAR(255) PRIMARY KEY,
-	    saga_type VARCHAR(255) NOT NULL,
-	    state VARCHAR(255) NOT NULL,
-	    current_step VARCHAR(255) NOT NULL,
-	    pending_direction VARCHAR(32) NOT NULL,
-	    pending_command_type VARCHAR(255) NOT NULL,
-	    pending_reply_type VARCHAR(255) NOT NULL,
-	    started_at TIMESTAMP NOT NULL,
-	    updated_at TIMESTAMP NOT NULL,
-	    deadline_at TIMESTAMP NOT NULL,
-	    step_deadline_at TIMESTAMP NOT NULL,
-	    retry_count INT NOT NULL,
-	    max_retry_count INT NOT NULL,
-	    last_error TEXT NOT NULL DEFAULT '',
-	    data_json TEXT NOT NULL
-	);
-	CREATE INDEX IF NOT EXISTS idx_saga_instances_type_state ON saga_instances(saga_type, state);
-	CREATE INDEX IF NOT EXISTS idx_saga_instances_step_deadline ON saga_instances(step_deadline_at);
-	CREATE TABLE IF NOT EXISTS saga_step_history (
-	    id VARCHAR(255) PRIMARY KEY,
-	    saga_id VARCHAR(255) NOT NULL,
-	    step VARCHAR(255) NOT NULL,
-	    direction VARCHAR(32) NOT NULL,
-	    status VARCHAR(32) NOT NULL,
-	    command_type VARCHAR(255) NOT NULL,
-	    reply_type VARCHAR(255) NOT NULL,
-	    attempt INT NOT NULL,
-	    created_at TIMESTAMP NOT NULL,
-	    updated_at TIMESTAMP NOT NULL,
-	    completed_at TIMESTAMP,
-	    error_message TEXT NOT NULL DEFAULT ''
-	);
-	CREATE INDEX IF NOT EXISTS idx_saga_step_history_saga ON saga_step_history(saga_id, created_at, attempt);
-	CREATE TABLE IF NOT EXISTS outbox_messages (
-	    id VARCHAR(255) PRIMARY KEY,
-	    saga_id VARCHAR(255) NOT NULL,
-	    saga_type VARCHAR(255) NOT NULL,
-	    step VARCHAR(255) NOT NULL,
-	    direction VARCHAR(32) NOT NULL,
-	    topic VARCHAR(255) NOT NULL,
-	    message_key VARCHAR(255) NOT NULL,
-	    message_type VARCHAR(255) NOT NULL,
-	    payload_json TEXT NOT NULL,
-	    status VARCHAR(32) NOT NULL,
-	    available_at TIMESTAMP NOT NULL,
-	    created_at TIMESTAMP NOT NULL,
-	    updated_at TIMESTAMP NOT NULL,
-	    attempt_count INT NOT NULL,
-	    max_attempts INT NOT NULL,
-	    last_error TEXT NOT NULL DEFAULT '',
-	    sent_at TIMESTAMP,
-	    claimed_by VARCHAR(255),
-	    claimed_until TIMESTAMP
-	);
-	CREATE INDEX IF NOT EXISTS idx_outbox_messages_pending ON outbox_messages(status, available_at, created_at);
-	CREATE INDEX IF NOT EXISTS idx_outbox_messages_saga ON outbox_messages(saga_id, created_at);
-	CREATE TABLE IF NOT EXISTS processed_replies (
-	    reply_id VARCHAR(255) PRIMARY KEY,
-	    saga_id VARCHAR(255) NOT NULL,
-	    reply_type VARCHAR(255) NOT NULL,
-	    recorded_at TIMESTAMP NOT NULL,
-	    expires_at TIMESTAMP NOT NULL
-	);
-	CREATE INDEX IF NOT EXISTS idx_processed_replies_expiry ON processed_replies(expires_at);`)
-	if err != nil {
-		return fmt.Errorf("init runtime schema: %w", err)
-	}
-	return nil
 }
 
 func (s *PostgresStore) WithinTx(ctx context.Context, fn func(Tx) error) error {
@@ -150,7 +71,8 @@ func (s *PostgresStore) ClaimOutbox(ctx context.Context, owner string, now time.
 	defer tx.Rollback()
 	rows, err := tx.QueryContext(ctx, `
 	SELECT id, saga_id, saga_type, step, direction, topic, message_key, message_type, payload_json, status,
-	       available_at, created_at, updated_at, attempt_count, max_attempts, last_error, sent_at
+	       available_at, created_at, updated_at, attempt_count, max_attempts, last_error, sent_at, request_id, correlation_id,
+	       benchmark_run, benchmark_scene, benchmark_phase, trace_headers_json
 	FROM outbox_messages
 	WHERE (
 	      (status = 'pending' AND (claimed_until IS NULL OR claimed_until <= $1 OR claimed_by = $2))
@@ -227,7 +149,6 @@ func (s *PostgresStore) ListExpiredSagas(ctx context.Context, now time.Time, lim
 	FROM saga_instances
 	WHERE pending_command_type <> ''
 	  AND step_deadline_at <= $1
-	  AND state NOT IN ('COMPLETED', 'CANCELLED')
 	ORDER BY step_deadline_at
 	LIMIT $2`, now, limit)
 	if err != nil {
@@ -266,7 +187,8 @@ func (s *PostgresStore) CleanupOutbox(ctx context.Context, before time.Time) (in
 func (s *PostgresStore) GetSaga(ctx context.Context, sagaID string) (model.SagaInstanceRow, bool, error) {
 	row := s.db.QueryRowContext(ctx, `
 	SELECT id, saga_type, state, current_step, pending_direction, pending_command_type, pending_reply_type,
-	       started_at, updated_at, deadline_at, step_deadline_at, retry_count, max_retry_count, last_error, data_json
+	       started_at, updated_at, deadline_at, step_deadline_at, retry_count, max_retry_count, last_error, data_json, request_id, correlation_id,
+	       benchmark_run, benchmark_scene, benchmark_phase
 	FROM saga_instances WHERE id = $1`, sagaID)
 	return scanSagaRow(row)
 }
@@ -293,7 +215,8 @@ func (s *PostgresStore) ListStepHistory(ctx context.Context, sagaID string) ([]m
 func (s *PostgresStore) ListOutbox(ctx context.Context, sagaID string) ([]model.OutboxRow, error) {
 	rows, err := s.db.QueryContext(ctx, `
 	SELECT id, saga_id, saga_type, step, direction, topic, message_key, message_type, payload_json, status,
-	       available_at, created_at, updated_at, attempt_count, max_attempts, last_error, sent_at
+	       available_at, created_at, updated_at, attempt_count, max_attempts, last_error, sent_at, request_id, correlation_id,
+	       benchmark_run, benchmark_scene, benchmark_phase, trace_headers_json
 	FROM outbox_messages WHERE ($1 = '' OR saga_id = $1)
 	ORDER BY created_at`, sagaID)
 	if err != nil {
@@ -314,38 +237,39 @@ func (s *PostgresStore) ListOutbox(ctx context.Context, sagaID string) ([]model.
 type postgresTx struct{ tx *sql.Tx }
 
 func (tx postgresTx) InsertSaga(ctx context.Context, row model.SagaInstanceRow) error {
-	data, err := json.Marshal(row.Data)
-	if err != nil {
-		return err
-	}
-	_, err = tx.tx.ExecContext(ctx, `
+	_, err := tx.tx.ExecContext(ctx, `
 	INSERT INTO saga_instances (id, saga_type, state, current_step, pending_direction, pending_command_type, pending_reply_type,
-	started_at, updated_at, deadline_at, step_deadline_at, retry_count, max_retry_count, last_error, data_json)
-	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+	started_at, updated_at, deadline_at, step_deadline_at, retry_count, max_retry_count, last_error, data_json, request_id, correlation_id,
+	benchmark_run, benchmark_scene, benchmark_phase)
+	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
 		row.ID, row.SagaType, row.State, row.CurrentStep, row.PendingDirection, row.PendingCommandType, row.PendingReplyType,
-		row.StartedAt, row.UpdatedAt, row.DeadlineAt, row.StepDeadlineAt, row.RetryCount, row.MaxRetryCount, row.LastError, data)
+		row.StartedAt, row.UpdatedAt, row.DeadlineAt, row.StepDeadlineAt, row.RetryCount, row.MaxRetryCount, row.LastError, row.Data,
+		row.RequestID, row.CorrelationID, row.BenchmarkRun, row.BenchmarkScene, row.BenchmarkPhase)
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+		return fmt.Errorf("%w: %s", ErrSagaAlreadyExists, row.ID)
+	}
 	return err
 }
 
 func (tx postgresTx) LockSaga(ctx context.Context, sagaID string) (model.SagaInstanceRow, bool, error) {
 	row := tx.tx.QueryRowContext(ctx, `
 	SELECT id, saga_type, state, current_step, pending_direction, pending_command_type, pending_reply_type,
-	       started_at, updated_at, deadline_at, step_deadline_at, retry_count, max_retry_count, last_error, data_json
+	       started_at, updated_at, deadline_at, step_deadline_at, retry_count, max_retry_count, last_error, data_json, request_id, correlation_id,
+	       benchmark_run, benchmark_scene, benchmark_phase
 	FROM saga_instances WHERE id = $1 FOR UPDATE`, sagaID)
 	return scanSagaRow(row)
 }
 
 func (tx postgresTx) UpdateSaga(ctx context.Context, row model.SagaInstanceRow) error {
-	data, err := json.Marshal(row.Data)
-	if err != nil {
-		return err
-	}
-	_, err = tx.tx.ExecContext(ctx, `
+	_, err := tx.tx.ExecContext(ctx, `
 	UPDATE saga_instances
 	SET state=$2, current_step=$3, pending_direction=$4, pending_command_type=$5, pending_reply_type=$6,
-	    updated_at=$7, deadline_at=$8, step_deadline_at=$9, retry_count=$10, max_retry_count=$11, last_error=$12, data_json=$13
+	    updated_at=$7, deadline_at=$8, step_deadline_at=$9, retry_count=$10, max_retry_count=$11, last_error=$12, data_json=$13,
+	    request_id=$14, correlation_id=$15, benchmark_run=$16, benchmark_scene=$17, benchmark_phase=$18
 	WHERE id=$1`, row.ID, row.State, row.CurrentStep, row.PendingDirection, row.PendingCommandType, row.PendingReplyType,
-		row.UpdatedAt, row.DeadlineAt, row.StepDeadlineAt, row.RetryCount, row.MaxRetryCount, row.LastError, data)
+		row.UpdatedAt, row.DeadlineAt, row.StepDeadlineAt, row.RetryCount, row.MaxRetryCount, row.LastError, row.Data,
+		row.RequestID, row.CorrelationID, row.BenchmarkRun, row.BenchmarkScene, row.BenchmarkPhase)
 	return err
 }
 
@@ -388,10 +312,12 @@ func (tx postgresTx) ListStepHistory(ctx context.Context, sagaID string) ([]mode
 func (tx postgresTx) InsertOutbox(ctx context.Context, row model.OutboxRow) error {
 	_, err := tx.tx.ExecContext(ctx, `
 	INSERT INTO outbox_messages (id, saga_id, saga_type, step, direction, topic, message_key, message_type, payload_json,
-	status, available_at, created_at, updated_at, attempt_count, max_attempts, last_error, sent_at, claimed_by, claimed_until)
-	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+	status, available_at, created_at, updated_at, attempt_count, max_attempts, last_error, sent_at, claimed_by, claimed_until,
+	request_id, correlation_id, benchmark_run, benchmark_scene, benchmark_phase, trace_headers_json)
+	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
 		row.ID, row.SagaID, row.SagaType, row.Step, row.Direction, row.Topic, row.Key, row.MessageType, string(row.Payload),
-		row.Status, row.AvailableAt, row.CreatedAt, row.UpdatedAt, row.AttemptCount, row.MaxAttempts, row.LastError, row.SentAt, row.ClaimedBy, row.ClaimedUntil)
+		row.Status, row.AvailableAt, row.CreatedAt, row.UpdatedAt, row.AttemptCount, row.MaxAttempts, row.LastError, row.SentAt, row.ClaimedBy, row.ClaimedUntil,
+		row.RequestID, row.CorrelationID, row.BenchmarkRun, row.BenchmarkScene, row.BenchmarkPhase, encodeTraceHeaders(row.TraceHeaders))
 	return err
 }
 
@@ -417,16 +343,14 @@ func scanSagaRow(scanner sagaScanner) (model.SagaInstanceRow, bool, error) {
 	var raw []byte
 	err := scanner.Scan(&row.ID, &row.SagaType, &row.State, &row.CurrentStep, &row.PendingDirection, &row.PendingCommandType,
 		&row.PendingReplyType, &row.StartedAt, &row.UpdatedAt, &row.DeadlineAt, &row.StepDeadlineAt, &row.RetryCount,
-		&row.MaxRetryCount, &row.LastError, &raw)
+		&row.MaxRetryCount, &row.LastError, &raw, &row.RequestID, &row.CorrelationID, &row.BenchmarkRun, &row.BenchmarkScene, &row.BenchmarkPhase)
 	if err == sql.ErrNoRows {
 		return model.SagaInstanceRow{}, false, nil
 	}
 	if err != nil {
 		return model.SagaInstanceRow{}, false, err
 	}
-	if err := json.Unmarshal(raw, &row.Data); err != nil {
-		return model.SagaInstanceRow{}, false, err
-	}
+	row.Data = append([]byte(nil), raw...)
 	return row, true, nil
 }
 
@@ -444,11 +368,36 @@ type outboxScanner interface{ Scan(dest ...any) error }
 func scanOutbox(scanner outboxScanner) (model.OutboxRow, error) {
 	var row model.OutboxRow
 	var payload string
+	var traceHeadersJSON string
 	err := scanner.Scan(&row.ID, &row.SagaID, &row.SagaType, &row.Step, &row.Direction, &row.Topic, &row.Key, &row.MessageType,
-		&payload, &row.Status, &row.AvailableAt, &row.CreatedAt, &row.UpdatedAt, &row.AttemptCount, &row.MaxAttempts, &row.LastError, &row.SentAt)
+		&payload, &row.Status, &row.AvailableAt, &row.CreatedAt, &row.UpdatedAt, &row.AttemptCount, &row.MaxAttempts, &row.LastError, &row.SentAt,
+		&row.RequestID, &row.CorrelationID, &row.BenchmarkRun, &row.BenchmarkScene, &row.BenchmarkPhase, &traceHeadersJSON)
 	if err != nil {
 		return model.OutboxRow{}, err
 	}
 	row.Payload = []byte(payload)
+	row.TraceHeaders = decodeTraceHeaders(traceHeadersJSON)
 	return row, nil
+}
+
+func encodeTraceHeaders(headers map[string]string) string {
+	if len(headers) == 0 {
+		return "{}"
+	}
+	encoded, err := json.Marshal(headers)
+	if err != nil {
+		return "{}"
+	}
+	return string(encoded)
+}
+
+func decodeTraceHeaders(raw string) map[string]string {
+	if raw == "" {
+		return nil
+	}
+	var headers map[string]string
+	if err := json.Unmarshal([]byte(raw), &headers); err != nil || len(headers) == 0 {
+		return nil
+	}
+	return headers
 }

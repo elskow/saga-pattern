@@ -47,10 +47,15 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 	compInventory := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricCompensationsInventory, Help: "Total inventory compensations."}, []string{labelPattern, labelService})
 	compShipping := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricCompensationsShipping, Help: "Total shipping compensations."}, []string{labelPattern, labelService})
 
+	registered := make([]prometheus.Collector, 0, 8)
 	for _, collector := range []prometheus.Collector{created, completed, failed, totalDuration, compTotal, compPayment, compInventory, compShipping} {
 		if err := registry.Register(collector); err != nil {
+			for _, registeredCollector := range registered {
+				registry.Unregister(registeredCollector)
+			}
 			return nil, err
 		}
+		registered = append(registered, collector)
 	}
 
 	metrics := &Metrics{

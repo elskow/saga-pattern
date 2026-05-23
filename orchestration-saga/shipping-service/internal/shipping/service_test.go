@@ -9,8 +9,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"saga-pattern/common/commands"
+	"saga-pattern/common/faultinjection"
 	commonkafka "saga-pattern/common/kafka"
 	commonreplies "saga-pattern/common/replies"
+	"saga-pattern/common/testutil"
 	"saga-pattern/orchestration-saga/shipping-service/internal/domain"
 	"saga-pattern/orchestration-saga/shipping-service/internal/messaging"
 	"saga-pattern/orchestration-saga/shipping-service/internal/observability"
@@ -19,7 +21,7 @@ import (
 
 func TestScheduleShippingPublishesSuccessReply(t *testing.T) {
 	consumer, repo, publisher := newTestService(t)
-	command := commands.NewScheduleShippingCommand("SHIP-1", "ORDER-1", "123 Main Street")
+	command := commands.NewScheduleShippingCommand("SHIP-1", "ORDER-1", "Jl. Ketintang Wiyata, Surabaya 60231")
 
 	if err := deliverCommand(consumer, command.OrderID, command); err != nil {
 		t.Fatalf("deliver schedule shipping command: %v", err)
@@ -42,9 +44,10 @@ func TestScheduleShippingPublishesSuccessReply(t *testing.T) {
 	}
 }
 
-func TestScheduleShippingFailurePublishesFailedReply(t *testing.T) {
-	consumer, repo, publisher := newTestService(t)
-	command := commands.NewScheduleShippingCommand("SHIP-FAIL-1", "ORDER-FAIL-1", "FAIL_SHIPPING requested")
+func TestScheduleShippingFailureModePublishesFailedReply(t *testing.T) {
+	consumer, repo, publisher, service := newTestServiceWithService(t)
+	service.SetFailureModeEnabled(true)
+	command := commands.NewScheduleShippingCommand("SHIP-FAIL-1", "ORDER-FAIL-1", "Jl. Ketintang Wiyata, Surabaya 60231")
 
 	if err := deliverCommand(consumer, command.OrderID, command); err != nil {
 		t.Fatalf("deliver failing schedule shipping command: %v", err)
@@ -58,7 +61,7 @@ func TestScheduleShippingFailurePublishesFailedReply(t *testing.T) {
 	if reply.ShippingID != command.ShippingID || reply.OrderID != command.OrderID {
 		t.Fatalf("failed reply = %+v", reply)
 	}
-	if reply.Reason != "shipping simulation requested failure" {
+	if reply.Reason != "shipping failure mode enabled — scheduling forced to fail" {
 		t.Fatalf("failure reason = %q", reply.Reason)
 	}
 	shipment, found, err := repo.GetByShippingID(context.Background(), command.ShippingID)
@@ -70,9 +73,46 @@ func TestScheduleShippingFailurePublishesFailedReply(t *testing.T) {
 	}
 }
 
+func TestScheduleShippingFailureModeFailNextAutoDisables(t *testing.T) {
+	consumer, repo, publisher, service := newTestServiceWithService(t)
+	state := service.ConfigureFailureMode(faultinjection.Config{Enabled: true, RunLabel: "thesis-run-1", FailNext: 1})
+	if !state.Enabled || state.RunLabel != "thesis-run-1" || state.Remaining != 1 {
+		t.Fatalf("failure state = %+v", state)
+	}
+
+	first := commands.NewScheduleShippingCommand("SHIP-FAIL-NEXT", "ORDER-FAIL-NEXT", "Jl. Ketintang Wiyata, Surabaya 60231")
+	second := commands.NewScheduleShippingCommand("SHIP-SUCCESS-NEXT", "ORDER-SUCCESS-NEXT", "Jl. Ketintang Wiyata, Surabaya 60231")
+	if err := deliverCommand(consumer, first.OrderID, first); err != nil {
+		t.Fatalf("deliver first schedule shipping command: %v", err)
+	}
+	if err := deliverCommand(consumer, second.OrderID, second); err != nil {
+		t.Fatalf("deliver second schedule shipping command: %v", err)
+	}
+
+	if service.FailureModeEnabled() {
+		t.Fatalf("failure mode should auto-disable after failNext is exhausted")
+	}
+	if len(publisher.Messages()) != 2 {
+		t.Fatalf("published messages = %d, want 2", len(publisher.Messages()))
+	}
+	if _, ok := publisher.Messages()[0].Body.(commonreplies.ShippingFailedReply); !ok {
+		t.Fatalf("first reply type = %T, want ShippingFailedReply", publisher.Messages()[0].Body)
+	}
+	if _, ok := publisher.Messages()[1].Body.(commonreplies.ShippingScheduledReply); !ok {
+		t.Fatalf("second reply type = %T, want ShippingScheduledReply", publisher.Messages()[1].Body)
+	}
+	shipment, found, err := repo.GetByShippingID(context.Background(), second.ShippingID)
+	if err != nil {
+		t.Fatalf("get second shipment: %v", err)
+	}
+	if !found || shipment.Status != domain.ShipmentStatusScheduled {
+		t.Fatalf("second shipment = %+v, found=%v", shipment, found)
+	}
+}
+
 func TestCancelShippingCompensationIsIdempotent(t *testing.T) {
 	consumer, repo, publisher := newSequencedClockService(t)
-	schedule := commands.NewScheduleShippingCommand("SHIP-CANCEL-1", "ORDER-CANCEL-1", "123 Main Street")
+	schedule := commands.NewScheduleShippingCommand("SHIP-CANCEL-1", "ORDER-CANCEL-1", "Jl. Ketintang Wiyata, Surabaya 60231")
 	cancel := commands.NewCancelShippingCommand(schedule.ShippingID, schedule.OrderID)
 
 	if err := deliverCommand(consumer, schedule.OrderID, schedule); err != nil {
@@ -118,14 +158,24 @@ func TestCancelShippingCompensationIsIdempotent(t *testing.T) {
 	}
 }
 
-func newTestService(t *testing.T) (*messaging.CommandConsumer, repository.Repository, *messaging.RecordingPublisher) {
+func newTestService(t *testing.T) (*messaging.CommandConsumer, repository.Repository, *testutil.RecordingPublisher) {
+	t.Helper()
+	consumer, repo, publisher, _ := newTestServiceWithService(t)
+	return consumer, repo, publisher
+}
+
+func newTestServiceWithService(t *testing.T) (*messaging.CommandConsumer, repository.Repository, *testutil.RecordingPublisher, *Service) {
 	t.Helper()
 	metrics, err := observability.NewMetrics(prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("new metrics: %v", err)
 	}
-	repo := repository.NewMemoryRepository()
-	publisher := messaging.NewRecordingPublisher()
+	db := testutil.OpenPostgres(t, testutil.DefaultShippingDatabaseURL, "shipping_service_test", testutil.Migration{Scope: "orchestration-shipping-service", Dir: "orchestration-saga/shipping-service/db/migrations"})
+	repo, err := repository.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatalf("new postgres repository: %v", err)
+	}
+	publisher := testutil.NewRecordingPublisher()
 	service, err := NewService(repo, messaging.NewReplyPublisher(publisher), metrics)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
@@ -135,17 +185,21 @@ func newTestService(t *testing.T) (*messaging.CommandConsumer, repository.Reposi
 	if err != nil {
 		t.Fatalf("new command consumer: %v", err)
 	}
-	return consumer, repo, publisher
+	return consumer, repo, publisher, service
 }
 
-func newSequencedClockService(t *testing.T) (*messaging.CommandConsumer, repository.Repository, *messaging.RecordingPublisher) {
+func newSequencedClockService(t *testing.T) (*messaging.CommandConsumer, repository.Repository, *testutil.RecordingPublisher) {
 	t.Helper()
 	metrics, err := observability.NewMetrics(prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("new metrics: %v", err)
 	}
-	repo := repository.NewMemoryRepository()
-	publisher := messaging.NewRecordingPublisher()
+	db := testutil.OpenPostgres(t, testutil.DefaultShippingDatabaseURL, "shipping_service_sequence_test", testutil.Migration{Scope: "orchestration-shipping-service", Dir: "orchestration-saga/shipping-service/db/migrations"})
+	repo, err := repository.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatalf("new postgres repository: %v", err)
+	}
+	publisher := testutil.NewRecordingPublisher()
 	service, err := NewService(repo, messaging.NewReplyPublisher(publisher), metrics)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
@@ -181,7 +235,7 @@ func deliverCommand(consumer *messaging.CommandConsumer, key string, command any
 	return consumer.Consume(context.Background(), messaging.CommandEnvelope{Topic: commonkafka.DefaultShippingCommandsTopic, Key: key, Value: payload})
 }
 
-func assertSingleReplyMessage(t *testing.T, publisher *messaging.RecordingPublisher, topic, key string) {
+func assertSingleReplyMessage(t *testing.T, publisher *testutil.RecordingPublisher, topic, key string) {
 	t.Helper()
 	if len(publisher.Messages()) != 1 {
 		t.Fatalf("published messages = %d, want 1", len(publisher.Messages()))

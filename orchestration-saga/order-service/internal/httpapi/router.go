@@ -7,14 +7,17 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	commonconfig "saga-pattern/common/config"
+	commoncontext "saga-pattern/common/context"
 	"saga-pattern/common/dto"
 	"saga-pattern/common/httpcompat"
+	"saga-pattern/common/inventorycatalog"
 	ordersvc "saga-pattern/orchestration-saga/order-service/internal/orders"
 )
 
@@ -26,7 +29,7 @@ type HandlerDependencies struct {
 }
 
 type OrderService interface {
-	CreateOrder(context.Context, dto.OrchestrationCreateOrderRequest) (dto.OrchestrationCreateOrderAcceptedResponse, error)
+	CreateOrder(context.Context, dto.OrchestrationCreateOrderRequest, string) (dto.OrchestrationCreateOrderAcceptedResponse, error)
 	GetOrder(context.Context, string) (dto.OrderResponse, error)
 	ListOrders(context.Context) ([]dto.OrderResponse, error)
 	ListOrdersByCustomer(context.Context, string) ([]dto.OrderResponse, error)
@@ -64,8 +67,16 @@ func createOrderHandler(logger *slog.Logger, service OrderService) http.HandlerF
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		response, err := service.CreateOrder(r.Context(), request)
+		response, err := service.CreateOrder(r.Context(), request, strings.TrimSpace(r.Header.Get(commoncontext.HeaderIdempotencyKey)))
 		if err != nil {
+			if errors.Is(err, ordersvc.ErrIdempotencyConflict) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+				return
+			}
+			if inventorycatalog.IsInsufficientAvailability(err) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+				return
+			}
 			logger.Error("create order", "error", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return

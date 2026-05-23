@@ -22,6 +22,15 @@ ENV TZ=UTC
 WORKDIR /app
 
 COPY --from=builder /out/application /app/application
+COPY --from=builder /build/choreography-saga/order-service/db /app/choreography-saga/order-service/db
+COPY --from=builder /build/choreography-saga/payment-service/db /app/choreography-saga/payment-service/db
+COPY --from=builder /build/choreography-saga/inventory-service/db /app/choreography-saga/inventory-service/db
+COPY --from=builder /build/choreography-saga/shipping-service/db /app/choreography-saga/shipping-service/db
+COPY --from=builder /build/orchestration-framework/db /app/orchestration-framework/db
+COPY --from=builder /build/orchestration-saga/order-service/db /app/orchestration-saga/order-service/db
+COPY --from=builder /build/orchestration-saga/payment-service/db /app/orchestration-saga/payment-service/db
+COPY --from=builder /build/orchestration-saga/inventory-service/db /app/orchestration-saga/inventory-service/db
+COPY --from=builder /build/orchestration-saga/shipping-service/db /app/orchestration-saga/shipping-service/db
 
 RUN chown appuser:appgroup /app/application && chmod 755 /app/application
 

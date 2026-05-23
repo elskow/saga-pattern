@@ -22,6 +22,26 @@ wait_for_health() {
     echo ""; log_error "$name failed to start"; return 1
 }
 
+wait_for_topic_bootstrap() {
+    local attempt=1 max=${1:-30}
+    log_info "Waiting for Kafka topic bootstrap..."
+    while [ $attempt -le $max ]; do
+        local state
+        state=$(docker inspect kafka-topic-init --format '{{.State.Status}} {{.State.ExitCode}}' 2>/dev/null || true)
+        if [ "$state" = "exited 0" ]; then
+            log_success "Kafka topics ready"
+            return 0
+        fi
+        if [[ "$state" == exited* ]]; then
+            log_error "Kafka topic bootstrap failed"
+            docker logs kafka-topic-init 2>/dev/null || true
+            return 1
+        fi
+        echo -n "."; sleep 2; attempt=$((attempt + 1))
+    done
+    echo ""; log_error "Kafka topic bootstrap timed out"; return 1
+}
+
 start_infra() {
     docker compose -f "$COMPOSE_INFRA" up -d
     sleep 5
@@ -30,7 +50,7 @@ start_infra() {
         docker compose -f "$COMPOSE_INFRA" exec -T kafka kafka-broker-api-versions --bootstrap-server localhost:29092 > /dev/null 2>&1 && { log_success "Kafka ready"; break; }
         echo -n "."; sleep 2; attempt=$((attempt + 1))
     done
-    wait_for_health "http://localhost:16686" "Jaeger"
+    wait_for_topic_bootstrap
     log_success "Infrastructure ready"
 }
 
@@ -43,7 +63,7 @@ start_choreography() {
 start_orchestration() {
     docker compose -f "$COMPOSE_ORCH" up -d
     sleep 5
-    wait_for_health "http://localhost:8085/actuator/health" "orchestration-order-service"
+    wait_for_health "http://localhost:8091/actuator/health" "orchestration-order-service"
 }
 
 stop_all() {
@@ -81,7 +101,7 @@ health() {
         done
     }
     [ -z "$pattern" ] || [ "$pattern" == "choreography" ] && check_ports "Choreography" 8081 8082 8083 8084
-    [ -z "$pattern" ] || [ "$pattern" == "orchestration" ] && check_ports "Orchestration" 8085 8086 8087 8088
+    [ -z "$pattern" ] || [ "$pattern" == "orchestration" ] && check_ports "Orchestration" 8091 8095 8096 8097
 }
 
 scale() {

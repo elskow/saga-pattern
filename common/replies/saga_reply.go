@@ -9,15 +9,16 @@ import (
 )
 
 const (
-	TypePaymentCompleted  = "PAYMENT_COMPLETED"
-	TypePaymentFailed     = "PAYMENT_FAILED"
-	TypePaymentRefunded   = "PAYMENT_REFUNDED"
-	TypeInventoryReserved = "INVENTORY_RESERVED"
-	TypeInventoryFailed   = "INVENTORY_FAILED"
-	TypeInventoryReleased = "INVENTORY_RELEASED"
-	TypeShippingScheduled = "SHIPPING_SCHEDULED"
-	TypeShippingFailed    = "SHIPPING_FAILED"
-	TypeShippingCancelled = "SHIPPING_CANCELLED"
+	TypePaymentCompleted   = "PAYMENT_COMPLETED"
+	TypePaymentFailed      = "PAYMENT_FAILED"
+	TypePaymentRefunded    = "PAYMENT_REFUNDED"
+	TypeInventoryReserved  = "INVENTORY_RESERVED"
+	TypeInventoryFailed    = "INVENTORY_FAILED"
+	TypeInventoryCommitted = "INVENTORY_COMMITTED"
+	TypeInventoryReleased  = "INVENTORY_RELEASED"
+	TypeShippingScheduled  = "SHIPPING_SCHEDULED"
+	TypeShippingFailed     = "SHIPPING_FAILED"
+	TypeShippingCancelled  = "SHIPPING_CANCELLED"
 )
 
 type SagaReply interface {
@@ -78,6 +79,7 @@ func NewPaymentRefundedReply(paymentID, orderID string, success bool, reason str
 	return PaymentRefundedReply{Type: TypePaymentRefunded, PaymentID: paymentID, OrderID: orderID, Success: success, Reason: reason}
 }
 func (r PaymentRefundedReply) ReplyType() string { return r.Type }
+
 func (r PaymentRefundedReply) Validate() error {
 	if err := validate.Expected(r.Type, TypePaymentRefunded, "type"); err != nil {
 		return err
@@ -143,6 +145,26 @@ type InventoryReleasedReply struct {
 	Reason        string `json:"reason,omitempty"`
 }
 
+type InventoryCommittedReply struct {
+	Type          string `json:"type"`
+	ReservationID string `json:"reservationId"`
+	OrderID       string `json:"orderId"`
+}
+
+func NewInventoryCommittedReply(reservationID, orderID string) InventoryCommittedReply {
+	return InventoryCommittedReply{Type: TypeInventoryCommitted, ReservationID: reservationID, OrderID: orderID}
+}
+func (r InventoryCommittedReply) ReplyType() string { return r.Type }
+func (r InventoryCommittedReply) Validate() error {
+	if err := validate.Expected(r.Type, TypeInventoryCommitted, "type"); err != nil {
+		return err
+	}
+	if err := validate.NonBlank(r.ReservationID, "reservationId"); err != nil {
+		return err
+	}
+	return validate.NonBlank(r.OrderID, "orderId")
+}
+
 func NewInventoryReleasedReply(reservationID, orderID string, success bool, reason string) InventoryReleasedReply {
 	return InventoryReleasedReply{Type: TypeInventoryReleased, ReservationID: reservationID, OrderID: orderID, Success: success, Reason: reason}
 }
@@ -164,13 +186,14 @@ func (r InventoryReleasedReply) Validate() error {
 }
 
 type ShippingScheduledReply struct {
-	Type       string `json:"type"`
-	ShippingID string `json:"shippingId"`
-	OrderID    string `json:"orderId"`
+	Type           string `json:"type"`
+	ShippingID     string `json:"shippingId"`
+	OrderID        string `json:"orderId"`
+	TrackingNumber string `json:"trackingNumber"`
 }
 
-func NewShippingScheduledReply(shippingID, orderID string) ShippingScheduledReply {
-	return ShippingScheduledReply{Type: TypeShippingScheduled, ShippingID: shippingID, OrderID: orderID}
+func NewShippingScheduledReply(shippingID, orderID, trackingNumber string) ShippingScheduledReply {
+	return ShippingScheduledReply{Type: TypeShippingScheduled, ShippingID: shippingID, OrderID: orderID, TrackingNumber: trackingNumber}
 }
 func (r ShippingScheduledReply) ReplyType() string { return r.Type }
 func (r ShippingScheduledReply) Validate() error {
@@ -178,6 +201,9 @@ func (r ShippingScheduledReply) Validate() error {
 		return err
 	}
 	if err := validate.NonBlank(r.ShippingID, "shippingId"); err != nil {
+		return err
+	}
+	if err := validate.NonBlank(r.TrackingNumber, "trackingNumber"); err != nil {
 		return err
 	}
 	return validate.NonBlank(r.OrderID, "orderId")
@@ -278,6 +304,12 @@ func DecodeSagaReply(r io.Reader) (SagaReply, error) {
 		return reply, reply.Validate()
 	case TypeInventoryReleased:
 		var reply InventoryReleasedReply
+		if err := validate.UnmarshalStrictJSON(data, &reply); err != nil {
+			return nil, err
+		}
+		return reply, reply.Validate()
+	case TypeInventoryCommitted:
+		var reply InventoryCommittedReply
 		if err := validate.UnmarshalStrictJSON(data, &reply); err != nil {
 			return nil, err
 		}

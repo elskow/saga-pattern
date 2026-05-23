@@ -10,8 +10,10 @@ import (
 
 	"saga-pattern/common/commands"
 	"saga-pattern/common/dto"
+	"saga-pattern/common/faultinjection"
 	commonkafka "saga-pattern/common/kafka"
 	commonreplies "saga-pattern/common/replies"
+	"saga-pattern/common/testutil"
 	"saga-pattern/orchestration-saga/inventory-service/internal/domain"
 	"saga-pattern/orchestration-saga/inventory-service/internal/messaging"
 	"saga-pattern/orchestration-saga/inventory-service/internal/observability"
@@ -20,7 +22,7 @@ import (
 
 func TestReserveInventoryPublishesReservedReply(t *testing.T) {
 	consumer, repo, publisher := newTestService(t)
-	command := commands.NewReserveInventoryCommand("RES-1", "ORDER-1", []dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 2, Price: json.Number("999.99")}})
+	command := commands.NewReserveInventoryCommand("RES-1", "ORDER-1", []dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 2, Price: json.Number("15999000")}})
 
 	if err := deliverCommand(consumer, command.OrderID, command); err != nil {
 		t.Fatalf("deliver reserve inventory command: %v", err)
@@ -50,12 +52,12 @@ func TestReserveInventoryPublishesReservedReply(t *testing.T) {
 	}
 }
 
-func TestLowStockPublishesInventoryFailedReply(t *testing.T) {
+func TestInsufficientStockPublishesInventoryFailedReply(t *testing.T) {
 	consumer, repo, publisher := newTestService(t)
-	command := commands.NewReserveInventoryCommand("RES-LOW-1", "ORDER-LOW-1", []dto.OrderItemRequest{{ProductID: "PROD-LOW-001", ProductName: "Rare Item", Quantity: 100, Price: json.Number("25.00")}})
+	command := commands.NewReserveInventoryCommand("RES-LOW-1", "ORDER-LOW-1", []dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 1000, Price: json.Number("15999000")}})
 
 	if err := deliverCommand(consumer, command.OrderID, command); err != nil {
-		t.Fatalf("deliver low stock reserve command: %v", err)
+		t.Fatalf("deliver insufficient stock reserve command: %v", err)
 	}
 
 	assertSingleReplyMessage(t, publisher, commonkafka.DefaultInventoryRepliesTopic, command.OrderID)
@@ -66,14 +68,14 @@ func TestLowStockPublishesInventoryFailedReply(t *testing.T) {
 	if reply.OrderID != command.OrderID || reply.ReservationID != command.ReservationID {
 		t.Fatalf("failed reply = %+v", reply)
 	}
-	if reply.Reason != "insufficient stock for product PROD-LOW-001: requested 100, available 10" {
+	if reply.Reason != "insufficient stock for product PROD-001: requested 1000, available 100" {
 		t.Fatalf("failure reason = %q", reply.Reason)
 	}
-	product, found, err := repo.Product(context.Background(), "PROD-LOW-001")
+	product, found, err := repo.Product(context.Background(), "PROD-001")
 	if err != nil {
-		t.Fatalf("get low stock product: %v", err)
+		t.Fatalf("get insufficient stock product: %v", err)
 	}
-	if !found || product.AvailableQuantity() != 10 || product.ReservedQuantity != 0 {
+	if !found || product.AvailableQuantity() != 100 || product.ReservedQuantity != 0 {
 		t.Fatalf("product = %+v, found=%v", product, found)
 	}
 	reservation, found, err := repo.GetReservation(context.Background(), command.ReservationID)
@@ -85,9 +87,46 @@ func TestLowStockPublishesInventoryFailedReply(t *testing.T) {
 	}
 }
 
+func TestReserveInventoryFailureModeFailNextAutoDisables(t *testing.T) {
+	consumer, repo, publisher, service := newTestServiceWithService(t)
+	state := service.ConfigureFailureMode(faultinjection.Config{Enabled: true, RunLabel: "thesis-run-1", FailNext: 1})
+	if !state.Enabled || state.RunLabel != "thesis-run-1" || state.Remaining != 1 {
+		t.Fatalf("failure state = %+v", state)
+	}
+
+	first := commands.NewReserveInventoryCommand("RES-FAIL-NEXT", "ORDER-FAIL-NEXT", []dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 1, Price: json.Number("15999000")}})
+	second := commands.NewReserveInventoryCommand("RES-SUCCESS-NEXT", "ORDER-SUCCESS-NEXT", []dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 1, Price: json.Number("15999000")}})
+	if err := deliverCommand(consumer, first.OrderID, first); err != nil {
+		t.Fatalf("deliver first reserve inventory command: %v", err)
+	}
+	if err := deliverCommand(consumer, second.OrderID, second); err != nil {
+		t.Fatalf("deliver second reserve inventory command: %v", err)
+	}
+
+	if service.FailureModeEnabled() {
+		t.Fatalf("failure mode should auto-disable after failNext is exhausted")
+	}
+	if len(publisher.Messages()) != 2 {
+		t.Fatalf("published messages = %d, want 2", len(publisher.Messages()))
+	}
+	if _, ok := publisher.Messages()[0].Body.(commonreplies.InventoryFailedReply); !ok {
+		t.Fatalf("first reply type = %T, want InventoryFailedReply", publisher.Messages()[0].Body)
+	}
+	if _, ok := publisher.Messages()[1].Body.(commonreplies.InventoryReservedReply); !ok {
+		t.Fatalf("second reply type = %T, want InventoryReservedReply", publisher.Messages()[1].Body)
+	}
+	reservation, found, err := repo.GetReservation(context.Background(), second.ReservationID)
+	if err != nil {
+		t.Fatalf("get second reservation: %v", err)
+	}
+	if !found || reservation.Status != domain.ReservationStatusReserved {
+		t.Fatalf("second reservation = %+v, found=%v", reservation, found)
+	}
+}
+
 func TestReleaseInventoryCompensationIsIdempotent(t *testing.T) {
 	consumer, repo, publisher := newSequencedClockService(t)
-	reserve := commands.NewReserveInventoryCommand("RES-REL-1", "ORDER-REL-1", []dto.OrderItemRequest{{ProductID: "PROD-002", ProductName: "Smartphone", Quantity: 3, Price: json.Number("149.99")}})
+	reserve := commands.NewReserveInventoryCommand("RES-REL-1", "ORDER-REL-1", []dto.OrderItemRequest{{ProductID: "PROD-002", ProductName: "Smartphone", Quantity: 3, Price: json.Number("2399000")}})
 	release := commands.NewReleaseInventoryCommand(reserve.ReservationID, reserve.OrderID)
 
 	if err := deliverCommand(consumer, reserve.OrderID, reserve); err != nil {
@@ -137,14 +176,24 @@ func TestReleaseInventoryCompensationIsIdempotent(t *testing.T) {
 	}
 }
 
-func newTestService(t *testing.T) (*messaging.CommandConsumer, repository.Repository, *messaging.RecordingPublisher) {
+func newTestService(t *testing.T) (*messaging.CommandConsumer, repository.Repository, *testutil.RecordingPublisher) {
+	t.Helper()
+	consumer, repo, publisher, _ := newTestServiceWithService(t)
+	return consumer, repo, publisher
+}
+
+func newTestServiceWithService(t *testing.T) (*messaging.CommandConsumer, repository.Repository, *testutil.RecordingPublisher, *Service) {
 	t.Helper()
 	metrics, err := observability.NewMetrics(prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("new metrics: %v", err)
 	}
-	repo := repository.NewMemoryRepository()
-	publisher := messaging.NewRecordingPublisher()
+	db := testutil.OpenPostgres(t, testutil.DefaultInventoryDatabaseURL, "inventory_service_test", testutil.Migration{Scope: "orchestration-inventory-service", Dir: "orchestration-saga/inventory-service/db/migrations"})
+	repo, err := repository.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatalf("new postgres repository: %v", err)
+	}
+	publisher := testutil.NewRecordingPublisher()
 	service, err := NewService(repo, messaging.NewReplyPublisher(publisher), metrics)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
@@ -154,17 +203,21 @@ func newTestService(t *testing.T) (*messaging.CommandConsumer, repository.Reposi
 	if err != nil {
 		t.Fatalf("new command consumer: %v", err)
 	}
-	return consumer, repo, publisher
+	return consumer, repo, publisher, service
 }
 
-func newSequencedClockService(t *testing.T) (*messaging.CommandConsumer, repository.Repository, *messaging.RecordingPublisher) {
+func newSequencedClockService(t *testing.T) (*messaging.CommandConsumer, repository.Repository, *testutil.RecordingPublisher) {
 	t.Helper()
 	metrics, err := observability.NewMetrics(prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("new metrics: %v", err)
 	}
-	repo := repository.NewMemoryRepository()
-	publisher := messaging.NewRecordingPublisher()
+	db := testutil.OpenPostgres(t, testutil.DefaultInventoryDatabaseURL, "inventory_service_sequence_test", testutil.Migration{Scope: "orchestration-inventory-service", Dir: "orchestration-saga/inventory-service/db/migrations"})
+	repo, err := repository.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatalf("new postgres repository: %v", err)
+	}
+	publisher := testutil.NewRecordingPublisher()
 	service, err := NewService(repo, messaging.NewReplyPublisher(publisher), metrics)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
@@ -200,7 +253,7 @@ func deliverCommand(consumer *messaging.CommandConsumer, key string, command any
 	return consumer.Consume(context.Background(), messaging.CommandEnvelope{Topic: commonkafka.DefaultInventoryCommandsTopic, Key: key, Value: payload})
 }
 
-func assertSingleReplyMessage(t *testing.T, publisher *messaging.RecordingPublisher, topic, key string) {
+func assertSingleReplyMessage(t *testing.T, publisher *testutil.RecordingPublisher, topic, key string) {
 	t.Helper()
 	if len(publisher.Messages()) != 1 {
 		t.Fatalf("published messages = %d, want 1", len(publisher.Messages()))

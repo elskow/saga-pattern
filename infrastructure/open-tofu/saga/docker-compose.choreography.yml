@@ -24,9 +24,10 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       DATABASE_URL: postgres://postgres:postgres@chor-order-db:5432/order_db?sslmode=disable
+      INVENTORY_SERVICE_URL: http://inventory-service:8083
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_BROKERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://192.168.11.160:4318}
       OTEL_SERVICE_NAME: choreography-order-service
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
@@ -56,7 +57,7 @@ services:
       DATABASE_URL: postgres://postgres:postgres@chor-payment-db:5432/payment_db?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_BROKERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://192.168.11.160:4318}
       OTEL_SERVICE_NAME: choreography-payment-service
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
@@ -86,7 +87,7 @@ services:
       DATABASE_URL: postgres://postgres:postgres@chor-inventory-db:5432/inventory_db?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_BROKERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://192.168.11.160:4318}
       OTEL_SERVICE_NAME: choreography-inventory-service
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
@@ -116,7 +117,7 @@ services:
       DATABASE_URL: postgres://postgres:postgres@chor-shipping-db:5432/shipping_db?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_BROKERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://192.168.11.160:4318}
       OTEL_SERVICE_NAME: choreography-shipping-service
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:

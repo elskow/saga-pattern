@@ -48,7 +48,8 @@ func NewDownstreamConsumer(handler EventHandler, logger *slog.Logger) (*Downstre
 				events.TypePaymentFailed:    {},
 			},
 			commonkafka.DefaultShippingEventsTopic: {
-				events.TypeShippingFailed: {},
+				events.TypeShippingScheduled: {},
+				events.TypeShippingFailed:    {},
 			},
 		},
 	}, nil
@@ -69,17 +70,28 @@ func (c *DownstreamConsumer) Consume(ctx context.Context, envelope DownstreamEnv
 		return fmt.Errorf("unsupported downstream topic %q", envelope.Topic)
 	}
 
-	event, err := events.DecodeChoreographyEvent(bytes.NewReader(envelope.Value))
+	event, err := decodeChoreographyEvent(envelope.Value)
 	if err != nil {
-		return fmt.Errorf("decode choreography event: %w", err)
-	}
-	if err := event.Validate(); err != nil {
-		return fmt.Errorf("validate choreography event: %w", err)
+		return err
 	}
 	if _, ok := allowedTypes[event.EventType()]; !ok {
-		return fmt.Errorf("event type %q is not allowed on topic %q", event.EventType(), envelope.Topic)
+		return c.ignoreUnrelatedEvent(envelope, event.EventType())
 	}
 
+	ctx = events.ContextWithMetadata(ctx, event)
 	c.logger.Debug("consume downstream choreography event", "topic", envelope.Topic, "key", envelope.Key, "eventType", event.EventType())
 	return c.handler.HandleEvent(ctx, event)
+}
+
+func (c *DownstreamConsumer) ignoreUnrelatedEvent(envelope DownstreamEnvelope, eventType string) error {
+	c.logger.Debug("ignore choreography event for unrelated handler", "topic", envelope.Topic, "key", envelope.Key, "eventType", eventType)
+	return nil
+}
+
+func decodeChoreographyEvent(payload []byte) (events.ChoreographyEvent, error) {
+	event, err := events.DecodeChoreographyEvent(bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("decode choreography event: %w", err)
+	}
+	return event, nil
 }

@@ -17,11 +17,7 @@ func NewPostgresRepository(db *sql.DB) (*PostgresRepository, error) {
 	if db == nil {
 		return nil, fmt.Errorf("postgres db is required")
 	}
-	repo := &PostgresRepository{db: db}
-	if err := repo.initSchema(context.Background()); err != nil {
-		return nil, err
-	}
-	return repo, nil
+	return &PostgresRepository{db: db}, nil
 }
 
 func (r *PostgresRepository) Create(ctx context.Context, payment domain.Payment) (domain.Payment, error) {
@@ -116,28 +112,9 @@ func (r *PostgresRepository) TryMarkProcessedEvent(ctx context.Context, key stri
 	return rows == 1, nil
 }
 
-func (r *PostgresRepository) initSchema(ctx context.Context) error {
-	_, err := r.db.ExecContext(ctx, `
-	CREATE TABLE IF NOT EXISTS payments (
-	    payment_id VARCHAR(255) PRIMARY KEY,
-	    order_id VARCHAR(255) NOT NULL UNIQUE,
-	    customer_id VARCHAR(255) NOT NULL,
-	    amount DECIMAL(19,2) NOT NULL,
-	    transaction_id VARCHAR(255),
-	    status VARCHAR(50) NOT NULL,
-	    failure_reason TEXT,
-	    correlation_id VARCHAR(255) NOT NULL,
-	    created_at TIMESTAMP NOT NULL,
-	    updated_at TIMESTAMP NOT NULL
-	);
-	CREATE TABLE IF NOT EXISTS processed_events (
-	    event_key VARCHAR(255) PRIMARY KEY,
-	    processed_at TIMESTAMP NOT NULL DEFAULT NOW()
-	);`)
-	if err != nil {
-		return fmt.Errorf("init choreography payments schema: %w", err)
-	}
-	return nil
+func (r *PostgresRepository) DeleteProcessedEvent(ctx context.Context, key string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM processed_events WHERE event_key = $1`, key)
+	return err
 }
 
 func nullableString(value string) any {
@@ -145,6 +122,34 @@ func nullableString(value string) any {
 		return nil
 	}
 	return value
+}
+
+func (r *PostgresRepository) ListPayments(ctx context.Context) ([]domain.Payment, error) {
+	rows, err := r.db.QueryContext(ctx, `
+	SELECT payment_id, order_id, customer_id, amount, transaction_id, status, failure_reason, correlation_id, created_at, updated_at
+	FROM payments
+	ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var payments []domain.Payment
+	for rows.Next() {
+		var p domain.Payment
+		var amount string
+		var transactionID sql.NullString
+		var failureReason sql.NullString
+		if err := rows.Scan(&p.PaymentID, &p.OrderID, &p.CustomerID, &amount, &transactionID, &p.Status, &failureReason, &p.CorrelationID, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		p.Amount = json.Number(amount)
+		p.TransactionID = transactionID.String
+		p.FailureReason = failureReason.String
+		p.CreatedAt = p.CreatedAt.UTC()
+		p.UpdatedAt = p.UpdatedAt.UTC()
+		payments = append(payments, p)
+	}
+	return payments, rows.Err()
 }
 
 var _ Repository = (*PostgresRepository)(nil)

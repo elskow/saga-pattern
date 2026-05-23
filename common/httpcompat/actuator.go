@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -53,5 +54,10 @@ func NewPrometheusHandler(reg prometheus.Gatherer, opts promhttp.HandlerOpts) ht
 	if reg == nil {
 		return promhttp.Handler()
 	}
-	return promhttp.HandlerFor(reg, opts)
+	runtimeRegistry := prometheus.NewRegistry()
+	runtimeRegistry.MustRegister(
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+	)
+	return promhttp.HandlerFor(prometheus.Gatherers{reg, runtimeRegistry}, opts)
 }

@@ -175,3 +175,5 @@ terraform.tfstate.backup
 **/ghcr-credentials.yaml
 .gitnexus
 .claude
+test-results
+?

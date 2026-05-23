@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<body>
+<div id="result"></div>
+<script>
+  const div = document.getElementById('result');
+  div.textContent = 'Fetching...';
+  fetch('/proxy/orchestration-inventory/api/products', {
+    signal: AbortSignal.timeout(8000),
+    cache: 'no-store'
+  })
+  .then(r => r.json())
+  .then(data => { div.textContent = 'SUCCESS: ' + data.length + ' items'; })
+  .catch(err => { div.textContent = 'ERROR: ' + err.message; });
+</script>
+</body>
+</html>

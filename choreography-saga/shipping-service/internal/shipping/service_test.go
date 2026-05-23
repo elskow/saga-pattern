@@ -15,6 +15,7 @@ import (
 	"saga-pattern/common/dto"
 	"saga-pattern/common/events"
 	commonkafka "saga-pattern/common/kafka"
+	"saga-pattern/common/testutil"
 )
 
 func TestScheduleShippingPublishesShippingScheduled(t *testing.T) {
@@ -23,10 +24,10 @@ func TestScheduleShippingPublishesShippingScheduled(t *testing.T) {
 	orderCreated := events.NewOrderCreatedEvent(
 		"ORDER-SHIP-1",
 		"CUST-1",
-		"123 Main Street",
+		"Jl. Ketintang Wiyata, Surabaya 60231",
 		"corr-ship-1",
-		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Widget", Quantity: 1, Price: json.Number("49.99")}},
-		json.Number("49.99"),
+		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Widget", Quantity: 1, Price: json.Number("799000")}},
+		json.Number("799000"),
 		now,
 	)
 	inventoryReserved := events.NewInventoryReservedEvent(
@@ -78,10 +79,52 @@ func TestScheduleShippingPublishesShippingScheduled(t *testing.T) {
 	if shipment.Status != domain.ShipmentStatusScheduled {
 		t.Fatalf("shipment status = %s, want %s", shipment.Status, domain.ShipmentStatusScheduled)
 	}
-	if _, ok, err := repo.PendingAddress(context.Background(), orderCreated.OrderID); err != nil {
+	if _, ok, err := repo.LoadPendingShippingAddress(context.Background(), orderCreated.OrderID); err != nil {
 		t.Fatalf("pending address lookup: %v", err)
 	} else if ok {
 		t.Fatalf("pending address should be deleted after scheduling")
+	}
+}
+
+func TestInventoryReservedWaitsForOrderCreated(t *testing.T) {
+	consumer, _, publisher := newTestService(t)
+	now := time.Date(2026, 4, 14, 9, 30, 0, 0, time.UTC)
+	orderCreated := events.NewOrderCreatedEvent(
+		"ORDER-SHIP-RACE",
+		"CUST-SHIP-RACE",
+		"Jl. Ketintang Wiyata, Surabaya 60231",
+		"corr-ship-race",
+		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Widget", Quantity: 1, Price: json.Number("799000")}},
+		json.Number("799000"),
+		now,
+	)
+	inventoryReserved := events.NewInventoryReservedEvent(
+		"RES-SHIP-RACE",
+		orderCreated.OrderID,
+		[]events.InventoryReservedItem{{ProductID: "PROD-001", Quantity: 1}},
+		now.Add(time.Minute),
+		orderCreated.CorrelationID,
+		now.Add(time.Minute),
+	)
+	errCh := make(chan error, 1)
+
+	go func() {
+		errCh <- deliverEvent(consumer, commonkafka.DefaultInventoryEventsTopic, orderCreated.OrderID, inventoryReserved)
+	}()
+	time.Sleep(30 * time.Millisecond)
+	if err := deliverEvent(consumer, commonkafka.DefaultOrderEventsTopic, orderCreated.OrderID, orderCreated); err != nil {
+		t.Fatalf("consume order created: %v", err)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("consume inventory reserved: %v", err)
+	}
+
+	messages := publisher.Messages()
+	if len(messages) != 1 {
+		t.Fatalf("published message count = %d, want 1", len(messages))
+	}
+	if _, ok := messages[0].Body.(events.ShippingScheduledEvent); !ok {
+		t.Fatalf("published body type = %T, want ShippingScheduledEvent", messages[0].Body)
 	}
 }
 
@@ -93,8 +136,8 @@ func TestCancelShippingCompensationIsIdempotent(t *testing.T) {
 		"CUST-2",
 		"8 Refund Lane",
 		"corr-ship-cancel",
-		[]dto.OrderItemRequest{{ProductID: "PROD-002", ProductName: "Phone", Quantity: 1, Price: json.Number("149.99")}},
-		json.Number("149.99"),
+		[]dto.OrderItemRequest{{ProductID: "PROD-002", ProductName: "Phone", Quantity: 1, Price: json.Number("2399000")}},
+		json.Number("2399000"),
 		now,
 	)
 	inventoryReserved := events.NewInventoryReservedEvent(
@@ -108,7 +151,7 @@ func TestCancelShippingCompensationIsIdempotent(t *testing.T) {
 	refunded := events.NewPaymentRefundedEvent(
 		"PAY-SHIP-CANCEL",
 		orderCreated.OrderID,
-		json.Number("149.99"),
+		json.Number("2399000"),
 		now.Add(2*time.Minute),
 		orderCreated.CorrelationID,
 		now.Add(2*time.Minute),
@@ -160,7 +203,7 @@ func TestDuplicateInventoryReservedReplayIsSafe(t *testing.T) {
 		"CUST-3",
 		"12 Replay Road",
 		"corr-ship-dupe",
-		[]dto.OrderItemRequest{{ProductID: "PROD-003", ProductName: "Headphones", Quantity: 2, Price: json.Number("79.99")}},
+		[]dto.OrderItemRequest{{ProductID: "PROD-003", ProductName: "Headphones", Quantity: 2, Price: json.Number("1299000")}},
 		json.Number("159.98"),
 		now,
 	)
@@ -187,14 +230,18 @@ func TestDuplicateInventoryReservedReplayIsSafe(t *testing.T) {
 	}
 }
 
-func newTestService(t *testing.T) (*messaging.DownstreamConsumer, repository.Repository, *messaging.RecordingPublisher) {
+func newTestService(t *testing.T) (*messaging.DownstreamConsumer, repository.Repository, *testutil.RecordingPublisher) {
 	t.Helper()
-	repo := repository.NewMemoryRepository()
+	db := testutil.OpenPostgres(t, testutil.DefaultChoreographyShippingDatabaseURL, "choreography_shipping_service_test", testutil.Migration{Scope: "choreography-shipping-service", Dir: "choreography-saga/shipping-service/db/migrations"})
+	repo, err := repository.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatalf("new postgres repository: %v", err)
+	}
 	metrics, err := observability.NewMetrics(nil)
 	if err != nil {
 		t.Fatalf("new metrics: %v", err)
 	}
-	publisher := messaging.NewRecordingPublisher()
+	publisher := testutil.NewRecordingPublisher()
 	service, err := NewService(repo, messaging.NewShippingTopicPublisher(publisher), metrics)
 	if err != nil {
 		t.Fatalf("new service: %v", err)

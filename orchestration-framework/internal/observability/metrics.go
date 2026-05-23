@@ -50,10 +50,15 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 			Help: "Count of compensation commands completed.",
 		}, []string{labelSagaType, labelStep}),
 	}
+	registered := make([]prometheus.Collector, 0, 4)
 	for _, collector := range []prometheus.Collector{metrics.sagaDuration, metrics.stepDuration, metrics.compensationStarted, metrics.compensationCompleted} {
 		if err := registry.Register(collector); err != nil {
+			for _, registeredCollector := range registered {
+				registry.Unregister(registeredCollector)
+			}
 			return nil, err
 		}
+		registered = append(registered, collector)
 	}
 	return metrics, nil
 }

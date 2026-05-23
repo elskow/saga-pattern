@@ -31,22 +31,18 @@ output "saga_node_ip" {
   value       = lxd_instance.node["saga-node"].ipv4_address
 }
 
-output "gatling_runner_ip" {
-  description = "IP address of the Gatling load testing node"
-  value       = lxd_instance.node["gatling-runner"].ipv4_address
-}
-
 output "observability_node_ip" {
   description = "IP address of the observability node"
   value       = lxd_instance.node["observability-node"].ipv4_address
 }
 
 output "observability_urls" {
-  description = "URLs for observability services"
+  description = "URLs for SigNoz observability services"
   value = {
-    prometheus = "http://${var.nodes["observability-node"].ip_address}:9090"
-    grafana    = "http://${var.nodes["observability-node"].ip_address}:3000"
-    jaeger     = "http://${var.nodes["saga-node"].ip_address}:16686"
+    signoz_ui        = "http://${var.nodes["observability-node"].ip_address}:8080"
+    otlp_http        = "http://${var.nodes["observability-node"].ip_address}:4318"
+    otlp_grpc        = "${var.nodes["observability-node"].ip_address}:4317"
+    collector_health = "http://${var.nodes["observability-node"].ip_address}:13133"
   }
 }
 
@@ -54,9 +50,8 @@ output "saga_urls" {
   description = "URLs for Saga services (when running)"
   value = {
     choreography_order_api  = "http://${var.nodes["saga-node"].ip_address}:8081/api/orders"
-    orchestration_order_api = "http://${var.nodes["saga-node"].ip_address}:8085/api/orders"
+    orchestration_order_api = "http://${var.nodes["saga-node"].ip_address}:8091/api/orders"
     kafka                   = "${var.nodes["saga-node"].ip_address}:9092"
-    jaeger_ui               = "http://${var.nodes["saga-node"].ip_address}:16686"
   }
 }
 
@@ -85,10 +80,9 @@ output "jenkins_env" {
   description = "Environment variables for Jenkins pipeline"
   value = {
     SAGA_NODE_IP        = var.nodes["saga-node"].ip_address
-    GATLING_RUNNER_IP   = var.nodes["gatling-runner"].ip_address
     OBSERVABILITY_IP    = var.nodes["observability-node"].ip_address
     CHOREOGRAPHY_PORT   = "8081"
-    ORCHESTRATION_PORT  = "8085"
+    ORCHESTRATION_PORT  = "8091"
   }
 }
 
@@ -117,27 +111,25 @@ ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/saga && sudo docker compos
 ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/saga && sudo docker compose -f docker-compose.choreography.yml logs -f"
 
 # =============================================================================
-# GATLING BENCHMARKS (on gatling-runner)
+# K6 BENCHMARKS (on saga-node)
 # =============================================================================
 
 # Run choreography benchmark:
-ssh ubuntu@${var.nodes["gatling-runner"].ip_address} "~/run-benchmark.sh choreography thesis-baseline SustainedMixedSimulation ${var.nodes["saga-node"].ip_address}"
+ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/workspace/saga-pattern && load-testing/thesis/run-k6-thesis.sh --pattern choreography --scenario happy-path --profile thesis-baseline"
 
 # Run orchestration benchmark:
-ssh ubuntu@${var.nodes["gatling-runner"].ip_address} "~/run-benchmark.sh orchestration thesis-baseline SustainedMixedSimulation ${var.nodes["saga-node"].ip_address}"
-
-# Quick warmup:
-ssh ubuntu@${var.nodes["gatling-runner"].ip_address} "~/warmup.sh ${var.nodes["saga-node"].ip_address} 8081 100"
+ssh ubuntu@${var.nodes["saga-node"].ip_address} "cd ~/workspace/saga-pattern && load-testing/thesis/run-k6-thesis.sh --pattern orchestration --scenario happy-path --profile thesis-baseline"
 
 # Copy results to local:
-scp -r ubuntu@${var.nodes["gatling-runner"].ip_address}:~/results/* ./results/
+scp -r ubuntu@${var.nodes["saga-node"].ip_address}:~/workspace/saga-pattern/results/k6-thesis/* ./results/
 
 # =============================================================================
 # OBSERVABILITY
 # =============================================================================
 
-# Prometheus: http://${var.nodes["observability-node"].ip_address}:9090
-# Grafana:    http://${var.nodes["observability-node"].ip_address}:3000 (admin/admin)
-# Jaeger:     http://${var.nodes["saga-node"].ip_address}:16686
+# SigNoz UI:        http://${var.nodes["observability-node"].ip_address}:8080
+# OTLP HTTP:        http://${var.nodes["observability-node"].ip_address}:4318
+# OTLP gRPC:        ${var.nodes["observability-node"].ip_address}:4317
+# Collector health: http://${var.nodes["observability-node"].ip_address}:13133
 EOT
 }

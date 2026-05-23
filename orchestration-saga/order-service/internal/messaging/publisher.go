@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	commonkafka "saga-pattern/common/kafka"
-	frameworkruntime "saga-pattern/orchestration-framework/runtime"
+	sagaRuntime "saga-pattern/orchestration-framework/runtime"
 )
 
 type commandPublisher interface {
@@ -25,7 +25,7 @@ func NewKafkaRuntimePublisher(publisher *commonkafka.RuntimePublisher) (*KafkaRu
 	return &KafkaRuntimePublisher{publisher: publisher}, nil
 }
 
-func (p *KafkaRuntimePublisher) Publish(ctx context.Context, message frameworkruntime.Message) error {
+func (p *KafkaRuntimePublisher) Publish(ctx context.Context, message sagaRuntime.Message) error {
 	if p == nil || p.publisher == nil {
 		return fmt.Errorf("runtime publisher is not configured")
 	}
@@ -33,7 +33,7 @@ func (p *KafkaRuntimePublisher) Publish(ctx context.Context, message frameworkru
 }
 
 type PublishedMessage struct {
-	Message frameworkruntime.Message
+	Message sagaRuntime.Message
 	Body    any
 }
 
@@ -47,7 +47,7 @@ func NewRecordingPublisher() *RecordingPublisher {
 	return &RecordingPublisher{failures: make(map[string]int)}
 }
 
-func (p *RecordingPublisher) Publish(_ context.Context, message frameworkruntime.Message) error {
+func (p *RecordingPublisher) Publish(_ context.Context, message sagaRuntime.Message) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if remaining := p.failures[message.MessageType]; remaining > 0 {

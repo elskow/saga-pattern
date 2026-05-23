@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	commoncontext "saga-pattern/common/context"
@@ -67,14 +68,61 @@ func (o Order) Response() dto.OrderResponse {
 	items := make([]dto.OrderItemResponse, len(o.Items))
 	copy(items, o.Items)
 	return dto.OrderResponse{
-		OrderID:     o.OrderID,
-		CustomerID:  o.CustomerID,
-		Status:      string(o.Status),
-		Items:       items,
-		TotalAmount: o.TotalAmount,
-		CreatedAt:   o.CreatedAt,
-		UpdatedAt:   o.UpdatedAt,
+		OrderID:          o.OrderID,
+		CustomerID:       o.CustomerID,
+		ShippingAddress:  o.ShippingAddress,
+		Status:           string(o.Status),
+		Items:            items,
+		TotalAmount:      o.TotalAmount,
+		PaymentID:        o.PaymentID,
+		ReservationID:    o.ReservationID,
+		ShippingID:       o.ShippingID,
+		TrackingNumber:   o.TrackingNumber,
+		FailureReason:    o.FailureReason,
+		FailureStep:      o.failureStep(),
+		CompensatedSteps: o.compensatedSteps(),
+		CreatedAt:        o.CreatedAt,
+		UpdatedAt:        o.UpdatedAt,
 	}
+}
+
+func (o Order) failureStep() string {
+	if o.Status != dto.OrderStatusCancelled {
+		return ""
+	}
+	reason := strings.ToLower(o.FailureReason)
+	switch {
+	case strings.Contains(reason, "payment"):
+		return "payment"
+	case strings.Contains(reason, "inventory"):
+		return "inventory"
+	case strings.Contains(reason, "shipping"):
+		return "shipping"
+	default:
+		return ""
+	}
+}
+
+func (o Order) compensatedSteps() []string {
+	if o.Status != dto.OrderStatusCancelled {
+		return nil
+	}
+	switch o.failureStep() {
+	case "inventory":
+		if o.PaymentID != "" {
+			return []string{"payment"}
+		}
+	case "shipping":
+		steps := make([]string, 0, 2)
+		if o.ReservationID != "" {
+			steps = append(steps, "inventory")
+		}
+		if o.PaymentID != "" {
+			steps = append(steps, "payment")
+		}
+		return steps
+	}
+	return nil
 }
 
 func (o Order) ToOrderCreatedEvent(createdAt time.Time) events.OrderCreatedEvent {

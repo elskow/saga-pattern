@@ -56,4 +56,10 @@ func TestActuatorCompatibilityHandlers(t *testing.T) {
 	if !strings.Contains(string(metricsBody), "test_metric_total 1") {
 		t.Fatalf("unexpected metrics body: %s", metricsBody)
 	}
+	if !strings.Contains(string(metricsBody), "process_cpu_seconds_total") {
+		t.Fatalf("metrics body missing process collector: %s", metricsBody)
+	}
+	if !strings.Contains(string(metricsBody), "go_goroutines") {
+		t.Fatalf("metrics body missing Go collector: %s", metricsBody)
+	}
 }

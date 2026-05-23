@@ -2,12 +2,11 @@ package messaging
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"saga-pattern/common/commands"
 	commonkafka "saga-pattern/common/kafka"
-	"saga-pattern/common/validate"
+	"saga-pattern/orchestration-saga/internal/messagingutil"
 )
 
 type PaymentCommandHandler interface {
@@ -15,11 +14,7 @@ type PaymentCommandHandler interface {
 	HandleRefundPayment(context.Context, commands.RefundPaymentCommand) error
 }
 
-type CommandEnvelope struct {
-	Topic string
-	Key   string
-	Value []byte
-}
+type CommandEnvelope = messagingutil.CommandEnvelope
 
 type CommandConsumer struct {
 	handler PaymentCommandHandler
@@ -38,37 +33,28 @@ func (c *CommandConsumer) Topics() []string {
 }
 
 func (c *CommandConsumer) Consume(ctx context.Context, envelope CommandEnvelope) error {
-	if envelope.Topic != c.topic {
-		return fmt.Errorf("unsupported payment command topic %q", envelope.Topic)
+	if err := messagingutil.EnsureTopic(envelope.Topic, c.topic, "payment command"); err != nil {
+		return err
+	}
+	commandType, err := messagingutil.DecodeCommandType(envelope.Value, "payment")
+	if err != nil {
+		return err
 	}
 
-	var meta struct {
-		CommandType string `json:"commandType"`
-	}
-	if err := json.Unmarshal(envelope.Value, &meta); err != nil {
-		return fmt.Errorf("decode payment command: %w", err)
-	}
-
-	switch meta.CommandType {
+	switch commandType {
 	case commands.CommandProcessPayment:
-		var command commands.ProcessPaymentCommand
-		if err := validate.UnmarshalStrictJSON(envelope.Value, &command); err != nil {
-			return fmt.Errorf("decode process payment command: %w", err)
-		}
-		if err := command.Validate(); err != nil {
-			return fmt.Errorf("validate process payment command: %w", err)
+		command, err := messagingutil.DecodeValidatedCommand[commands.ProcessPaymentCommand](envelope.Value, "process payment")
+		if err != nil {
+			return err
 		}
 		return c.handler.HandleProcessPayment(ctx, command)
 	case commands.CommandRefundPayment:
-		var command commands.RefundPaymentCommand
-		if err := validate.UnmarshalStrictJSON(envelope.Value, &command); err != nil {
-			return fmt.Errorf("decode refund payment command: %w", err)
-		}
-		if err := command.Validate(); err != nil {
-			return fmt.Errorf("validate refund payment command: %w", err)
+		command, err := messagingutil.DecodeValidatedCommand[commands.RefundPaymentCommand](envelope.Value, "refund payment")
+		if err != nil {
+			return err
 		}
 		return c.handler.HandleRefundPayment(ctx, command)
 	default:
-		return fmt.Errorf("unsupported payment command type %q", meta.CommandType)
+		return fmt.Errorf("unsupported payment command type %q", commandType)
 	}
 }

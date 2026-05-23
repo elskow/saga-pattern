@@ -16,14 +16,10 @@ func NewPostgresRepository(db *sql.DB) (*PostgresRepository, error) {
 	if db == nil {
 		return nil, fmt.Errorf("postgres db is required")
 	}
-	repo := &PostgresRepository{db: db}
-	if err := repo.initSchema(context.Background()); err != nil {
-		return nil, err
-	}
-	return repo, nil
+	return &PostgresRepository{db: db}, nil
 }
 
-func (r *PostgresRepository) StorePendingAddress(ctx context.Context, orderID string, shippingAddress string) error {
+func (r *PostgresRepository) SavePendingShippingAddress(ctx context.Context, orderID string, shippingAddress string) error {
 	_, err := r.db.ExecContext(ctx, `
 	INSERT INTO pending_addresses (order_id, shipping_address)
 	VALUES ($1,$2)
@@ -31,7 +27,7 @@ func (r *PostgresRepository) StorePendingAddress(ctx context.Context, orderID st
 	return err
 }
 
-func (r *PostgresRepository) PendingAddress(ctx context.Context, orderID string) (string, bool, error) {
+func (r *PostgresRepository) LoadPendingShippingAddress(ctx context.Context, orderID string) (string, bool, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT shipping_address FROM pending_addresses WHERE order_id = $1`, orderID)
 	var address string
 	if err := row.Scan(&address); err == sql.ErrNoRows {
@@ -42,7 +38,7 @@ func (r *PostgresRepository) PendingAddress(ctx context.Context, orderID string)
 	return address, true, nil
 }
 
-func (r *PostgresRepository) DeletePendingAddress(ctx context.Context, orderID string) error {
+func (r *PostgresRepository) ClearPendingShippingAddress(ctx context.Context, orderID string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM pending_addresses WHERE order_id = $1`, orderID)
 	return err
 }
@@ -97,30 +93,37 @@ func (r *PostgresRepository) TryMarkProcessedEvent(ctx context.Context, key stri
 	return rows == 1, nil
 }
 
-func (r *PostgresRepository) initSchema(ctx context.Context) error {
-	_, err := r.db.ExecContext(ctx, `
-	CREATE TABLE IF NOT EXISTS pending_addresses (
-	    order_id VARCHAR(255) PRIMARY KEY,
-	    shipping_address TEXT NOT NULL
-	);
-	CREATE TABLE IF NOT EXISTS shipments (
-	    shipping_id VARCHAR(255) PRIMARY KEY,
-	    order_id VARCHAR(255) NOT NULL UNIQUE,
-	    tracking_number VARCHAR(255) NOT NULL,
-	    shipping_address TEXT NOT NULL,
-	    status VARCHAR(50) NOT NULL,
-	    estimated_delivery TIMESTAMP NOT NULL,
-	    created_at TIMESTAMP NOT NULL,
-	    updated_at TIMESTAMP NOT NULL
-	);
-	CREATE TABLE IF NOT EXISTS processed_events (
-	    event_key VARCHAR(255) PRIMARY KEY,
-	    processed_at TIMESTAMP NOT NULL DEFAULT NOW()
-	);`)
+func (r *PostgresRepository) DeleteProcessedEvent(ctx context.Context, key string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM processed_events WHERE event_key = $1`, key)
+	return err
+}
+
+func (r *PostgresRepository) ListShipments(ctx context.Context) ([]domain.Shipment, error) {
+	rows, err := r.db.QueryContext(ctx, `
+	SELECT shipping_id, order_id, tracking_number, shipping_address, status, estimated_delivery, created_at, updated_at
+	FROM shipments
+	ORDER BY created_at DESC`)
 	if err != nil {
-		return fmt.Errorf("init choreography shipping schema: %w", err)
+		return nil, err
 	}
-	return nil
+	defer rows.Close()
+	var shipments []domain.Shipment
+	for rows.Next() {
+		var s domain.Shipment
+		if err := rows.Scan(&s.ShippingID, &s.OrderID, &s.TrackingNumber, &s.ShippingAddress, &s.Status, &s.EstimatedDelivery, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		s.EstimatedDelivery = s.EstimatedDelivery.UTC()
+		s.CreatedAt = s.CreatedAt.UTC()
+		s.UpdatedAt = s.UpdatedAt.UTC()
+		shipments = append(shipments, s)
+	}
+	return shipments, rows.Err()
+}
+
+func (r *PostgresRepository) UpdateStatus(ctx context.Context, shippingID string, status domain.ShipmentStatus) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE shipments SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE shipping_id = $2`, status, shippingID)
+	return err
 }
 
 var _ Repository = (*PostgresRepository)(nil)

@@ -12,6 +12,7 @@ const (
 	metricOrdersFailed    = "saga_orders_failed_total"
 	metricCompensations   = "saga_compensations_total"
 	metricProcessingTime  = "saga_order_processing_time_seconds"
+	metricTotalDuration   = "saga_total_duration_seconds"
 
 	labelPattern = "pattern"
 	labelService = "service"
@@ -27,6 +28,7 @@ type Metrics struct {
 	ordersFailed    prometheus.Counter
 	compensations   prometheus.Counter
 	processingTime  prometheus.Observer
+	totalDuration   prometheus.Observer
 }
 
 func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
@@ -40,11 +42,17 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 	failed := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricOrdersFailed, Help: "Total orders failed."}, []string{labelPattern, labelService})
 	compensations := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricCompensations, Help: "Total saga compensations."}, []string{labelPattern, labelService})
 	processing := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: metricProcessingTime, Help: "Saga order processing time in seconds.", Buckets: prometheus.DefBuckets}, []string{labelPattern, labelService})
+	totalDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: metricTotalDuration, Help: "End-to-end choreography saga duration in seconds.", Buckets: prometheus.DefBuckets}, []string{labelPattern, labelService})
 
-	for _, collector := range []prometheus.Collector{created, completed, failed, compensations, processing} {
+	registered := make([]prometheus.Collector, 0, 6)
+	for _, collector := range []prometheus.Collector{created, completed, failed, compensations, processing, totalDuration} {
 		if err := registry.Register(collector); err != nil {
+			for _, registeredCollector := range registered {
+				registry.Unregister(registeredCollector)
+			}
 			return nil, err
 		}
+		registered = append(registered, collector)
 	}
 
 	return &Metrics{
@@ -54,6 +62,7 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 		ordersFailed:    failed.With(labels),
 		compensations:   compensations.With(labels),
 		processingTime:  processing.With(labels),
+		totalDuration:   totalDuration.With(labels),
 	}, nil
 }
 
@@ -68,10 +77,12 @@ func (m *Metrics) RecordOrderCreated() {
 func (m *Metrics) RecordOrderCompleted(duration time.Duration) {
 	m.ordersCompleted.Inc()
 	m.processingTime.Observe(duration.Seconds())
+	m.totalDuration.Observe(duration.Seconds())
 }
 
 func (m *Metrics) RecordOrderFailed(duration time.Duration) {
 	m.ordersFailed.Inc()
 	m.compensations.Inc()
 	m.processingTime.Observe(duration.Seconds())
+	m.totalDuration.Observe(duration.Seconds())
 }

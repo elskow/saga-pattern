@@ -2,15 +2,12 @@ package main
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
-	"log/slog"
-	"net/http"
 	"os"
 
 	_ "github.com/lib/pq"
 
+	"saga-pattern/choreography-saga/internal/serverutil"
 	serviceconfig "saga-pattern/choreography-saga/inventory-service/internal/config"
 	"saga-pattern/choreography-saga/inventory-service/internal/httpapi"
 	"saga-pattern/choreography-saga/inventory-service/internal/inventory"
@@ -27,57 +24,43 @@ func main() {
 	}
 }
 
-func run() error {
+func run() (err error) {
 	cfg, err := serviceconfig.Load()
 	if err != nil {
 		return err
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	db, err := sql.Open("postgres", cfg.Runtime.DatabaseURL)
+	resources, err := serverutil.BootstrapParticipant(cfg, "choreography-inventory-service", "choreography-saga/inventory-service/db/migrations")
 	if err != nil {
-		return fmt.Errorf("open postgres connection: %w", err)
+		return err
 	}
-	defer db.Close()
-	if err := db.Ping(); err != nil {
-		return fmt.Errorf("ping postgres connection: %w", err)
-	}
-	repo, err := repository.NewPostgresRepository(db)
+	defer func() {
+		if closeErr := resources.Close(); err == nil && closeErr != nil {
+			err = fmt.Errorf("close participant resources: %w", closeErr)
+		}
+	}()
+	repo, err := repository.NewPostgresRepository(resources.DB)
 	if err != nil {
 		return fmt.Errorf("create inventory postgres repository: %w", err)
 	}
-	runtimePublisher, err := commonkafka.NewRuntimePublisher(cfg.Runtime.KafkaBrokers)
-	if err != nil {
-		return fmt.Errorf("create runtime publisher: %w", err)
-	}
-	defer runtimePublisher.Close()
 	metrics, err := observability.NewMetrics(nil)
 	if err != nil {
 		return fmt.Errorf("create metrics: %w", err)
 	}
-	service, err := inventory.NewService(repo, messaging.NewInventoryTopicPublisher(runtimePublisher), metrics)
+	service, err := inventory.NewService(repo, messaging.NewInventoryTopicPublisher(resources.RuntimePublisher), metrics)
 	if err != nil {
 		return fmt.Errorf("create inventory service: %w", err)
 	}
-	consumer, err := messaging.NewDownstreamConsumer(service, logger)
+	consumer, err := messaging.NewDownstreamConsumer(service, resources.Logger)
 	if err != nil {
 		return fmt.Errorf("create downstream consumer: %w", err)
 	}
-	consumerGroup, err := commonkafka.NewSubscriberGroup(cfg.Runtime.KafkaBrokers, cfg.ServiceName, consumer.Topics(), logger, func(ctx context.Context, topic string, key string, value []byte) error {
+	consumerGroup, err := commonkafka.NewSubscriberGroup(cfg.Runtime.KafkaBrokers, cfg.ServiceName, consumer.Topics(), resources.Logger, func(ctx context.Context, topic string, key string, value []byte) error {
 		return consumer.Consume(ctx, messaging.DownstreamEnvelope{Topic: topic, Key: key, Value: value})
 	})
 	if err != nil {
 		return fmt.Errorf("create kafka subscriber group: %w", err)
 	}
-	defer consumerGroup.Close()
-	consumerGroup.Start(context.Background())
-	handler := httpapi.NewHandler(httpapi.HandlerDependencies{Config: cfg, Logger: logger, Registry: metrics.Registry()})
-	server := &http.Server{Addr: cfg.Address(), Handler: handler}
-
-	logger.Info("starting service", "service", cfg.ServiceName, "pattern", cfg.Pattern, "addr", cfg.Address(), "consumerTopics", consumer.Topics())
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("listen and serve: %w", err)
-	}
-
-	return nil
+	handler := httpapi.NewHandler(httpapi.HandlerDependencies{Config: cfg, Logger: resources.Logger, Registry: metrics.Registry(), Repo: repo, Service: service})
+	return serverutil.RunParticipantServer(cfg, resources.Logger, handler, consumer.Topics(), consumerGroup)
 }

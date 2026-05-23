@@ -5,7 +5,7 @@ HOST="${1:-192.168.11.152}"
 PORT="${2:-8081}"
 REQUESTS="${3:-100}"
 
-if [ "$PORT" -ge 8085 ] 2>/dev/null; then
+if [ "$PORT" -ge 8091 ] 2>/dev/null; then
     PATTERN="orchestration"
 else
     PATTERN="choreography"

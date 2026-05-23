@@ -20,8 +20,8 @@ storage_pool   = "ssd03"
 # 
 # Architecture:
 #   - saga-node: Main application node (Docker Compose for Saga services)
-#   - gatling-runner: Load testing node (Gatling + Maven)
-#   - observability-node: Monitoring (Prometheus, Grafana)
+#   - saga-node: k6 load generation plus Docker Compose for Saga services
+#   - observability-node: SigNoz observability stack
 #------------------------------------------------------------------------------
 
 nodes = {
@@ -30,12 +30,6 @@ nodes = {
     memory     = "40GB"
     storage    = "260GB"
     ip_address = "192.168.11.152"
-  }
-  "gatling-runner" = {
-    vcpu       = 4
-    memory     = "8GB"
-    storage    = "30GB"
-    ip_address = "192.168.11.158"
   }
   "observability-node" = {
     vcpu       = 4
@@ -46,7 +40,7 @@ nodes = {
 }
 
 #------------------------------------------------------------------------------
-# Git Repository for Gatling Tests
+# Git Repository for k6 Thesis Harness
 #------------------------------------------------------------------------------
 
 saga_repo_url    = "https://github.com/Elskow/saga-pattern.git"

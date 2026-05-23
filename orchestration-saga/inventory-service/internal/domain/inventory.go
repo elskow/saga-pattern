@@ -1,30 +1,33 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"saga-pattern/common/dto"
 )
 
-const (
-	lowStockProductOne = "PROD-LOW-001"
-	lowStockProductTwo = "PROD-LOW-002"
-)
-
 type ReservationStatus string
 
 const (
-	ReservationStatusReserved ReservationStatus = "RESERVED"
-	ReservationStatusFailed   ReservationStatus = "FAILED"
-	ReservationStatusReleased ReservationStatus = "RELEASED"
+	ReservationStatusReserved  ReservationStatus = "RESERVED"
+	ReservationStatusCommitted ReservationStatus = "COMMITTED"
+	ReservationStatusFailed    ReservationStatus = "FAILED"
+	ReservationStatusReleased  ReservationStatus = "RELEASED"
 )
 
 type Product struct {
 	ProductID         string
 	ProductName       string
+	Description       string
+	Price             json.Number
+	Image             string
+	Category          string
+	Visible           bool
 	Quantity          int
 	ReservedQuantity  int
+	LastRestockedAt   time.Time
 	LastReservationAt time.Time
 	LastReleaseAt     time.Time
 }
@@ -57,6 +60,18 @@ func (p *Product) Release(quantity int, at time.Time) error {
 	return nil
 }
 
+func (p *Product) SetTotalStock(total int, at time.Time) error {
+	if total < 0 {
+		return fmt.Errorf("total stock cannot be negative")
+	}
+	if total < p.ReservedQuantity {
+		return fmt.Errorf("total stock cannot be less than reserved quantity")
+	}
+	p.Quantity = total
+	p.LastRestockedAt = at.UTC()
+	return nil
+}
+
 type Reservation struct {
 	ReservationID string
 	OrderID       string
@@ -70,7 +85,7 @@ type Reservation struct {
 }
 
 func (r *Reservation) Release(at time.Time, reason string) bool {
-	if r.Status == ReservationStatusReleased {
+	if r.Status == ReservationStatusReleased || r.Status == ReservationStatusCommitted {
 		return false
 	}
 	r.Status = ReservationStatusReleased
@@ -79,31 +94,20 @@ func (r *Reservation) Release(at time.Time, reason string) bool {
 	return true
 }
 
-func (r Reservation) Clone() Reservation {
-	r.Items = cloneItems(r.Items)
-	return r
-}
-
-func cloneItems(items []dto.OrderItemRequest) []dto.OrderItemRequest {
-	cloned := make([]dto.OrderItemRequest, len(items))
-	copy(cloned, items)
-	return cloned
-}
-
-func DefaultProducts() []Product {
-	return []Product{
-		{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 100},
-		{ProductID: "PROD-002", ProductName: "Smartphone", Quantity: 200},
-		{ProductID: "PROD-003", ProductName: "Headphones", Quantity: 500},
-		{ProductID: "PROD-004", ProductName: "Tablet", Quantity: 150},
-		{ProductID: "PROD-005", ProductName: "Monitor", Quantity: 120},
-		{ProductID: "PROD-006", ProductName: "Webcam", Quantity: 300},
-		{ProductID: "PROD-007", ProductName: "USB Hub", Quantity: 400},
-		{ProductID: "PROD-008", ProductName: "Mousepad", Quantity: 500},
-		{ProductID: lowStockProductOne, ProductName: "Rare Item", Quantity: 10},
-		{ProductID: lowStockProductTwo, ProductName: "Limited Edition", Quantity: 15},
-		{ProductID: "PROD-PREMIUM-001", ProductName: "Premium Item", Quantity: 100},
+func (r *Reservation) Commit() bool {
+	if r.Status != ReservationStatusReserved {
+		return false
 	}
+	r.Status = ReservationStatusCommitted
+	return true
+}
+
+func (r Reservation) Clone() Reservation {
+	cloned := make([]dto.OrderItemRequest, len(r.Items))
+	copy(cloned, r.Items)
+	r.Items = cloned
+
+	return r
 }
 
 type ProductNotFoundError struct {

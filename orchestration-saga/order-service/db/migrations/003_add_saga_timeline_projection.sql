@@ -1,0 +1,3 @@
+ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS failure_step VARCHAR(50) NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS compensated_steps_json TEXT NOT NULL DEFAULT '[]';

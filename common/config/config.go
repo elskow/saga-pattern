@@ -19,11 +19,16 @@ type ServiceSpec struct {
 }
 
 type RuntimeEnv struct {
-	ServerPort      int           `env:"SERVER_PORT"`
-	DatabaseURL     string        `env:"DATABASE_URL,required"`
-	KafkaBrokers    string        `env:"KAFKA_BROKERS,required"`
-	LogLevel        string        `env:"LOG_LEVEL" envDefault:"INFO"`
-	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"5s"`
+	ServerPort          int           `env:"SERVER_PORT"`
+	DatabaseURL         string        `env:"DATABASE_URL,required"`
+	KafkaBrokers        string        `env:"KAFKA_BROKERS,required"`
+	InventoryServiceURL string        `env:"INVENTORY_SERVICE_URL"`
+	LogLevel            string        `env:"LOG_LEVEL" envDefault:"INFO"`
+	ShutdownTimeout     time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"5s"`
+	SagaStepTimeout     time.Duration `env:"SAGA_STEP_TIMEOUT"`
+	SagaTimeout         time.Duration `env:"SAGA_TIMEOUT"`
+	OTLPEndpoint        string        `env:"OTEL_EXPORTER_OTLP_ENDPOINT"`
+	OTELServiceName     string        `env:"OTEL_SERVICE_NAME"`
 }
 
 type ServiceConfig struct {

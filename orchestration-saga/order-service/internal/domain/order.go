@@ -2,68 +2,58 @@ package domain
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"saga-pattern/common/dto"
-	frameworkruntime "saga-pattern/orchestration-framework/runtime"
+	"saga-pattern/common/tracking"
+	sagaRuntime "saga-pattern/orchestration-framework/runtime"
+	ordersaga "saga-pattern/orchestration-saga/order-service/internal/saga"
 )
 
 const (
-	StatusCreated   = "CREATED"
 	StatusCompleted = "COMPLETED"
 	StatusCancelled = "CANCELLED"
 	StatusFailed    = "FAILED"
 )
 
 type Order struct {
-	OrderID         string
-	CustomerID      string
-	TotalAmount     json.Number
-	ShippingAddress string
-	Items           []dto.OrderItemRequest
-	PaymentID       string
-	ReservationID   string
-	ShippingID      string
-	Status          string
-	FailureReason   string
-	Visible         bool
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	OrderID          string
+	CustomerID       string
+	TotalAmount      json.Number
+	ShippingAddress  string
+	Items            []dto.OrderItemRequest
+	PaymentID        string
+	ReservationID    string
+	ShippingID       string
+	TrackingNumber   string
+	Status           string
+	FailureReason    string
+	FailureStep      string
+	CompensatedSteps []string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
-func NewAccepted(orderID string, request dto.OrchestrationCreateOrderRequest, paymentID string, reservationID string, shippingID string, now time.Time) Order {
-	items := append([]dto.OrderItemRequest(nil), request.Items...)
+// FinalizedFromRuntimeView materializes the public queryable order projection
+// once the orchestration runtime reaches a terminal state.
+func FinalizedFromRuntimeView(view sagaRuntime.View[ordersaga.Data], now time.Time) Order {
 	return Order{
-		OrderID:         orderID,
-		CustomerID:      request.CustomerID,
-		TotalAmount:     request.TotalAmount,
-		ShippingAddress: request.ShippingAddress,
-		Items:           items,
-		PaymentID:       paymentID,
-		ReservationID:   reservationID,
-		ShippingID:      shippingID,
-		Status:          StatusCreated,
-		Visible:         false,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-	}
-}
-
-func FromSnapshot(snapshot frameworkruntime.Snapshot, now time.Time) Order {
-	return Order{
-		OrderID:         snapshot.OrderID,
-		CustomerID:      snapshot.CustomerID,
-		TotalAmount:     snapshot.TotalAmount,
-		ShippingAddress: snapshot.ShippingAddress,
-		Items:           append([]dto.OrderItemRequest(nil), snapshot.Items...),
-		PaymentID:       snapshot.PaymentID,
-		ReservationID:   snapshot.ReservationID,
-		ShippingID:      snapshot.ShippingID,
-		Status:          terminalStatus(snapshot),
-		FailureReason:   snapshot.LastError,
-		Visible:         true,
-		CreatedAt:       snapshot.StartedAt,
-		UpdatedAt:       now,
+		OrderID:          view.Data.OrderID,
+		CustomerID:       view.Data.CustomerID,
+		TotalAmount:      view.Data.TotalAmount,
+		ShippingAddress:  view.Data.ShippingAddress,
+		Items:            append([]dto.OrderItemRequest(nil), view.Data.Items...),
+		PaymentID:        view.Data.PaymentID,
+		ReservationID:    view.Data.ReservationID,
+		ShippingID:       view.Data.ShippingID,
+		TrackingNumber:   tracking.NumberForShippingID(view.Data.ShippingID),
+		Status:           finalizedStatusFromRuntimeView(view),
+		FailureReason:    view.LastError,
+		FailureStep:      failureStepFromRuntimeView(view),
+		CompensatedSteps: compensatedStepsFromRuntimeView(view),
+		CreatedAt:        view.StartedAt,
+		UpdatedAt:        now,
 	}
 }
 
@@ -78,18 +68,68 @@ func (o Order) Response() dto.OrderResponse {
 		})
 	}
 	return dto.OrderResponse{
-		OrderID:     o.OrderID,
-		CustomerID:  o.CustomerID,
-		Status:      o.Status,
-		Items:       items,
-		TotalAmount: o.TotalAmount,
-		CreatedAt:   o.CreatedAt,
-		UpdatedAt:   o.UpdatedAt,
+		OrderID:          o.OrderID,
+		CustomerID:       o.CustomerID,
+		ShippingAddress:  o.ShippingAddress,
+		Status:           o.Status,
+		Items:            items,
+		TotalAmount:      o.TotalAmount,
+		PaymentID:        o.PaymentID,
+		ReservationID:    o.ReservationID,
+		ShippingID:       o.ShippingID,
+		TrackingNumber:   o.TrackingNumber,
+		FailureReason:    o.FailureReason,
+		FailureStep:      o.FailureStep,
+		CompensatedSteps: append([]string(nil), o.CompensatedSteps...),
+		CreatedAt:        o.CreatedAt,
+		UpdatedAt:        o.UpdatedAt,
 	}
 }
 
-func terminalStatus(snapshot frameworkruntime.Snapshot) string {
-	switch snapshot.State {
+func failureStepFromRuntimeView(view sagaRuntime.View[ordersaga.Data]) string {
+	for _, row := range view.StepHistory {
+		if row.Direction == "forward" && row.Status == "failed" {
+			return normalizeStep(row.Step)
+		}
+	}
+	return ""
+}
+
+func compensatedStepsFromRuntimeView(view sagaRuntime.View[ordersaga.Data]) []string {
+	seen := make(map[string]struct{})
+	steps := make([]string, 0)
+	for _, row := range view.StepHistory {
+		if row.Direction != "compensation" || row.Status != "compensated" {
+			continue
+		}
+		step := normalizeStep(row.Step)
+		if step == "" {
+			continue
+		}
+		if _, ok := seen[step]; ok {
+			continue
+		}
+		seen[step] = struct{}{}
+		steps = append(steps, step)
+	}
+	return steps
+}
+
+func normalizeStep(step string) string {
+	switch strings.ToLower(step) {
+	case "payment":
+		return "payment"
+	case "inventory", "inventorycommit":
+		return "inventory"
+	case "shipping":
+		return "shipping"
+	default:
+		return ""
+	}
+}
+
+func finalizedStatusFromRuntimeView(view sagaRuntime.View[ordersaga.Data]) string {
+	switch view.State {
 	case StatusCompleted:
 		return StatusCompleted
 	case StatusCancelled:

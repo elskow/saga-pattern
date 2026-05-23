@@ -11,21 +11,30 @@ const (
 	CommandProcessPayment   = "PROCESS_PAYMENT"
 	CommandRefundPayment    = "REFUND_PAYMENT"
 	CommandReserveInventory = "RESERVE_INVENTORY"
+	CommandCommitInventory  = "COMMIT_INVENTORY"
 	CommandReleaseInventory = "RELEASE_INVENTORY"
 	CommandScheduleShipping = "SCHEDULE_SHIPPING"
 	CommandCancelShipping   = "CANCEL_SHIPPING"
 )
 
 type ProcessPaymentCommand struct {
-	CommandType string      `json:"commandType"`
-	PaymentID   string      `json:"paymentId"`
-	OrderID     string      `json:"orderId"`
-	CustomerID  string      `json:"customerId"`
-	Amount      json.Number `json:"amount"`
+	CommandType string                 `json:"commandType"`
+	PaymentID   string                 `json:"paymentId"`
+	OrderID     string                 `json:"orderId"`
+	CustomerID  string                 `json:"customerId"`
+	Amount      json.Number            `json:"amount"`
+	Items       []dto.OrderItemRequest `json:"items"`
 }
 
-func NewProcessPaymentCommand(paymentID, orderID, customerID string, amount json.Number) ProcessPaymentCommand {
-	return ProcessPaymentCommand{CommandType: CommandProcessPayment, PaymentID: paymentID, OrderID: orderID, CustomerID: customerID, Amount: amount}
+func NewProcessPaymentCommand(paymentID, orderID, customerID string, amount json.Number, items []dto.OrderItemRequest) ProcessPaymentCommand {
+	return ProcessPaymentCommand{
+		CommandType: CommandProcessPayment,
+		PaymentID:   paymentID,
+		OrderID:     orderID,
+		CustomerID:  customerID,
+		Amount:      amount,
+		Items:       items,
+	}
 }
 func (c ProcessPaymentCommand) Validate() error {
 	if err := validate.Expected(c.CommandType, CommandProcessPayment, "commandType"); err != nil {
@@ -40,7 +49,15 @@ func (c ProcessPaymentCommand) Validate() error {
 	if err := validate.NonBlank(c.CustomerID, "customerId"); err != nil {
 		return err
 	}
-	return validate.PositiveNumber(c.Amount, "amount")
+	if err := validate.PositiveNumber(c.Amount, "amount"); err != nil {
+		return err
+	}
+	for _, item := range c.Items {
+		if err := item.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type RefundPaymentCommand struct {
@@ -99,6 +116,25 @@ type ReleaseInventoryCommand struct {
 	OrderID       string `json:"orderId"`
 }
 
+type CommitInventoryCommand struct {
+	CommandType   string `json:"commandType"`
+	ReservationID string `json:"reservationId"`
+	OrderID       string `json:"orderId"`
+}
+
+func NewCommitInventoryCommand(reservationID, orderID string) CommitInventoryCommand {
+	return CommitInventoryCommand{CommandType: CommandCommitInventory, ReservationID: reservationID, OrderID: orderID}
+}
+func (c CommitInventoryCommand) Validate() error {
+	if err := validate.Expected(c.CommandType, CommandCommitInventory, "commandType"); err != nil {
+		return err
+	}
+	if err := validate.NonBlank(c.ReservationID, "reservationId"); err != nil {
+		return err
+	}
+	return validate.NonBlank(c.OrderID, "orderId")
+}
+
 func NewReleaseInventoryCommand(reservationID, orderID string) ReleaseInventoryCommand {
 	return ReleaseInventoryCommand{CommandType: CommandReleaseInventory, ReservationID: reservationID, OrderID: orderID}
 }
@@ -142,7 +178,11 @@ type CancelShippingCommand struct {
 }
 
 func NewCancelShippingCommand(shippingID, orderID string) CancelShippingCommand {
-	return CancelShippingCommand{CommandType: CommandCancelShipping, ShippingID: shippingID, OrderID: orderID}
+	return CancelShippingCommand{
+		CommandType: CommandCancelShipping,
+		ShippingID:  shippingID,
+		OrderID:     orderID,
+	}
 }
 func (c CancelShippingCommand) Validate() error {
 	if err := validate.Expected(c.CommandType, CommandCancelShipping, "commandType"); err != nil {

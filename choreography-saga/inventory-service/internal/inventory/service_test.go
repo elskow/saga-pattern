@@ -14,6 +14,7 @@ import (
 	"saga-pattern/common/dto"
 	"saga-pattern/common/events"
 	commonkafka "saga-pattern/common/kafka"
+	"saga-pattern/common/testutil"
 )
 
 func TestReserveInventoryPublishesReservedEvent(t *testing.T) {
@@ -22,13 +23,13 @@ func TestReserveInventoryPublishesReservedEvent(t *testing.T) {
 	orderEvent := events.NewOrderCreatedEvent(
 		"ORDER-INV-1",
 		"CUST-INV",
-		"123 Inventory Road",
+		"Jl. Ketintang Wiyata, Surabaya 60231",
 		"corr-inventory-1",
-		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 2, Price: json.Number("999.99")}},
-		json.Number("1999.98"),
+		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 2, Price: json.Number("15999000")}},
+		json.Number("31998000"),
 		now,
 	)
-	paymentEvent := events.NewPaymentCompletedEvent("PAY-INV-1", orderEvent.OrderID, json.Number("1999.98"), "TX-INV-1", now.Add(time.Minute), orderEvent.CorrelationID, now.Add(time.Minute))
+	paymentEvent := events.NewPaymentCompletedEvent("PAY-INV-1", orderEvent.OrderID, json.Number("31998000"), "TX-INV-1", now.Add(time.Minute), orderEvent.CorrelationID, now.Add(time.Minute))
 
 	if err := deliverEvent(consumer, commonkafka.DefaultOrderEventsTopic, orderEvent.OrderID, orderEvent); err != nil {
 		t.Fatalf("consume order created: %v", err)
@@ -66,19 +67,54 @@ func TestReserveInventoryPublishesReservedEvent(t *testing.T) {
 	}
 }
 
-func TestLowStockProductPublishesReservationFailed(t *testing.T) {
+func TestPaymentCompletedWaitsForOrderCreated(t *testing.T) {
+	consumer, _, publisher := newTestService(t)
+	now := time.Date(2026, 4, 13, 17, 30, 0, 0, time.UTC)
+	orderEvent := events.NewOrderCreatedEvent(
+		"ORDER-INV-RACE",
+		"CUST-INV-RACE",
+		"Jl. Ketintang Wiyata, Surabaya 60231",
+		"corr-inventory-race",
+		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 1, Price: json.Number("15999000")}},
+		json.Number("15999000"),
+		now,
+	)
+	paymentEvent := events.NewPaymentCompletedEvent("PAY-INV-RACE", orderEvent.OrderID, json.Number("15999000"), "TX-INV-RACE", now.Add(time.Minute), orderEvent.CorrelationID, now.Add(time.Minute))
+	errCh := make(chan error, 1)
+
+	go func() {
+		errCh <- deliverEvent(consumer, commonkafka.DefaultPaymentEventsTopic, orderEvent.OrderID, paymentEvent)
+	}()
+	time.Sleep(30 * time.Millisecond)
+	if err := deliverEvent(consumer, commonkafka.DefaultOrderEventsTopic, orderEvent.OrderID, orderEvent); err != nil {
+		t.Fatalf("consume order created: %v", err)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("consume payment completed: %v", err)
+	}
+
+	messages := publisher.Messages()
+	if len(messages) != 1 {
+		t.Fatalf("published message count = %d, want 1", len(messages))
+	}
+	if _, ok := messages[0].Body.(events.InventoryReservedEvent); !ok {
+		t.Fatalf("published body type = %T, want InventoryReservedEvent", messages[0].Body)
+	}
+}
+
+func TestInsufficientStockPublishesReservationFailed(t *testing.T) {
 	consumer, repo, publisher := newTestService(t)
 	now := time.Date(2026, 4, 13, 18, 0, 0, 0, time.UTC)
 	orderEvent := events.NewOrderCreatedEvent(
-		"ORDER-INV-LOW",
-		"CUST-LOW",
-		"4 Scarcity Lane",
+		"ORDER-INV-OVER",
+		"CUST-OVER",
+		"Jl. Ketintang Wiyata, Surabaya 60231",
 		"corr-low-stock",
-		[]dto.OrderItemRequest{{ProductID: "PROD-LOW-001", ProductName: "Rare Item", Quantity: 100, Price: json.Number("25.00")}},
-		json.Number("2500.00"),
+		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 1000, Price: json.Number("15999000")}},
+		json.Number("15999000000"),
 		now,
 	)
-	paymentEvent := events.NewPaymentCompletedEvent("PAY-LOW-1", orderEvent.OrderID, json.Number("2500.00"), "TX-LOW-1", now.Add(time.Minute), orderEvent.CorrelationID, now.Add(time.Minute))
+	paymentEvent := events.NewPaymentCompletedEvent("PAY-OVER-1", orderEvent.OrderID, json.Number("15999000000"), "TX-OVER-1", now.Add(time.Minute), orderEvent.CorrelationID, now.Add(time.Minute))
 
 	if err := deliverEvent(consumer, commonkafka.DefaultOrderEventsTopic, orderEvent.OrderID, orderEvent); err != nil {
 		t.Fatalf("consume order created: %v", err)
@@ -95,18 +131,18 @@ func TestLowStockProductPublishesReservationFailed(t *testing.T) {
 	if !ok {
 		t.Fatalf("published body type = %T, want InventoryReservationFailedEvent", messages[0].Body)
 	}
-	if failed.ProductID != "PROD-LOW-001" {
-		t.Fatalf("failed product id = %q, want %q", failed.ProductID, "PROD-LOW-001")
+	if failed.ProductID != "PROD-001" {
+		t.Fatalf("failed product id = %q, want %q", failed.ProductID, "PROD-001")
 	}
-	product, ok, err := repo.Product(context.Background(), "PROD-LOW-001")
+	product, ok, err := repo.Product(context.Background(), "PROD-001")
 	if err != nil {
-		t.Fatalf("lookup low-stock product: %v", err)
+		t.Fatalf("lookup product: %v", err)
 	}
 	if !ok {
-		t.Fatalf("product PROD-LOW-001 missing after failed reservation")
+		t.Fatalf("product PROD-001 missing after failed reservation")
 	}
-	if product.QuantityAvailable != 10 || product.QuantityReserved != 0 {
-		t.Fatalf("low-stock product quantities = available:%d reserved:%d, want 10/0", product.QuantityAvailable, product.QuantityReserved)
+	if product.QuantityAvailable != 100 || product.QuantityReserved != 0 {
+		t.Fatalf("product quantities = available:%d reserved:%d, want 100/0", product.QuantityAvailable, product.QuantityReserved)
 	}
 }
 
@@ -116,13 +152,13 @@ func TestReleaseCompensationIsIdempotent(t *testing.T) {
 	orderEvent := events.NewOrderCreatedEvent(
 		"ORDER-INV-REL",
 		"CUST-REL",
-		"8 Compensation Way",
+		"Jl. Ketintang Wiyata, Surabaya 60231",
 		"corr-release",
-		[]dto.OrderItemRequest{{ProductID: "PROD-002", ProductName: "Phone", Quantity: 3, Price: json.Number("149.99")}},
-		json.Number("449.97"),
+		[]dto.OrderItemRequest{{ProductID: "PROD-002", ProductName: "Phone", Quantity: 3, Price: json.Number("2399000")}},
+		json.Number("7197000"),
 		now,
 	)
-	paymentEvent := events.NewPaymentCompletedEvent("PAY-REL-1", orderEvent.OrderID, json.Number("449.97"), "TX-REL-1", now.Add(time.Minute), orderEvent.CorrelationID, now.Add(time.Minute))
+	paymentEvent := events.NewPaymentCompletedEvent("PAY-REL-1", orderEvent.OrderID, json.Number("7197000"), "TX-REL-1", now.Add(time.Minute), orderEvent.CorrelationID, now.Add(time.Minute))
 	shippingFailed := events.NewShippingFailedEvent(orderEvent.OrderID, "carrier unavailable", now.Add(2*time.Minute), orderEvent.CorrelationID, now.Add(2*time.Minute))
 
 	if err := deliverEvent(consumer, commonkafka.DefaultOrderEventsTopic, orderEvent.OrderID, orderEvent); err != nil {
@@ -167,13 +203,13 @@ func TestDuplicatePaymentCompletedReplayIsSafe(t *testing.T) {
 	orderEvent := events.NewOrderCreatedEvent(
 		"ORDER-INV-DUPE",
 		"CUST-DUPE",
-		"12 Replay Circle",
+		"Jl. Ketintang Wiyata, Surabaya 60231",
 		"corr-dupe",
-		[]dto.OrderItemRequest{{ProductID: "PROD-003", ProductName: "Headphones", Quantity: 1, Price: json.Number("79.99")}},
-		json.Number("79.99"),
+		[]dto.OrderItemRequest{{ProductID: "PROD-003", ProductName: "Headphones", Quantity: 1, Price: json.Number("1299000")}},
+		json.Number("1299000"),
 		now,
 	)
-	paymentEvent := events.NewPaymentCompletedEvent("PAY-DUPE-1", orderEvent.OrderID, json.Number("79.99"), "TX-DUPE-1", now.Add(time.Minute), orderEvent.CorrelationID, now.Add(time.Minute))
+	paymentEvent := events.NewPaymentCompletedEvent("PAY-DUPE-1", orderEvent.OrderID, json.Number("1299000"), "TX-DUPE-1", now.Add(time.Minute), orderEvent.CorrelationID, now.Add(time.Minute))
 
 	if err := deliverEvent(consumer, commonkafka.DefaultOrderEventsTopic, orderEvent.OrderID, orderEvent); err != nil {
 		t.Fatalf("consume order created: %v", err)
@@ -189,14 +225,24 @@ func TestDuplicatePaymentCompletedReplayIsSafe(t *testing.T) {
 	}
 }
 
-func newTestService(t *testing.T) (*messaging.DownstreamConsumer, repository.Repository, *messaging.RecordingPublisher) {
+func newTestService(t *testing.T) (*messaging.DownstreamConsumer, repository.Repository, *testutil.RecordingPublisher) {
 	t.Helper()
-	repo := repository.NewMemoryRepository()
+	consumer, repo, publisher, _ := newTestServiceWithService(t)
+	return consumer, repo, publisher
+}
+
+func newTestServiceWithService(t *testing.T) (*messaging.DownstreamConsumer, repository.Repository, *testutil.RecordingPublisher, *Service) {
+	t.Helper()
+	db := testutil.OpenPostgres(t, testutil.DefaultChoreographyInventoryDatabaseURL, "choreography_inventory_service_test", testutil.Migration{Scope: "choreography-inventory-service", Dir: "choreography-saga/inventory-service/db/migrations"})
+	repo, err := repository.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatalf("new postgres repository: %v", err)
+	}
 	metrics, err := observability.NewMetrics(nil)
 	if err != nil {
 		t.Fatalf("new metrics: %v", err)
 	}
-	publisher := messaging.NewRecordingPublisher()
+	publisher := testutil.NewRecordingPublisher()
 	service, err := NewService(repo, messaging.NewInventoryTopicPublisher(publisher), metrics)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
@@ -207,7 +253,7 @@ func newTestService(t *testing.T) (*messaging.DownstreamConsumer, repository.Rep
 	if err != nil {
 		t.Fatalf("new downstream consumer: %v", err)
 	}
-	return consumer, repo, publisher
+	return consumer, repo, publisher, service
 }
 
 func sequenceIDs(values ...string) func() string {
@@ -230,24 +276,28 @@ func deliverEvent(consumer *messaging.DownstreamConsumer, topic string, key stri
 	return consumer.Consume(context.Background(), messaging.DownstreamEnvelope{Topic: topic, Key: key, Value: payload})
 }
 
-func TestRepositorySeedsLowStockFixtures(t *testing.T) {
-	repo := repository.NewMemoryRepository()
+func TestRepositorySeedsCatalogProducts(t *testing.T) {
+	db := testutil.OpenPostgres(t, testutil.DefaultChoreographyInventoryDatabaseURL, "choreography_inventory_fixture_test", testutil.Migration{Scope: "choreography-inventory-service", Dir: "choreography-saga/inventory-service/db/migrations"})
+	repo, err := repository.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatalf("new postgres repository: %v", err)
+	}
 	for _, fixture := range []struct {
 		id        string
 		available int
 	}{
-		{id: "PROD-LOW-001", available: 10},
-		{id: "PROD-LOW-002", available: 15},
+		{id: "PROD-001", available: 100},
+		{id: "PROD-005", available: 120},
 	} {
 		product, ok, err := repo.Product(context.Background(), fixture.id)
 		if err != nil {
 			t.Fatalf("lookup product %s: %v", fixture.id, err)
 		}
 		if !ok {
-			t.Fatalf("fixture product %s missing", fixture.id)
+			t.Fatalf("seed product %s missing", fixture.id)
 		}
 		if product.QuantityAvailable != fixture.available {
-			t.Fatalf("fixture product %s available = %d, want %d", fixture.id, product.QuantityAvailable, fixture.available)
+			t.Fatalf("seed product %s available = %d, want %d", fixture.id, product.QuantityAvailable, fixture.available)
 		}
 	}
 }

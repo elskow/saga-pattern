@@ -1,31 +1,46 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"saga-pattern/common/dto"
 )
 
-const (
-	lowStockProductOne = "PROD-LOW-001"
-	lowStockProductTwo = "PROD-LOW-002"
-)
-
 type ReservationStatus string
 
 const (
-	ReservationStatusReserved ReservationStatus = "RESERVED"
-	ReservationStatusReleased ReservationStatus = "RELEASED"
+	ReservationStatusReserved  ReservationStatus = "RESERVED"
+	ReservationStatusCommitted ReservationStatus = "COMMITTED"
+	ReservationStatusReleased  ReservationStatus = "RELEASED"
 )
 
 type Product struct {
 	ProductID         string
 	ProductName       string
+	Description       string
+	Price             json.Number
+	Image             string
+	Category          string
+	Visible           bool
 	QuantityAvailable int
 	QuantityReserved  int
+	LastRestockedAt   time.Time
 	LastReservationAt time.Time
 	LastReleaseAt     time.Time
+}
+
+func (p *Product) SetTotalStock(total int, at time.Time) error {
+	if total < 0 {
+		return fmt.Errorf("total stock cannot be negative")
+	}
+	if total < p.QuantityReserved {
+		return fmt.Errorf("total stock cannot be less than reserved quantity")
+	}
+	p.QuantityAvailable = total - p.QuantityReserved
+	p.LastRestockedAt = at.UTC()
+	return nil
 }
 
 func (p *Product) Reserve(quantity int, at time.Time) error {
@@ -65,11 +80,19 @@ type Reservation struct {
 }
 
 func (r *Reservation) Release(at time.Time) bool {
-	if r.Status == ReservationStatusReleased {
+	if r.Status == ReservationStatusReleased || r.Status == ReservationStatusCommitted {
 		return false
 	}
 	r.Status = ReservationStatusReleased
 	r.ReleasedAt = at.UTC()
+	return true
+}
+
+func (r *Reservation) Commit() bool {
+	if r.Status != ReservationStatusReserved {
+		return false
+	}
+	r.Status = ReservationStatusCommitted
 	return true
 }
 
@@ -85,22 +108,6 @@ func PendingItemsFromOrder(orderID string, items []dto.OrderItemRequest) []Pendi
 		pending = append(pending, PendingOrderItem{OrderID: orderID, ProductID: item.ProductID, Quantity: item.Quantity})
 	}
 	return pending
-}
-
-func DefaultProducts() []Product {
-	return []Product{
-		{ProductID: "PROD-001", ProductName: "Laptop", QuantityAvailable: 100},
-		{ProductID: "PROD-002", ProductName: "Smartphone", QuantityAvailable: 200},
-		{ProductID: "PROD-003", ProductName: "Headphones", QuantityAvailable: 500},
-		{ProductID: "PROD-004", ProductName: "Tablet", QuantityAvailable: 150},
-		{ProductID: "PROD-005", ProductName: "Monitor", QuantityAvailable: 120},
-		{ProductID: "PROD-006", ProductName: "Webcam", QuantityAvailable: 300},
-		{ProductID: "PROD-007", ProductName: "USB Hub", QuantityAvailable: 400},
-		{ProductID: "PROD-008", ProductName: "Mousepad", QuantityAvailable: 500},
-		{ProductID: lowStockProductOne, ProductName: "Rare Item", QuantityAvailable: 10},
-		{ProductID: lowStockProductTwo, ProductName: "Limited Edition", QuantityAvailable: 15},
-		{ProductID: "PROD-PREMIUM-001", ProductName: "Premium Item", QuantityAvailable: 100},
-	}
 }
 
 type ProductNotFoundError struct {

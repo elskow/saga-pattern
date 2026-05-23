@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
-	"strings"
+	"math/big"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"saga-pattern/common/dto"
 	"saga-pattern/common/events"
 	commonkafka "saga-pattern/common/kafka"
+	"saga-pattern/common/testutil"
 )
 
 func TestOrderCreatedPublishesPaymentCompleted(t *testing.T) {
@@ -25,10 +27,10 @@ func TestOrderCreatedPublishesPaymentCompleted(t *testing.T) {
 	event := events.NewOrderCreatedEvent(
 		"ORDER-123",
 		"CUST-001",
-		"123 Main Street",
+		"Jl. Ketintang Wiyata, Surabaya 60231",
 		"corr-123",
-		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Widget", Quantity: 1, Price: json.Number("99.99")}},
-		json.Number("99.99"),
+		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Widget", Quantity: 1, Price: json.Number("1599000")}},
+		json.Number("1599000"),
 		now,
 	)
 
@@ -65,22 +67,56 @@ func TestOrderCreatedPublishesPaymentCompleted(t *testing.T) {
 	}
 }
 
-func TestPremiumProductPublishesPaymentFailed(t *testing.T) {
+func TestHighAmountOrderPublishesPaymentCompleted(t *testing.T) {
 	consumer, repo, publisher := newTestService(t)
 	now := time.Date(2026, 4, 13, 13, 0, 0, 0, time.UTC)
 
 	event := events.NewOrderCreatedEvent(
-		"ORDER-PREMIUM",
+		"ORDER-HIGH",
 		"CUST-999",
 		"9 Premium Avenue",
-		"corr-premium",
-		[]dto.OrderItemRequest{{ProductID: premiumFailureProductID, ProductName: "Premium Item", Quantity: 1, Price: json.Number("10000.00")}},
+		"corr-high",
+		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 10, Price: json.Number("1000.00")}},
 		json.Number("10000.00"),
 		now,
 	)
 
 	if err := deliverEvent(consumer, commonkafka.DefaultOrderEventsTopic, event.OrderID, event); err != nil {
-		t.Fatalf("consume premium order created: %v", err)
+		t.Fatalf("consume high amount order created: %v", err)
+	}
+
+	messages := publisher.Messages()
+	if len(messages) != 1 {
+		t.Fatalf("published message count = %d, want 1", len(messages))
+	}
+	if _, ok := messages[0].Body.(events.PaymentCompletedEvent); !ok {
+		t.Fatalf("published body type = %T, want PaymentCompletedEvent", messages[0].Body)
+	}
+	payment, ok, err := repo.GetByOrderID(context.Background(), event.OrderID)
+	if err != nil {
+		t.Fatalf("get payment by order id: %v", err)
+	}
+	if !ok || payment.Status != domain.PaymentStatusCompleted {
+		t.Fatalf("payment = %+v, found=%v", payment, ok)
+	}
+}
+
+func TestInsufficientDepositBalancePublishesPaymentFailed(t *testing.T) {
+	consumer, repo, publisher, service := newTestServiceWithService(t)
+	service.SetDepositBalance(big.NewRat(50, 1))
+	now := time.Date(2026, 4, 13, 13, 30, 0, 0, time.UTC)
+	event := events.NewOrderCreatedEvent(
+		"ORDER-BALANCE",
+		"CUST-BALANCE",
+		"9 Balance Avenue",
+		"corr-balance",
+		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 1, Price: json.Number("1599000")}},
+		json.Number("1599000"),
+		now,
+	)
+
+	if err := deliverEvent(consumer, commonkafka.DefaultOrderEventsTopic, event.OrderID, event); err != nil {
+		t.Fatalf("consume order created: %v", err)
 	}
 
 	messages := publisher.Messages()
@@ -91,18 +127,45 @@ func TestPremiumProductPublishesPaymentFailed(t *testing.T) {
 	if !ok {
 		t.Fatalf("published body type = %T, want PaymentFailedEvent", messages[0].Body)
 	}
-	if !strings.Contains(failed.Reason, premiumFailureProductID) {
-		t.Fatalf("failure reason = %q, want fixture product id", failed.Reason)
+	if failed.Reason != "insufficient deposit balance" {
+		t.Fatalf("failure reason = %q", failed.Reason)
 	}
 	payment, ok, err := repo.GetByOrderID(context.Background(), event.OrderID)
 	if err != nil {
 		t.Fatalf("get payment by order id: %v", err)
 	}
-	if !ok {
-		t.Fatalf("payment not stored for order %s", event.OrderID)
+	if !ok || payment.Status != domain.PaymentStatusFailed {
+		t.Fatalf("payment = %+v, found=%v", payment, ok)
 	}
-	if payment.Status != domain.PaymentStatusFailed {
-		t.Fatalf("payment status = %s, want %s", payment.Status, domain.PaymentStatusFailed)
+}
+
+func TestConcurrentDepositDeductionsDeductOnlySuccessfulPayment(t *testing.T) {
+	_, _, _, service := newTestServiceWithService(t)
+	service.SetDepositBalance(big.NewRat(100, 1))
+
+	var wg sync.WaitGroup
+	results := make(chan bool, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results <- service.CheckAndDeductBalance(big.NewRat(75, 1))
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	successes := 0
+	for ok := range results {
+		if ok {
+			successes++
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("successful deductions = %d, want 1", successes)
+	}
+	if got := service.GetDepositBalance(); got.Cmp(big.NewRat(25, 1)) != 0 {
+		t.Fatalf("deposit balance = %s, want 25", got.RatString())
 	}
 }
 
@@ -115,7 +178,7 @@ func TestDuplicateOrderCreatedReplayIsSafe(t *testing.T) {
 		"CUST-002",
 		"22 Replay Road",
 		"corr-dupe",
-		[]dto.OrderItemRequest{{ProductID: "PROD-002", ProductName: "Basic", Quantity: 2, Price: json.Number("149.99")}},
+		[]dto.OrderItemRequest{{ProductID: "PROD-002", ProductName: "Basic", Quantity: 2, Price: json.Number("2399000")}},
 		json.Number("299.98"),
 		now,
 	)
@@ -150,8 +213,8 @@ func TestInventoryFailurePublishesPaymentRefunded(t *testing.T) {
 		"CUST-003",
 		"7 Refund Street",
 		"corr-refund",
-		[]dto.OrderItemRequest{{ProductID: "PROD-003", ProductName: "Refundable", Quantity: 1, Price: json.Number("79.99")}},
-		json.Number("79.99"),
+		[]dto.OrderItemRequest{{ProductID: "PROD-003", ProductName: "Refundable", Quantity: 1, Price: json.Number("1299000")}},
+		json.Number("1299000"),
 		now,
 	)
 
@@ -186,14 +249,24 @@ func TestInventoryFailurePublishesPaymentRefunded(t *testing.T) {
 	}
 }
 
-func newTestService(t *testing.T) (*messaging.DownstreamConsumer, *repository.MemoryRepository, *messaging.RecordingPublisher) {
+func newTestService(t *testing.T) (*messaging.DownstreamConsumer, repository.Repository, *testutil.RecordingPublisher) {
 	t.Helper()
-	repo := repository.NewMemoryRepository()
+	consumer, repo, publisher, _ := newTestServiceWithService(t)
+	return consumer, repo, publisher
+}
+
+func newTestServiceWithService(t *testing.T) (*messaging.DownstreamConsumer, repository.Repository, *testutil.RecordingPublisher, *Service) {
+	t.Helper()
+	db := testutil.OpenPostgres(t, testutil.DefaultChoreographyPaymentDatabaseURL, "choreography_payment_service_test", testutil.Migration{Scope: "choreography-payment-service", Dir: "choreography-saga/payment-service/db/migrations"})
+	repo, err := repository.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatalf("new postgres repository: %v", err)
+	}
 	metrics, err := observability.NewMetrics(nil)
 	if err != nil {
 		t.Fatalf("new metrics: %v", err)
 	}
-	publisher := messaging.NewRecordingPublisher()
+	publisher := testutil.NewRecordingPublisher()
 	service, err := NewService(repo, messaging.NewPaymentTopicPublisher(publisher), metrics)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
@@ -204,7 +277,7 @@ func newTestService(t *testing.T) (*messaging.DownstreamConsumer, *repository.Me
 	if err != nil {
 		t.Fatalf("new downstream consumer: %v", err)
 	}
-	return consumer, repo, publisher
+	return consumer, repo, publisher, service
 }
 
 func sequenceIDs(values ...string) func() string {

@@ -38,10 +38,15 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 		[]string{labelPattern, labelService},
 	)
 
+	registered := make([]prometheus.Collector, 0, 2)
 	for _, collector := range []prometheus.Collector{stepDuration, compensations} {
 		if err := registry.Register(collector); err != nil {
+			for _, registeredCollector := range registered {
+				registry.Unregister(registeredCollector)
+			}
 			return nil, err
 		}
+		registered = append(registered, collector)
 	}
 
 	return &Metrics{

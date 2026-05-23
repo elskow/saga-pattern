@@ -8,7 +8,7 @@ The default runtime is now Go for both variants.
 
 * **Choreography**: Go services communicate through Kafka events.
 * **Orchestration**: Go services use an order service orchestrator over Kafka and Postgres.
-* **Methodology**: both variants are exercised with the same API shape, the same Gatling simulations, and the same observability surface.
+* **Methodology**: both variants are exercised with the same API shape, the same k6 scenarios, and the same Grafana observability surface.
 
 The business flow stays the same in both variants:
 
@@ -23,9 +23,9 @@ The business flow stays the same in both variants:
 ### Go default path
 
 * Choreography is a Go deployment on ports `8081` to `8084`.
-* Orchestration is a Go deployment with a benchmark entrypoint on `8085`.
-* In scaled orchestration benchmark runs, order service replicas are scraped on `8085`, `8086`, `8087`, and `8088`. The exact replica list is `8085, 8086, 8087, 8088`.
-* Internal orchestration participants stay on `8091`, `8092`, and `8093`. The exact participant list is `8091, 8092, 8093`.
+* Orchestration is a Go deployment with a benchmark entrypoint on `8091`.
+* In scaled orchestration benchmark runs, the order service replica scrape list is `8091, 8095, 8096, 8097`.
+* Internal orchestration participants stay on `8092`, `8093`, and `8094`. The exact participant list is `8092, 8093, 8094`.
 * Kafka is the transport for both variants.
 * Postgres backs the orchestration runtime and the service state used by the benchmark stack.
 
@@ -40,11 +40,14 @@ These are the root commands you should reach for first:
 * `make up-infra` starts the shared local infrastructure.
 * `make up-choreography` starts the local choreography stack.
 * `make up-orchestration` starts the local orchestration stack.
+* `make up-dual-local` starts a dev-only local mode where both variants run together.
+* `make status-dual-local` shows the dual-mode stack state.
+* `make down-dual-local` stops the dual-mode stack.
 * `make down` stops local stacks.
 * `make smoke-choreography` runs the Go choreography smoke harness.
 * `make smoke-orchestration` runs the Go orchestration smoke harness.
-* `make gatling-choreography-quick` runs the quick Gatling choreography suite.
-* `make gatling-orchestration-quick` runs the quick Gatling orchestration suite.
+* `make k6-choreography-quick` runs the quick k6 choreography thesis smoke.
+* `make k6-orchestration-quick` runs the quick k6 orchestration thesis smoke.
 * `make verify-thesis-surface` checks docs and frozen benchmark references against the compatibility matrix.
 * `make verify-jenkins-benchmark` checks `Jenkinsfile.benchmark` surface expectations.
 
@@ -55,19 +58,38 @@ These are the root commands you should reach for first:
 | Pattern | Order | Payment | Inventory | Shipping |
 |---|---:|---:|---:|---:|
 | Choreography | 8081 | 8082 | 8083 | 8084 |
-| Orchestration | 8085 | 8086 | 8087 | 8088 |
+| Orchestration | 8091 | 8092 | 8093 | 8094 |
 
 Health path: `/actuator/health`  
 Prometheus path: `/actuator/prometheus`
+
+### Dev-only dual local mode
+
+The repo also supports an additive local mode where both variants run together on the same host.
+
+```bash
+make up-dual-local
+make status-dual-local
+make down-dual-local
+```
+
+Rules for this mode:
+
+* it is **dev-only**, not the benchmark/thesis execution path
+* it reuses the same local compose files as isolated local runs
+* it starts shared infra and observability by default
+* it uses suffix-style runtime-facing names such as `payment-service-choreography` and `payment-service-orchestration`
+* it fails fast if the isolated choreography/orchestration local mode is already running
+* benchmark/OpenTofu contracts remain unchanged
 
 ### VM benchmark surface
 
 | Pattern | Benchmark entrypoint | Replica scrape targets | Internal participants |
 |---|---:|---|---|
 | Choreography | 8081 | 8081, 8082, 8083, 8084 | 8091, 8092, 8093 |
-| Orchestration | 8085 | 8085, 8086, 8087, 8088 | 8091, 8092, 8093 |
+| Orchestration | 8091 | 8091, 8095, 8096, 8097 | 8092, 8093, 8094 |
 
-For orchestration, the benchmark client sends traffic to `8085`. Prometheus and benchmark health checks may still hit the full `8085` to `8088` replica range during scaled runs.
+For orchestration, the benchmark client sends traffic to `8091`. Prometheus and benchmark health checks may still hit the full scaled order-replica range during scaled runs.
 
 ## API surface
 
@@ -103,7 +125,7 @@ curl -X POST http://localhost:8081/api/orders \
   }'
 
 # Orchestration
-curl -X POST http://localhost:8085/api/orders \
+curl -X POST http://localhost:8091/api/orders \
   -H 'Content-Type: application/json' \
   -d '{
     "customerId": "CUST-001",
@@ -131,12 +153,36 @@ make verify-jenkins-benchmark
 go test ./test/compatibility/... -run TestDocsMatchCompatibilityMatrix
 ```
 
-### Quick Gatling runs
+### Quick k6 Runs
 
 ```bash
-make gatling-choreography-quick
-make gatling-orchestration-quick
+make k6-choreography-quick
+make k6-orchestration-quick
+load-testing/thesis/run-k6-thesis.sh --pattern choreography --scenario inventory-reservation-failure --profile quick
 ```
+
+Use the unified suite as the default thesis evidence so Grafana shows one continuous dataset while k6 labels still separate `suite_label`, `pattern`, `scenario`, and `run_label`:
+
+```bash
+load-testing/thesis/run-k6-thesis.sh \
+  --suite \
+  --suite-kind comparison \
+  --suite-label final-grafana-suite \
+  --profile thesis-targeted \
+  --k6-web-dashboard
+```
+
+Suite mode starts infra, Grafana observability, choreography services, and orchestration services once. Service images are built only at suite startup; changing scenario phases does not rebuild images or restart the runtime.
+For Grafana-mode runs, k6 Prometheus remote-write is enabled and verified by default so the Grafana dashboards can show k6 TPS, latency, and correctness directly.
+
+Use secondary suites when the thesis needs evidence beyond the core comparison:
+
+```bash
+load-testing/thesis/run-k6-thesis.sh --suite --suite-kind scalability --suite-label final-scalability-suite --profile thesis-stress --k6-web-dashboard
+load-testing/thesis/run-k6-thesis.sh --suite --suite-kind resilience --suite-label final-resilience-suite --profile thesis-targeted --k6-web-dashboard
+```
+
+`scalability` covers `gradual-rampup` and `contention`; `resilience` covers injected inventory/shipping failures followed by recovery successful-order phases.
 
 ### Jenkins benchmark contract
 
@@ -144,19 +190,16 @@ make gatling-orchestration-quick
 
 * `BUILD_LABEL`
 * `PROFILE`
-* `SIMULATION`
+* `SCENARIO`
 * `RUN_CHOREOGRAPHY`
 * `RUN_ORCHESTRATION`
-* `WARMUP_REQUESTS`
-* `COOLDOWN_SECONDS`
 * `SAGA_NODE_IP`
-* `GATLING_RUNNER_IP`
 * `PULL_FRESH_IMAGES`
-* `SCALE_FACTOR`
 
 Supported benchmark profiles stay:
 
 * `quick`
+* `thesis-targeted`
 * `thesis-baseline`
 * `thesis-stress`
 

@@ -75,33 +75,32 @@ type compatibilityMatrix struct {
 		QuerySurfaces       []string `json:"querySurfaces"`
 	} `json:"metrics"`
 	Jenkins struct {
-		Parameters  []string `json:"parameters"`
-		Profiles    []string `json:"profiles"`
-		Simulations []string `json:"simulations"`
+		Parameters []string `json:"parameters"`
+		Profiles   []string `json:"profiles"`
+		Scenarios  []string `json:"scenarios"`
 	} `json:"jenkins"`
-	Gatling struct {
+	K6 struct {
 		PatternPropertyValues       []string       `json:"patternPropertyValues"`
 		AcceptedCreateOrderStatuses []int          `json:"acceptedCreateOrderStatuses"`
 		AcceptedPollStatuses        []int          `json:"acceptedPollStatuses"`
 		TerminalStatuses            []string       `json:"terminalStatuses"`
 		DefaultBasePorts            map[string]int `json:"defaultBasePorts"`
-		NamedSimulations            []string       `json:"namedSimulations"`
-	} `json:"gatling"`
+		Defaults                    struct {
+			MaxPollAttempts int `json:"maxPollAttempts"`
+			PollIntervalMs  int `json:"pollIntervalMs"`
+		} `json:"defaults"`
+		Scenarios []string `json:"scenarios"`
+	} `json:"k6"`
 	Products struct {
 		Standard []struct {
 			ProductID       string `json:"productId"`
 			ExpectedOutcome string `json:"expectedOutcome"`
 		} `json:"standard"`
-		LowStock struct {
+		InventoryShortage struct {
 			ProductID       string `json:"productId"`
 			ExpectedOutcome string `json:"expectedOutcome"`
 			FailureReason   string `json:"failureReason"`
-		} `json:"lowStock"`
-		HighValue struct {
-			ProductID       string `json:"productId"`
-			ExpectedOutcome string `json:"expectedOutcome"`
-			FailureReason   string `json:"failureReason"`
-		} `json:"highValue"`
+		} `json:"inventoryShortage"`
 	} `json:"products"`
 }
 
@@ -112,20 +111,23 @@ func TestCompatibilityMatrixComplete(t *testing.T) {
 	}
 }
 
-func TestGatlingSurfaceFixtures(t *testing.T) {
+func TestK6SurfaceFixtures(t *testing.T) {
 	matrix := loadMatrix(t, fixturePath(t))
 
-	if !slices.Equal(matrix.Gatling.AcceptedCreateOrderStatuses, []int{200, 201, 202}) {
-		t.Fatalf("accepted create-order statuses mismatch: %v", matrix.Gatling.AcceptedCreateOrderStatuses)
+	if !slices.Equal(matrix.K6.AcceptedCreateOrderStatuses, []int{200, 201, 202}) {
+		t.Fatalf("accepted create-order statuses mismatch: %v", matrix.K6.AcceptedCreateOrderStatuses)
 	}
-	if !slices.Equal(matrix.Gatling.AcceptedPollStatuses, []int{200, 404}) {
-		t.Fatalf("accepted poll statuses mismatch: %v", matrix.Gatling.AcceptedPollStatuses)
+	if !slices.Equal(matrix.K6.AcceptedPollStatuses, []int{200, 404}) {
+		t.Fatalf("accepted poll statuses mismatch: %v", matrix.K6.AcceptedPollStatuses)
 	}
-	if !slices.Equal(matrix.Gatling.TerminalStatuses, []string{"COMPLETED", "CANCELLED", "FAILED"}) {
-		t.Fatalf("terminal statuses mismatch: %v", matrix.Gatling.TerminalStatuses)
+	if !slices.Equal(matrix.K6.TerminalStatuses, []string{"COMPLETED", "CANCELLED", "FAILED"}) {
+		t.Fatalf("terminal statuses mismatch: %v", matrix.K6.TerminalStatuses)
 	}
-	if matrix.Gatling.DefaultBasePorts["choreography"] != 8081 || matrix.Gatling.DefaultBasePorts["orchestration"] != 8085 {
-		t.Fatalf("unexpected Gatling base ports: %#v", matrix.Gatling.DefaultBasePorts)
+	if matrix.K6.DefaultBasePorts["choreography"] != 8081 || matrix.K6.DefaultBasePorts["orchestration"] != 8091 {
+		t.Fatalf("unexpected k6 base ports: %#v", matrix.K6.DefaultBasePorts)
+	}
+	if matrix.K6.Defaults.MaxPollAttempts < 240 || matrix.K6.Defaults.PollIntervalMs != 500 {
+		t.Fatalf("unexpected k6 poll window: attempts=%d intervalMs=%d", matrix.K6.Defaults.MaxPollAttempts, matrix.K6.Defaults.PollIntervalMs)
 	}
 
 	choreo := matrix.HTTP.CreateOrder.Variants["choreography"]
@@ -149,23 +151,20 @@ func TestGatlingSurfaceFixtures(t *testing.T) {
 	if len(matrix.Products.Standard) < 4 {
 		t.Fatalf("expected at least four standard product fixtures, got %d", len(matrix.Products.Standard))
 	}
-	if matrix.Products.HighValue.ProductID != "PROD-PREMIUM-001" || matrix.Products.HighValue.ExpectedOutcome != "CANCELLED" || matrix.Products.HighValue.FailureReason != "payment_failure" {
-		t.Fatalf("unexpected high-value product fixture: %#v", matrix.Products.HighValue)
-	}
-	if matrix.Products.LowStock.ProductID != "PROD-LOW-001" || matrix.Products.LowStock.ExpectedOutcome != "CANCELLED" || matrix.Products.LowStock.FailureReason != "inventory_failure" {
-		t.Fatalf("unexpected low-stock product fixture: %#v", matrix.Products.LowStock)
+	if matrix.Products.InventoryShortage.ProductID == "" || matrix.Products.InventoryShortage.ExpectedOutcome != "CANCELLED" || matrix.Products.InventoryShortage.FailureReason != "inventory_failure" {
+		t.Fatalf("unexpected inventory-shortage product scenario: %#v", matrix.Products.InventoryShortage)
 	}
 
-	if matrix.Ports.LocalSurface.Choreography["order"] != 8081 || matrix.Ports.LocalSurface.Orchestration["order"] != 8085 {
+	if matrix.Ports.LocalSurface.Choreography["order"] != 8081 || matrix.Ports.LocalSurface.Orchestration["order"] != 8091 {
 		t.Fatalf("unexpected local order ports: choreography=%d orchestration=%d", matrix.Ports.LocalSurface.Choreography["order"], matrix.Ports.LocalSurface.Orchestration["order"])
 	}
 	if !slices.Equal(matrix.Ports.VMBenchmarkSurface.Choreography.OrderReplicas, []int{8081, 8082, 8083, 8084}) {
 		t.Fatalf("unexpected VM choreography replica ports: %v", matrix.Ports.VMBenchmarkSurface.Choreography.OrderReplicas)
 	}
-	if !slices.Equal(matrix.Ports.VMBenchmarkSurface.Orchestration.OrderReplicas, []int{8085, 8086, 8087, 8088}) {
+	if !slices.Equal(matrix.Ports.VMBenchmarkSurface.Orchestration.OrderReplicas, []int{8091, 8095, 8096, 8097}) {
 		t.Fatalf("unexpected VM orchestration replica ports: %v", matrix.Ports.VMBenchmarkSurface.Orchestration.OrderReplicas)
 	}
-	if matrix.Ports.VMBenchmarkSurface.Choreography.Payment != 8091 || matrix.Ports.VMBenchmarkSurface.Orchestration.Shipping != 8093 {
+	if matrix.Ports.VMBenchmarkSurface.Choreography.Payment != 8091 || matrix.Ports.VMBenchmarkSurface.Orchestration.Shipping != 8094 {
 		t.Fatalf("unexpected VM benchmark service ports: %+v %+v", matrix.Ports.VMBenchmarkSurface.Choreography, matrix.Ports.VMBenchmarkSurface.Orchestration)
 	}
 }
@@ -213,7 +212,7 @@ func TestDocsMatchCompatibilityMatrix(t *testing.T) {
 				"make up-orchestration",
 				"make verify-thesis-surface",
 				"make verify-jenkins-benchmark",
-								fmt.Sprintf("benchmark entrypoint on `%d`", matrix.Ports.VMBenchmarkSurface.Orchestration.OrderReplicas[0]),
+				fmt.Sprintf("benchmark entrypoint on `%d`", matrix.Ports.VMBenchmarkSurface.Orchestration.OrderReplicas[0]),
 				fmt.Sprintf("`%s`", orchestrationReplicaPorts),
 				fmt.Sprintf("`%s`", participantPorts),
 				matrix.HTTP.CommonRoutes[0],
@@ -235,7 +234,7 @@ func TestDocsMatchCompatibilityMatrix(t *testing.T) {
 				"make test",
 				"make verify-thesis-surface",
 				"make verify-jenkins-benchmark",
-								fmt.Sprintf("ports `%d` to `%d`", matrix.Ports.LocalSurface.Choreography["order"], matrix.Ports.LocalSurface.Choreography["shipping"]),
+				fmt.Sprintf("ports `%d` to `%d`", matrix.Ports.LocalSurface.Choreography["order"], matrix.Ports.LocalSurface.Choreography["shipping"]),
 				fmt.Sprintf("entrypoint on `%d`", matrix.Ports.VMBenchmarkSurface.Orchestration.OrderReplicas[0]),
 				fmt.Sprintf("`%s`", participantPorts),
 				"Kafka is the transport for both variants.",
@@ -254,13 +253,12 @@ func TestDocsMatchCompatibilityMatrix(t *testing.T) {
 				"make test-parity",
 				"make smoke-choreography-go",
 				"make smoke-orchestration-go",
-								fmt.Sprintf("`%s`", orchestrationReplicaPorts),
+				fmt.Sprintf("`%s`", orchestrationReplicaPorts),
 				fmt.Sprintf("`%s`", participantPorts),
 				"Kafka is the transport for both saga variants.",
 			},
 			forbid: []string{
 				"Spring State Machine",
-				"mvn clean package -DskipTests",
 			},
 		},
 		{
@@ -269,7 +267,7 @@ func TestDocsMatchCompatibilityMatrix(t *testing.T) {
 				"make verify-thesis-surface",
 				"make verify-jenkins-benchmark",
 				"go test ./test/compatibility/... -run TestDocsMatchCompatibilityMatrix",
-								fmt.Sprintf("| Orchestration | %d | %s | %s |", matrix.Ports.VMBenchmarkSurface.Orchestration.OrderReplicas[0], orchestrationReplicaPorts, participantPorts),
+				fmt.Sprintf("| Orchestration | %d | %s | %s |", matrix.Ports.VMBenchmarkSurface.Orchestration.OrderReplicas[0], orchestrationReplicaPorts, participantPorts),
 			}, matrix.Jenkins.Parameters...),
 			forbid: []string{},
 		},
@@ -279,9 +277,9 @@ func TestDocsMatchCompatibilityMatrix(t *testing.T) {
 				"same workload, the same metrics, and the same observability surface",
 				"active choreography path is Go over Kafka",
 				"active orchestration path is Go with an order service orchestrator over Kafka and Postgres",
-								fmt.Sprintf("`%s`", orchestrationReplicaPorts),
+				fmt.Sprintf("`%s`", orchestrationReplicaPorts),
 				fmt.Sprintf("`%s`", participantPorts),
-								"saga_total_duration_seconds",
+				"saga_total_duration_seconds",
 				"saga_framework_duration_seconds",
 			},
 			forbid: []string{
@@ -354,9 +352,9 @@ func validateMatrix(m compatibilityMatrix) error {
 		{name: "metrics.querySurfaces", values: m.Metrics.QuerySurfaces},
 		{name: "jenkins.parameters", values: m.Jenkins.Parameters},
 		{name: "jenkins.profiles", values: m.Jenkins.Profiles},
-		{name: "jenkins.simulations", values: m.Jenkins.Simulations},
-		{name: "gatling.patternPropertyValues", values: m.Gatling.PatternPropertyValues},
-		{name: "gatling.namedSimulations", values: m.Gatling.NamedSimulations},
+		{name: "jenkins.scenarios", values: m.Jenkins.Scenarios},
+		{name: "k6.patternPropertyValues", values: m.K6.PatternPropertyValues},
+		{name: "k6.scenarios", values: m.K6.Scenarios},
 		{name: "http.commonRoutes", values: m.HTTP.CommonRoutes},
 		{name: "http.polling.terminalStatuses", values: m.HTTP.Polling.TerminalStatuses},
 		{name: "kafka.choreographyEventTypes", values: m.Kafka.ChoreographyEventTypes},
@@ -433,33 +431,38 @@ func validateMatrix(m compatibilityMatrix) error {
 		}
 	}
 
-	for _, parameter := range []string{"PROFILE", "SIMULATION", "RUN_CHOREOGRAPHY", "RUN_ORCHESTRATION", "SCALE_FACTOR"} {
+	for _, parameter := range []string{"PROFILE", "SCENARIO", "RUN_CHOREOGRAPHY", "RUN_ORCHESTRATION", "SAGA_NODE_IP"} {
 		if !slices.Contains(m.Jenkins.Parameters, parameter) {
 			return fmt.Errorf("required Jenkins parameter fixture missing %s", parameter)
 		}
 	}
 
-	for _, simulation := range []string{"HappyPathSimulation", "SustainedMixedSimulation", "IdempotencySimulation"} {
-		if !slices.Contains(m.Gatling.NamedSimulations, simulation) {
-			return fmt.Errorf("required Gatling simulation fixture missing %s", simulation)
+	for _, scenario := range []string{"successful-order", "inventory-reservation-failure", "shipping-scheduling-failure", "contention", "gradual-rampup"} {
+		if !slices.Contains(m.K6.Scenarios, scenario) {
+			return fmt.Errorf("required k6 scenario fixture missing %s", scenario)
+		}
+	}
+	for _, legacyAlias := range []string{"happy-path", "failure", "inventory-failure", "shipping-failure"} {
+		if !slices.Contains(m.K6.Scenarios, legacyAlias) {
+			return fmt.Errorf("required k6 scenario alias fixture missing %s", legacyAlias)
 		}
 	}
 
-	if !slices.Equal(m.Gatling.AcceptedCreateOrderStatuses, []int{200, 201, 202}) {
-		return fmt.Errorf("accepted create-order statuses changed: %v", m.Gatling.AcceptedCreateOrderStatuses)
+	if !slices.Equal(m.K6.AcceptedCreateOrderStatuses, []int{200, 201, 202}) {
+		return fmt.Errorf("accepted create-order statuses changed: %v", m.K6.AcceptedCreateOrderStatuses)
 	}
-	if !slices.Equal(m.Gatling.AcceptedPollStatuses, []int{200, 404}) {
-		return fmt.Errorf("accepted poll statuses changed: %v", m.Gatling.AcceptedPollStatuses)
+	if !slices.Equal(m.K6.AcceptedPollStatuses, []int{200, 404}) {
+		return fmt.Errorf("accepted poll statuses changed: %v", m.K6.AcceptedPollStatuses)
 	}
-	if !slices.Equal(m.Gatling.TerminalStatuses, []string{"COMPLETED", "CANCELLED", "FAILED"}) {
-		return fmt.Errorf("terminal statuses changed: %v", m.Gatling.TerminalStatuses)
+	if !slices.Equal(m.K6.TerminalStatuses, []string{"COMPLETED", "CANCELLED", "FAILED"}) {
+		return fmt.Errorf("terminal statuses changed: %v", m.K6.TerminalStatuses)
 	}
 
-	if len(m.Products.Standard) == 0 || m.Products.HighValue.ProductID == "" || m.Products.LowStock.ProductID == "" {
-		return errors.New("product fixtures are incomplete")
+	if len(m.Products.Standard) == 0 || m.Products.InventoryShortage.ProductID == "" {
+		return errors.New("product scenarios are incomplete")
 	}
-	if m.Products.HighValue.ProductID != "PROD-PREMIUM-001" || m.Products.LowStock.ProductID != "PROD-LOW-001" {
-		return fmt.Errorf("unexpected failure product fixtures: highValue=%q lowStock=%q", m.Products.HighValue.ProductID, m.Products.LowStock.ProductID)
+	if m.Products.InventoryShortage.ExpectedOutcome != "CANCELLED" || m.Products.InventoryShortage.FailureReason != "inventory_failure" {
+		return fmt.Errorf("unexpected inventory-shortage product scenario: %+v", m.Products.InventoryShortage)
 	}
 
 	if m.Ports.LocalSurface.HealthPath != "/actuator/health" || m.Ports.LocalSurface.PrometheusPath != "/actuator/prometheus" {
@@ -468,7 +471,7 @@ func validateMatrix(m compatibilityMatrix) error {
 	if !slices.Equal(m.Ports.VMBenchmarkSurface.Choreography.OrderReplicas, []int{8081, 8082, 8083, 8084}) {
 		return fmt.Errorf("unexpected choreography VM replica ports: %v", m.Ports.VMBenchmarkSurface.Choreography.OrderReplicas)
 	}
-	if !slices.Equal(m.Ports.VMBenchmarkSurface.Orchestration.OrderReplicas, []int{8085, 8086, 8087, 8088}) {
+	if !slices.Equal(m.Ports.VMBenchmarkSurface.Orchestration.OrderReplicas, []int{8091, 8095, 8096, 8097}) {
 		return fmt.Errorf("unexpected orchestration VM replica ports: %v", m.Ports.VMBenchmarkSurface.Orchestration.OrderReplicas)
 	}
 

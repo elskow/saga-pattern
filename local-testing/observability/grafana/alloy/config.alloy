@@ -1,0 +1,91 @@
+logging {
+	level  = "info"
+	format = "logfmt"
+}
+
+otelcol.receiver.otlp "saga" {
+	grpc {
+		endpoint = "0.0.0.0:4317"
+	}
+
+	http {
+		endpoint = "0.0.0.0:4318"
+	}
+
+	output {
+		traces = [otelcol.processor.batch.saga.input]
+	}
+}
+
+otelcol.processor.batch "saga" {
+	output {
+		traces = [otelcol.exporter.otlp.tempo.input]
+	}
+}
+
+otelcol.exporter.otlp "tempo" {
+	client {
+		endpoint = "tempo:4317"
+
+		tls {
+			insecure = true
+		}
+	}
+}
+
+prometheus.exporter.self "alloy" { }
+
+prometheus.scrape "alloy" {
+	targets    = prometheus.exporter.self.alloy.targets
+	forward_to = [prometheus.remote_write.local.receiver]
+}
+
+prometheus.remote_write "local" {
+	endpoint {
+		url = "http://prometheus:9090/api/v1/write"
+	}
+}
+
+discovery.docker "saga" {
+	host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "saga_profiles" {
+	targets = discovery.docker.saga.targets
+
+	rule {
+		action        = "keep"
+		regex         = ".*(choreography|orchestration|order|payment|inventory|shipping).*"
+		source_labels = ["__meta_docker_container_name"]
+	}
+
+	rule {
+		action        = "replace"
+		regex         = "/(.*)"
+		replacement   = "$1"
+		source_labels = ["__meta_docker_container_name"]
+		target_label  = "service_name"
+	}
+
+	rule {
+		action       = "replace"
+		target_label = "profile_source"
+		replacement  = "alloy-ebpf"
+	}
+}
+
+pyroscope.write "local" {
+	endpoint {
+		url = "http://pyroscope:4040"
+	}
+
+	external_labels = {
+		"environment" = "local",
+	}
+}
+
+pyroscope.ebpf "saga" {
+	targets          = discovery.relabel.saga_profiles.output
+	forward_to       = [pyroscope.write.local.receiver]
+	collect_interval = "15s"
+}

@@ -1,0 +1,58 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels:
+    environment: local
+    thesis_stack: grafana
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  - job_name: alloy
+    static_configs:
+      - targets: ["alloy:12345"]
+
+  - job_name: tempo
+    static_configs:
+      - targets: ["tempo:3200"]
+
+  - job_name: pyroscope
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["pyroscope:4040"]
+
+  - job_name: beyla
+    static_configs:
+      - targets: ["host.docker.internal:8999"]
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+
+  - job_name: saga-choreography-services
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - order-service-choreography:8081
+          - payment-service-choreography:8082
+          - inventory-service-choreography:8083
+          - shipping-service-choreography:8084
+        labels:
+          pattern: choreography
+
+  - job_name: saga-orchestration-services
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - order-service-orchestration:8091
+          - payment-service-orchestration:8092
+          - inventory-service-orchestration:8093
+          - shipping-service-orchestration:8094
+        labels:
+          pattern: orchestration

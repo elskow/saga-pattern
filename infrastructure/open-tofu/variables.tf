@@ -39,12 +39,6 @@ variable "nodes" {
       storage    = "260GB"
       ip_address = "192.168.11.152"
     }
-    "gatling-runner" = {
-      vcpu       = 4
-      memory     = "8GB"
-      storage    = "30GB"
-      ip_address = "192.168.11.158"
-    }
     "observability-node" = {
       vcpu       = 4
       memory     = "6GB"
@@ -122,7 +116,7 @@ variable "ssh_private_key_path" {
 }
 
 #------------------------------------------------------------------------------
-# Git Repository Configuration (for Gatling tests)
+# Git Repository Configuration (for k6 thesis harness)
 #------------------------------------------------------------------------------
 
 variable "saga_repo_url" {

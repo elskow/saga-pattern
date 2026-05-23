@@ -1,0 +1,766 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "title": "Overview",
+      "url": "/d/saga-thesis-overview/saga-thesis-defense-overview",
+      "targetBlank": false
+    },
+    {
+      "title": "k6 Throughput",
+      "url": "/d/saga-k6-throughput-analysis/saga-k6-throughput-analysis",
+      "targetBlank": false
+    },
+    {
+      "title": "Pattern Comparison",
+      "url": "/d/saga-comparative-analysis/saga-comparative-analysis",
+      "targetBlank": false
+    },
+    {
+      "title": "Root Cause",
+      "url": "/d/saga-root-cause-analysis/saga-root-cause-analysis",
+      "targetBlank": false
+    },
+    {
+      "title": "Evidence Health",
+      "url": "/d/saga-evidence-health/saga-evidence-health",
+      "targetBlank": false
+    },
+    {
+      "title": "Explore Traces",
+      "url": "/explore?schemaVersion=1&panes=%7B%22trace%22:%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22queryType%22:%22traceqlSearch%22%7D%5D%7D%7D",
+      "targetBlank": true
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "How To Use",
+      "type": "text",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "mode": "markdown",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "# Evidence Health\n\nUse this before taking screenshots. It checks whether k6 remote-write, app metrics, Tempo spanmetrics, Beyla, Pyroscope, and Prometheus targets are present for the selected run window."
+      },
+      "pluginVersion": "12.1.1"
+    },
+    {
+      "id": 2,
+      "title": "k6 Iteration Series",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "count(max_over_time(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "k6 Outcome Series",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "count(max_over_time(k6_saga_terminal_success_rate{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])) + count(max_over_time(k6_saga_outcome_matched_rate{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "k6 Counter Series",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "count(max_over_time(k6_saga_orders_started_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])) + count(max_over_time(k6_saga_orders_completed_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])) + count(max_over_time(k6_saga_orders_cancelled_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])) + count(max_over_time(k6_saga_orders_failed_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])) + count(max_over_time(k6_saga_orders_timed_out_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "k6 Latency Series",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "count(max_over_time(k6_saga_duration_ms_avg{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])) + count(max_over_time(k6_saga_duration_ms_p95{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])) + count(max_over_time(k6_saga_duration_ms_p99{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Tempo Spanmetrics",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "sum(rate(traces_spanmetrics_calls_total[1m]))",
+          "legendFormat": "",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Beyla HTTP Metrics",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "sum(rate(http_client_request_duration_seconds_count{job=\"beyla\"}[1m]))",
+          "legendFormat": "",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "k6 Label Coverage",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "description": "Every suite phase should appear here with professional scenario labels after the next run.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "count by (suite_label, pattern, scenario, run_label) (max_over_time(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "series"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Telemetry Target Health",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "description": "All expected targets should be up during screenshot capture.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "up{job=~\"prometheus|alloy|tempo|pyroscope|beyla|saga-.*-services|cadvisor|node-exporter\"}",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "up"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "k6 Remote-Write Receiver Activity",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "sum by (code) (rate(prometheus_http_requests_total{handler=\"/api/v1/write\",code=~\"2..\"}[1m]))",
+          "legendFormat": "write {{code}}"
+        },
+        {
+          "expr": "sum(rate(prometheus_http_requests_total{handler=\"/api/v1/write\",code!~\"2..\"}[1m]))",
+          "legendFormat": "write non-2xx"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Data Source Heartbeats",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "up{job=~\"prometheus|alloy|tempo|pyroscope|beyla\"}",
+          "legendFormat": "{{job}} {{instance}}"
+        },
+        {
+          "expr": "scrape_samples_scraped{job=~\"beyla|saga-.*-services\"}",
+          "legendFormat": "{{job}} {{instance}} samples"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Evidence Completeness Checklist",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 9
+      },
+      "description": "If a row is empty, that evidence path is not available for the selected time window.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "sum by (suite_label, pattern, scenario, run_label) (max_over_time(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "k6_iterations"
+        },
+        {
+          "expr": "avg by (suite_label, pattern, scenario, run_label) (max_over_time(k6_saga_terminal_success_rate{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "k6_terminal_success"
+        },
+        {
+          "expr": "sum by (pattern) (increase(saga_orders_completed_total{pattern=~\"$pattern\"}[$__range]))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "app_completed"
+        },
+        {
+          "expr": "sum by (pattern) (increase(saga_compensations_total{pattern=~\"$pattern\"}[$__range]))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "app_compensations"
+        },
+        {
+          "expr": "sum by (service) (increase(traces_spanmetrics_calls_total[$__range]))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "trace_spans"
+        },
+        {
+          "expr": "sum by (service_name) (increase(http_client_request_duration_seconds_count{job=\"beyla\"}[$__range]))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "beyla_http"
+        }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": [
+    "saga",
+    "thesis",
+    "health",
+    "k6",
+    "grafana"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "suite_label",
+        "label": "Suite label",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(k6_iterations_total, suite_label)",
+        "query": {
+          "query": "label_values(k6_iterations_total, suite_label)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "hide": 0,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1
+      },
+      {
+        "name": "pattern",
+        "label": "Pattern",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(k6_iterations_total{suite_label=~\"$suite_label\"}, pattern)",
+        "query": {
+          "query": "label_values(k6_iterations_total{suite_label=~\"$suite_label\"}, pattern)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "hide": 0,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1
+      },
+      {
+        "name": "scenario",
+        "label": "Scenario",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\"}, scenario)",
+        "query": {
+          "query": "label_values(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\"}, scenario)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "hide": 0,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1
+      },
+      {
+        "name": "run_label",
+        "label": "Run label",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(k6_iterations_total{suite_label=~\"$suite_label\"}, run_label)",
+        "query": {
+          "query": "label_values(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\"}, run_label)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "hide": 0,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1
+      }
+    ]
+  },
+  "time": {
+    "from": "now-2h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ],
+    "time_options": [
+      "15m",
+      "30m",
+      "1h",
+      "6h",
+      "12h",
+      "24h"
+    ]
+  },
+  "timezone": "browser",
+  "title": "Saga Evidence Health",
+  "uid": "saga-evidence-health",
+  "version": 1,
+  "weekStart": ""
+}

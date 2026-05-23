@@ -11,14 +11,6 @@ services:
     volumes:
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_logs:/var/lib/zookeeper/log
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "2181"]
       interval: 10s
@@ -43,7 +35,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_NUM_PARTITIONS: 6
       KAFKA_DEFAULT_REPLICATION_FACTOR: 1
       KAFKA_LOG_RETENTION_HOURS: 24
@@ -60,20 +52,37 @@ services:
       KAFKA_HEAP_OPTS: "-Xmx2g -Xms1g"
     volumes:
       - kafka_data:/var/lib/kafka/data
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 3G
-        reservations:
-          cpus: '1'
-          memory: 2G
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:29092"]
       interval: 10s
       timeout: 10s
       retries: 10
     restart: unless-stopped
+
+  kafka-topic-init:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-topic-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint:
+      - /bin/bash
+      - -ec
+      - |
+        for topic in \
+          order-events \
+          payment-events \
+          inventory-events \
+          shipping-events \
+          orchestration.payment.commands \
+          orchestration.inventory.commands \
+          orchestration.shipping.commands \
+          orchestration.payment.replies \
+          orchestration.inventory.replies \
+          orchestration.shipping.replies; do
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic "$$topic" --partitions 6 --replication-factor 1;
+        done
+    restart: "no"
 
   orch-order-db:
     image: postgres:15-alpine
@@ -101,14 +110,6 @@ services:
       - "random_page_cost=1.1"
     volumes:
       - orch_order_db_data:/var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d order_db"]
       interval: 5s
@@ -142,14 +143,6 @@ services:
       - "random_page_cost=1.1"
     volumes:
       - orch_payment_db_data:/var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d payment_db"]
       interval: 5s
@@ -183,14 +176,6 @@ services:
       - "random_page_cost=1.1"
     volumes:
       - orch_inventory_db_data:/var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d inventory_db"]
       interval: 5s
@@ -224,14 +209,6 @@ services:
       - "random_page_cost=1.1"
     volumes:
       - orch_shipping_db_data:/var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d shipping_db"]
       interval: 5s
@@ -265,14 +242,6 @@ services:
       - "random_page_cost=1.1"
     volumes:
       - chor_order_db_data:/var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d order_db"]
       interval: 5s
@@ -306,14 +275,6 @@ services:
       - "random_page_cost=1.1"
     volumes:
       - chor_payment_db_data:/var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d payment_db"]
       interval: 5s
@@ -347,14 +308,6 @@ services:
       - "random_page_cost=1.1"
     volumes:
       - chor_inventory_db_data:/var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d inventory_db"]
       interval: 5s
@@ -388,49 +341,9 @@ services:
       - "random_page_cost=1.1"
     volumes:
       - chor_shipping_db_data:/var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d shipping_db"]
       interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  jaeger:
-    image: jaegertracing/all-in-one:1.53
-    container_name: jaeger
-    ports:
-      - "16686:16686"
-      - "4317:4317"
-      - "4318:4318"
-      - "9411:9411"
-    environment:
-      COLLECTOR_ZIPKIN_HOST_PORT: ":9411"
-      COLLECTOR_OTLP_ENABLED: "true"
-      SPAN_STORAGE_TYPE: "badger"
-      BADGER_EPHEMERAL: "false"
-      BADGER_DIRECTORY_VALUE: "/badger/data"
-      BADGER_DIRECTORY_KEY: "/badger/key"
-    volumes:
-      - jaeger_data:/badger
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 512M
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:16686"]
-      interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
@@ -439,7 +352,6 @@ volumes:
   zookeeper_data:
   zookeeper_logs:
   kafka_data:
-  jaeger_data:
   orch_order_db_data:
   orch_payment_db_data:
   orch_inventory_db_data:

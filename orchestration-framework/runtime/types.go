@@ -4,16 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"saga-pattern/common/commands"
-	commoncontext "saga-pattern/common/context"
-	"saga-pattern/common/dto"
-	commonkafka "saga-pattern/common/kafka"
-	commonreplies "saga-pattern/common/replies"
-	"saga-pattern/orchestration-framework/internal/model"
 	"saga-pattern/orchestration-framework/internal/store"
 )
 
@@ -48,10 +43,35 @@ type BootstrapDependencies struct {
 	Config          Config
 }
 
-type InMemoryDependencies = BootstrapDependencies
 type PostgresDependencies = BootstrapDependencies
 
-type Snapshot struct {
+// AdvancedDependencies exposes the raw store-backed constructor path.
+// Most application code should use NewPostgres instead.
+type AdvancedDependencies = Dependencies
+
+type Codec[D any] interface {
+	Marshal(D) ([]byte, error)
+	Unmarshal([]byte) (D, error)
+}
+
+type JSONCodec[D any] struct{}
+
+func (JSONCodec[D]) Marshal(data D) ([]byte, error) {
+	return json.Marshal(data)
+}
+
+func (JSONCodec[D]) Unmarshal(raw []byte) (D, error) {
+	var data D
+	if len(raw) == 0 {
+		return data, nil
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return data, err
+	}
+	return data, nil
+}
+
+type Snapshot[D any] struct {
 	SagaID             string
 	SagaType           string
 	State              string
@@ -66,61 +86,298 @@ type Snapshot struct {
 	StepDeadlineAt     time.Time
 	RetryCount         int
 	MaxRetryCount      int
-	OrderID            string
-	CustomerID         string
-	PaymentID          string
-	ReservationID      string
-	ShippingID         string
-	CorrelationID      string
-	ShippingAddress    string
-	TotalAmount        json.Number
-	Items              []dto.OrderItemRequest
+	Data               D
 }
 
-type SagaData struct {
-	OrderID         string
-	CustomerID      string
-	PaymentID       string
-	ReservationID   string
-	ShippingID      string
-	CorrelationID   string
-	ShippingAddress string
-	TotalAmount     json.Number
-	Items           []dto.OrderItemRequest
+type View[D any] struct {
+	SagaID      string
+	SagaType    string
+	State       string
+	CurrentStep string
+	LastError   string
+	StartedAt   time.Time
+	UpdatedAt   time.Time
+	Data        D
+	StepHistory []StepHistoryEntry
 }
 
-type StartSagaInput struct {
+type StepHistoryEntry struct {
+	Step      string
+	Direction string
+	Status    string
+	Error     string
+}
+
+type StartSagaInput[D any] struct {
 	SagaID string
-	Data   SagaData
+	Data   D
 }
 
-type Definition struct {
+type Definition[D any] struct {
 	SagaType          string
-	InitialState      model.SagaState
-	CompensatingState model.SagaState
-	TerminalStates    []model.SagaState
-	Steps             []Step
+	CompensatingState string
+	TerminalStates    []string
+	DataCodec         Codec[D]
+	ValidateData      func(D) error
+	Steps             []Step[D]
 }
 
-type Step struct {
+type DefinitionBuilder[D any] struct {
+	definition Definition[D]
+}
+
+type Step[D any] struct {
+	Name              string
+	PendingState      string
+	Forward           CommandSpec[D]
+	Compensation      CommandSpec[D]
+	ForwardReplies    []ReplyCase[D]
+	CompensateReplies []ReplyCase[D]
+}
+
+type StepRef struct {
 	Name         string
-	PendingState model.SagaState
-	Forward      CommandSpec
-	Compensation CommandSpec
-	Success      Transition
-	Failure      Transition
+	PendingState string
 }
 
-type CommandSpec struct {
+type StepBuilder[D any] struct {
+	step Step[D]
+}
+
+type CommandSpec[D any] struct {
 	Topic        string
 	CommandType  string
-	ReplyType    string
-	BuildPayload func(SagaData) (any, error)
+	BuildPayload func(D) (any, error)
 }
 
-type Transition struct {
+type ReplyCase[D any] struct {
+	Topic     string
 	ReplyType string
-	NextState model.SagaState
+	Decide    func(D, []byte) (Decision, error)
+	declared  *Decision
+}
+
+type ReplyCaseBuilder[D any, R any] struct {
+	topic     string
+	replyType string
+	decode    func([]byte) (R, error)
+}
+
+type DecisionKind string
+
+const (
+	DecisionIgnore            DecisionKind = "ignore"
+	DecisionAdvance           DecisionKind = "advance"
+	DecisionComplete          DecisionKind = "complete"
+	DecisionBeginCompensation DecisionKind = "begin_compensation"
+	DecisionCancel            DecisionKind = "cancel"
+	DecisionCompensated       DecisionKind = "compensated"
+)
+
+type Decision struct {
+	Kind      DecisionKind
+	NextStep  string
+	NextState string
+	Reason    string
+}
+
+func Ignore() Decision {
+	return Decision{Kind: DecisionIgnore}
+}
+
+func Advance(nextStep string, nextState string) Decision {
+	return Decision{Kind: DecisionAdvance, NextStep: nextStep, NextState: nextState}
+}
+
+func Complete(state string) Decision {
+	return Decision{Kind: DecisionComplete, NextState: state}
+}
+
+func BeginCompensation(reason string) Decision {
+	return Decision{Kind: DecisionBeginCompensation, Reason: reason}
+}
+
+func Cancel(state string, reason string) Decision {
+	return Decision{Kind: DecisionCancel, NextState: state, Reason: reason}
+}
+
+func Compensated() Decision {
+	return Decision{Kind: DecisionCompensated}
+}
+
+func Define[D any](sagaType string) *DefinitionBuilder[D] {
+	return &DefinitionBuilder[D]{definition: Definition[D]{SagaType: sagaType}}
+}
+
+func (b *DefinitionBuilder[D]) Codec(codec Codec[D]) *DefinitionBuilder[D] {
+	b.definition.DataCodec = codec
+	return b
+}
+
+func (b *DefinitionBuilder[D]) Validate(validate func(D) error) *DefinitionBuilder[D] {
+	b.definition.ValidateData = validate
+	return b
+}
+
+func (b *DefinitionBuilder[D]) CompensatingState(state string) *DefinitionBuilder[D] {
+	b.definition.CompensatingState = state
+	return b
+}
+
+func (b *DefinitionBuilder[D]) TerminalStates(states ...string) *DefinitionBuilder[D] {
+	b.definition.TerminalStates = append([]string(nil), states...)
+	return b
+}
+
+func (b *DefinitionBuilder[D]) Step(step Step[D]) *DefinitionBuilder[D] {
+	b.definition.Steps = append(b.definition.Steps, step)
+	return b
+}
+
+func (b *DefinitionBuilder[D]) Build() Definition[D] {
+	return b.definition
+}
+
+func StepDef[D any](name string, pendingState string) *StepBuilder[D] {
+	return &StepBuilder[D]{step: Step[D]{Name: name, PendingState: pendingState}}
+}
+
+func StepDefRef[D any](ref StepRef) *StepBuilder[D] {
+	return StepDef[D](ref.Name, ref.PendingState)
+}
+
+func (b *StepBuilder[D]) Forward(command CommandSpec[D]) *StepBuilder[D] {
+	b.step.Forward = command
+	return b
+}
+
+func (b *StepBuilder[D]) Compensation(command CommandSpec[D]) *StepBuilder[D] {
+	b.step.Compensation = command
+	return b
+}
+
+func (b *StepBuilder[D]) OnForward(cases ...ReplyCase[D]) *StepBuilder[D] {
+	b.step.ForwardReplies = append(b.step.ForwardReplies, cases...)
+	return b
+}
+
+func (b *StepBuilder[D]) OnCompensate(cases ...ReplyCase[D]) *StepBuilder[D] {
+	b.step.CompensateReplies = append(b.step.CompensateReplies, cases...)
+	return b
+}
+
+func (b *StepBuilder[D]) Build() Step[D] {
+	return b.step
+}
+
+func Command[D any](topic string, commandType string, build func(D) (any, error)) CommandSpec[D] {
+	return CommandSpec[D]{Topic: topic, CommandType: commandType, BuildPayload: build}
+}
+
+func On[D any, R any](topic string, replyType string, decode func([]byte) (R, error)) ReplyCaseBuilder[D, R] {
+	return ReplyCaseBuilder[D, R]{topic: topic, replyType: replyType, decode: decode}
+}
+
+func (b ReplyCaseBuilder[D, R]) Then(decide func(D, R) (Decision, error)) ReplyCase[D] {
+	return TypedReplyCase(b.topic, b.replyType, b.decode, decide)
+}
+
+func (b ReplyCaseBuilder[D, R]) ThenAdvance(nextStep string, nextState string) ReplyCase[D] {
+	decision := Advance(nextStep, nextState)
+	return ReplyCase[D]{
+		Topic:     b.topic,
+		ReplyType: b.replyType,
+		Decide: func(_ D, payload []byte) (Decision, error) {
+			if _, err := b.decode(payload); err != nil {
+				return Decision{}, err
+			}
+			return decision, nil
+		},
+		declared: &decision,
+	}
+}
+
+func (b ReplyCaseBuilder[D, R]) ThenAdvanceTo(ref StepRef) ReplyCase[D] {
+	return b.ThenAdvance(ref.Name, ref.PendingState)
+}
+
+func (b ReplyCaseBuilder[D, R]) ThenComplete(state string) ReplyCase[D] {
+	decision := Complete(state)
+	return ReplyCase[D]{
+		Topic:     b.topic,
+		ReplyType: b.replyType,
+		Decide: func(_ D, payload []byte) (Decision, error) {
+			if _, err := b.decode(payload); err != nil {
+				return Decision{}, err
+			}
+			return decision, nil
+		},
+		declared: &decision,
+	}
+}
+
+func (b ReplyCaseBuilder[D, R]) ThenBeginCompensation(reason func(R) string) ReplyCase[D] {
+	return ReplyCase[D]{
+		Topic:     b.topic,
+		ReplyType: b.replyType,
+		Decide: func(_ D, payload []byte) (Decision, error) {
+			reply, err := b.decode(payload)
+			if err != nil {
+				return Decision{}, err
+			}
+			decision := BeginCompensation(reason(reply))
+			return decision, nil
+		},
+		declared: &Decision{Kind: DecisionBeginCompensation},
+	}
+}
+
+func (b ReplyCaseBuilder[D, R]) ThenCancel(state string, reason func(R) string) ReplyCase[D] {
+	return ReplyCase[D]{
+		Topic:     b.topic,
+		ReplyType: b.replyType,
+		Decide: func(_ D, payload []byte) (Decision, error) {
+			reply, err := b.decode(payload)
+			if err != nil {
+				return Decision{}, err
+			}
+			decision := Cancel(state, reason(reply))
+			return decision, nil
+		},
+		declared: &Decision{Kind: DecisionCancel, NextState: state},
+	}
+}
+
+func (b ReplyCaseBuilder[D, R]) ThenCompensatedIf(success func(R) bool) ReplyCase[D] {
+	return ReplyCase[D]{
+		Topic:     b.topic,
+		ReplyType: b.replyType,
+		Decide: func(_ D, payload []byte) (Decision, error) {
+			reply, err := b.decode(payload)
+			if err != nil {
+				return Decision{}, err
+			}
+			if !success(reply) {
+				return Ignore(), nil
+			}
+			return Compensated(), nil
+		},
+		declared: &Decision{Kind: DecisionCompensated},
+	}
+}
+
+func TypedReplyCase[D any, R any](topic string, replyType string, decode func([]byte) (R, error), decide func(D, R) (Decision, error)) ReplyCase[D] {
+	return ReplyCase[D]{
+		Topic:     topic,
+		ReplyType: replyType,
+		Decide: func(data D, payload []byte) (Decision, error) {
+			reply, err := decode(payload)
+			if err != nil {
+				return Decision{}, err
+			}
+			return decide(data, reply)
+		},
+	}
 }
 
 type Config struct {
@@ -128,6 +385,7 @@ type Config struct {
 	SagaTimeout              time.Duration
 	TimeoutCheckInterval     time.Duration
 	OutboxPublishInterval    time.Duration
+	ImmediateOutboxPublish   bool
 	OutboxRetryDelay         time.Duration
 	OutboxMaxAttempts        int
 	OutboxBatchSize          int
@@ -146,6 +404,7 @@ func DefaultConfig() Config {
 		SagaTimeout:              30 * time.Second,
 		TimeoutCheckInterval:     10 * time.Second,
 		OutboxPublishInterval:    time.Second,
+		ImmediateOutboxPublish:   true,
 		OutboxRetryDelay:         30 * time.Second,
 		OutboxMaxAttempts:        5,
 		OutboxBatchSize:          100,
@@ -169,149 +428,146 @@ type Dependencies struct {
 	Config          Config
 }
 
-func toPublicSnapshot(row model.SagaInstanceRow) Snapshot {
-	return Snapshot{
-		SagaID:             row.ID,
-		SagaType:           row.SagaType,
-		State:              string(row.State),
-		CurrentStep:        row.CurrentStep,
-		PendingDirection:   string(row.PendingDirection),
-		PendingCommandType: row.PendingCommandType,
-		PendingReplyType:   row.PendingReplyType,
-		LastError:          row.LastError,
-		StartedAt:          row.StartedAt,
-		UpdatedAt:          row.UpdatedAt,
-		DeadlineAt:         row.DeadlineAt,
-		StepDeadlineAt:     row.StepDeadlineAt,
-		RetryCount:         row.RetryCount,
-		MaxRetryCount:      row.MaxRetryCount,
-		OrderID:            row.Data.OrderID,
-		CustomerID:         row.Data.CustomerID,
-		PaymentID:          row.Data.PaymentID,
-		ReservationID:      row.Data.ReservationID,
-		ShippingID:         row.Data.ShippingID,
-		CorrelationID:      row.Data.CorrelationID,
-		ShippingAddress:    row.Data.ShippingAddress,
-		TotalAmount:        row.Data.TotalAmount,
-		Items:              append([]dto.OrderItemRequest(nil), row.Data.Items...),
-	}
-}
-
-func OrderDefinition() Definition {
-	topics := commonkafka.DefaultTopics()
-	return Definition{
-		SagaType:          "OrderSaga",
-		InitialState:      model.SagaStateCreated,
-		CompensatingState: model.SagaStateCompensating,
-		TerminalStates:    []model.SagaState{model.SagaStateCompleted, model.SagaStateCancelled},
-		Steps: []Step{
-			{
-				Name:         "Payment",
-				PendingState: model.SagaStatePaymentPending,
-				Forward: CommandSpec{Topic: topics.PaymentCommands, CommandType: commands.CommandProcessPayment, ReplyType: commonreplies.TypePaymentCompleted, BuildPayload: func(data SagaData) (any, error) {
-					return commands.NewProcessPaymentCommand(data.PaymentID, data.OrderID, data.CustomerID, data.TotalAmount), nil
-				}},
-				Compensation: CommandSpec{Topic: topics.PaymentCommands, CommandType: commands.CommandRefundPayment, ReplyType: commonreplies.TypePaymentRefunded, BuildPayload: func(data SagaData) (any, error) {
-					return commands.NewRefundPaymentCommand(data.PaymentID, data.OrderID), nil
-				}},
-				Success: Transition{ReplyType: commonreplies.TypePaymentCompleted, NextState: model.SagaStateInventoryPending},
-				Failure: Transition{ReplyType: commonreplies.TypePaymentFailed, NextState: model.SagaStateCancelled},
-			},
-			{
-				Name:         "Inventory",
-				PendingState: model.SagaStateInventoryPending,
-				Forward: CommandSpec{Topic: topics.InventoryCommands, CommandType: commands.CommandReserveInventory, ReplyType: commonreplies.TypeInventoryReserved, BuildPayload: func(data SagaData) (any, error) {
-					return commands.NewReserveInventoryCommand(data.ReservationID, data.OrderID, data.Items), nil
-				}},
-				Compensation: CommandSpec{Topic: topics.InventoryCommands, CommandType: commands.CommandReleaseInventory, ReplyType: commonreplies.TypeInventoryReleased, BuildPayload: func(data SagaData) (any, error) {
-					return commands.NewReleaseInventoryCommand(data.ReservationID, data.OrderID), nil
-				}},
-				Success: Transition{ReplyType: commonreplies.TypeInventoryReserved, NextState: model.SagaStateShippingPending},
-				Failure: Transition{ReplyType: commonreplies.TypeInventoryFailed, NextState: model.SagaStateCompensating},
-			},
-			{
-				Name:         "Shipping",
-				PendingState: model.SagaStateShippingPending,
-				Forward: CommandSpec{Topic: topics.ShippingCommands, CommandType: commands.CommandScheduleShipping, ReplyType: commonreplies.TypeShippingScheduled, BuildPayload: func(data SagaData) (any, error) {
-					return commands.NewScheduleShippingCommand(data.ShippingID, data.OrderID, data.ShippingAddress), nil
-				}},
-				Compensation: CommandSpec{Topic: topics.ShippingCommands, CommandType: commands.CommandCancelShipping, ReplyType: commonreplies.TypeShippingCancelled, BuildPayload: func(data SagaData) (any, error) {
-					return commands.NewCancelShippingCommand(data.ShippingID, data.OrderID), nil
-				}},
-				Success: Transition{ReplyType: commonreplies.TypeShippingScheduled, NextState: model.SagaStateCompleted},
-				Failure: Transition{ReplyType: commonreplies.TypeShippingFailed, NextState: model.SagaStateCompensating},
-			},
-		},
-	}
-}
-
-func (d Definition) Validate() error {
+func (d Definition[D]) Validate() error {
 	if d.SagaType == "" {
 		return fmt.Errorf("saga type is required")
 	}
 	if len(d.Steps) == 0 {
 		return fmt.Errorf("at least one step is required")
 	}
-	return nil
-}
-
-func (d SagaData) Validate() error {
-	if d.OrderID == "" {
-		return fmt.Errorf("order id is required")
+	stepsByName := make(map[string]Step[D], len(d.Steps))
+	stepNameSeen := make(map[string]struct{}, len(d.Steps))
+	pendingStateSeen := make(map[string]string, len(d.Steps))
+	for _, step := range d.Steps {
+		if step.Name == "" {
+			return fmt.Errorf("step name is required")
+		}
+		if _, exists := stepNameSeen[step.Name]; exists {
+			return fmt.Errorf("duplicate step name %q", step.Name)
+		}
+		stepNameSeen[step.Name] = struct{}{}
+		if step.PendingState == "" {
+			return fmt.Errorf("pending state is required for step %s", step.Name)
+		}
+		if existingStep, exists := pendingStateSeen[step.PendingState]; exists {
+			return fmt.Errorf("duplicate pending state %q for steps %s and %s", step.PendingState, existingStep, step.Name)
+		}
+		pendingStateSeen[step.PendingState] = step.Name
+		stepsByName[step.Name] = step
+		if step.Forward.Topic == "" || step.Forward.CommandType == "" || step.Forward.BuildPayload == nil {
+			return fmt.Errorf("forward command is incomplete for step %s", step.Name)
+		}
+		if len(step.ForwardReplies) == 0 {
+			return fmt.Errorf("forward reply cases are required for step %s", step.Name)
+		}
+		forwardMatchers := make(map[string]struct{}, len(step.ForwardReplies))
+		for _, reply := range step.ForwardReplies {
+			if err := validateReplyCase(step.Name, "forward", reply); err != nil {
+				return err
+			}
+			matcherKey := reply.Topic + "\x00" + reply.ReplyType
+			if _, exists := forwardMatchers[matcherKey]; exists {
+				return fmt.Errorf("duplicate forward reply matcher for step %s: topic=%q replyType=%q", step.Name, reply.Topic, reply.ReplyType)
+			}
+			forwardMatchers[matcherKey] = struct{}{}
+		}
+		if step.Compensation.Topic == "" || step.Compensation.CommandType == "" || step.Compensation.BuildPayload == nil {
+			return fmt.Errorf("compensation command is incomplete for step %s", step.Name)
+		}
+		if len(step.CompensateReplies) == 0 {
+			return fmt.Errorf("compensation reply cases are required for step %s", step.Name)
+		}
+		compensationMatchers := make(map[string]struct{}, len(step.CompensateReplies))
+		for _, reply := range step.CompensateReplies {
+			if err := validateReplyCase(step.Name, "compensation", reply); err != nil {
+				return err
+			}
+			matcherKey := reply.Topic + "\x00" + reply.ReplyType
+			if _, exists := compensationMatchers[matcherKey]; exists {
+				return fmt.Errorf("duplicate compensation reply matcher for step %s: topic=%q replyType=%q", step.Name, reply.Topic, reply.ReplyType)
+			}
+			compensationMatchers[matcherKey] = struct{}{}
+		}
 	}
-	if d.CustomerID == "" {
-		return fmt.Errorf("customer id is required")
-	}
-	if d.TotalAmount == "" {
-		return fmt.Errorf("total amount is required")
-	}
-	if d.ShippingAddress == "" {
-		return fmt.Errorf("shipping address is required")
-	}
-	if len(d.Items) == 0 {
-		return fmt.Errorf("items are required")
-	}
-	for _, item := range d.Items {
-		if err := item.Validate(); err != nil {
-			return err
+	for _, step := range d.Steps {
+		for _, reply := range step.ForwardReplies {
+			if err := validateDeclaredDecision(step.Name, stepsByName, reply); err != nil {
+				return err
+			}
+		}
+		for _, reply := range step.CompensateReplies {
+			if err := validateDeclaredDecision(step.Name, stepsByName, reply); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func (d SagaData) withDefaults() SagaData {
-	copyItems := append([]dto.OrderItemRequest(nil), d.Items...)
-	if d.CorrelationID == "" {
-		d.CorrelationID = commoncontext.ResolveCorrelationID("")
+func (d Definition[D]) codec() Codec[D] {
+	if d.DataCodec != nil {
+		return d.DataCodec
 	}
-	d.Items = copyItems
-	return d
+	return JSONCodec[D]{}
 }
 
-func toModelData(data SagaData) model.SagaData {
-	return model.SagaData{
-		OrderID:         data.OrderID,
-		CustomerID:      data.CustomerID,
-		PaymentID:       data.PaymentID,
-		ReservationID:   data.ReservationID,
-		ShippingID:      data.ShippingID,
-		CorrelationID:   data.CorrelationID,
-		ShippingAddress: data.ShippingAddress,
-		TotalAmount:     data.TotalAmount,
-		Items:           append([]dto.OrderItemRequest(nil), data.Items...),
+func (d Definition[D]) ReplyTopics() []string {
+	seen := make(map[string]struct{})
+	for _, step := range d.Steps {
+		for _, reply := range step.ForwardReplies {
+			seen[reply.Topic] = struct{}{}
+		}
+		for _, reply := range step.CompensateReplies {
+			seen[reply.Topic] = struct{}{}
+		}
 	}
+	topics := make([]string, 0, len(seen))
+	for topic := range seen {
+		topics = append(topics, topic)
+	}
+	sort.Strings(topics)
+	return topics
 }
 
-func fromModelData(data model.SagaData) SagaData {
-	return SagaData{
-		OrderID:         data.OrderID,
-		CustomerID:      data.CustomerID,
-		PaymentID:       data.PaymentID,
-		ReservationID:   data.ReservationID,
-		ShippingID:      data.ShippingID,
-		CorrelationID:   data.CorrelationID,
-		ShippingAddress: data.ShippingAddress,
-		TotalAmount:     data.TotalAmount,
-		Items:           append([]dto.OrderItemRequest(nil), data.Items...),
+func ReplyType(payload []byte) (string, error) {
+	var envelope struct {
+		Type string `json:"type"`
 	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return "", err
+	}
+	if envelope.Type == "" {
+		return "", fmt.Errorf("reply type is required")
+	}
+	return envelope.Type, nil
+}
+
+func validateReplyCase[D any](step string, phase string, reply ReplyCase[D]) error {
+	if reply.Topic == "" {
+		return fmt.Errorf("%s reply topic is required for step %s", phase, step)
+	}
+	if reply.ReplyType == "" {
+		return fmt.Errorf("%s reply type is required for step %s", phase, step)
+	}
+	if reply.Decide == nil {
+		return fmt.Errorf("%s reply decision is required for step %s", phase, step)
+	}
+	return nil
+}
+
+func validateDeclaredDecision[D any](step string, stepsByName map[string]Step[D], reply ReplyCase[D]) error {
+	if reply.declared == nil {
+		return nil
+	}
+	if reply.declared.Kind != DecisionAdvance {
+		return nil
+	}
+	targetStep, ok := stepsByName[reply.declared.NextStep]
+	if !ok {
+		return fmt.Errorf("step %s advances to unknown step %q", step, reply.declared.NextStep)
+	}
+	if reply.declared.NextState != targetStep.PendingState {
+		return fmt.Errorf("step %s advances to step %q with state %q, but pending state is %q", step, targetStep.Name, reply.declared.NextState, targetStep.PendingState)
+	}
+	return nil
 }

@@ -23,6 +23,9 @@ const (
 	OrderStatusCompleted         OrderStatus = "COMPLETED"
 	OrderStatusCancelled         OrderStatus = "CANCELLED"
 
+	// OrchestrationAcceptedStatus is the immediate create-order acknowledgement for
+	// an accepted orchestration request. It is distinct from the internal accepted
+	// order lifecycle state and from the later terminal order response statuses.
 	OrchestrationAcceptedStatus = "SAGA_STARTED"
 )
 
@@ -131,13 +134,21 @@ type OrderItemResponse struct {
 }
 
 type OrderResponse struct {
-	OrderID     string              `json:"orderId"`
-	CustomerID  string              `json:"customerId"`
-	Status      string              `json:"status"`
-	Items       []OrderItemResponse `json:"items"`
-	TotalAmount json.Number         `json:"totalAmount"`
-	CreatedAt   time.Time           `json:"createdAt"`
-	UpdatedAt   time.Time           `json:"updatedAt"`
+	OrderID          string              `json:"orderId"`
+	CustomerID       string              `json:"customerId"`
+	ShippingAddress  string              `json:"shippingAddress"`
+	Status           string              `json:"status"`
+	Items            []OrderItemResponse `json:"items"`
+	TotalAmount      json.Number         `json:"totalAmount"`
+	PaymentID        string              `json:"paymentId,omitempty"`
+	ReservationID    string              `json:"reservationId,omitempty"`
+	ShippingID       string              `json:"shippingId,omitempty"`
+	TrackingNumber   string              `json:"trackingNumber,omitempty"`
+	FailureReason    string              `json:"failureReason,omitempty"`
+	FailureStep      string              `json:"failureStep,omitempty"`
+	CompensatedSteps []string            `json:"compensatedSteps,omitempty"`
+	CreatedAt        time.Time           `json:"createdAt"`
+	UpdatedAt        time.Time           `json:"updatedAt"`
 }
 
 type OrchestrationCreateOrderAcceptedResponse struct {

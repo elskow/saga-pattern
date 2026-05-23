@@ -2,24 +2,20 @@ package messaging
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"saga-pattern/common/commands"
 	commonkafka "saga-pattern/common/kafka"
-	"saga-pattern/common/validate"
+	"saga-pattern/orchestration-saga/internal/messagingutil"
 )
 
 type InventoryCommandHandler interface {
 	HandleReserveInventory(context.Context, commands.ReserveInventoryCommand) error
+	HandleCommitInventory(context.Context, commands.CommitInventoryCommand) error
 	HandleReleaseInventory(context.Context, commands.ReleaseInventoryCommand) error
 }
 
-type CommandEnvelope struct {
-	Topic string
-	Key   string
-	Value []byte
-}
+type CommandEnvelope = messagingutil.CommandEnvelope
 
 type CommandConsumer struct {
 	handler InventoryCommandHandler
@@ -38,37 +34,34 @@ func (c *CommandConsumer) Topics() []string {
 }
 
 func (c *CommandConsumer) Consume(ctx context.Context, envelope CommandEnvelope) error {
-	if envelope.Topic != c.topic {
-		return fmt.Errorf("unsupported inventory command topic %q", envelope.Topic)
+	if err := messagingutil.EnsureTopic(envelope.Topic, c.topic, "inventory command"); err != nil {
+		return err
+	}
+	commandType, err := messagingutil.DecodeCommandType(envelope.Value, "inventory")
+	if err != nil {
+		return err
 	}
 
-	var meta struct {
-		CommandType string `json:"commandType"`
-	}
-	if err := json.Unmarshal(envelope.Value, &meta); err != nil {
-		return fmt.Errorf("decode inventory command: %w", err)
-	}
-
-	switch meta.CommandType {
+	switch commandType {
 	case commands.CommandReserveInventory:
-		var command commands.ReserveInventoryCommand
-		if err := validate.UnmarshalStrictJSON(envelope.Value, &command); err != nil {
-			return fmt.Errorf("decode reserve inventory command: %w", err)
-		}
-		if err := command.Validate(); err != nil {
-			return fmt.Errorf("validate reserve inventory command: %w", err)
+		command, err := messagingutil.DecodeValidatedCommand[commands.ReserveInventoryCommand](envelope.Value, "reserve inventory")
+		if err != nil {
+			return err
 		}
 		return c.handler.HandleReserveInventory(ctx, command)
-	case commands.CommandReleaseInventory:
-		var command commands.ReleaseInventoryCommand
-		if err := validate.UnmarshalStrictJSON(envelope.Value, &command); err != nil {
-			return fmt.Errorf("decode release inventory command: %w", err)
+	case commands.CommandCommitInventory:
+		command, err := messagingutil.DecodeValidatedCommand[commands.CommitInventoryCommand](envelope.Value, "commit inventory")
+		if err != nil {
+			return err
 		}
-		if err := command.Validate(); err != nil {
-			return fmt.Errorf("validate release inventory command: %w", err)
+		return c.handler.HandleCommitInventory(ctx, command)
+	case commands.CommandReleaseInventory:
+		command, err := messagingutil.DecodeValidatedCommand[commands.ReleaseInventoryCommand](envelope.Value, "release inventory")
+		if err != nil {
+			return err
 		}
 		return c.handler.HandleReleaseInventory(ctx, command)
 	default:
-		return fmt.Errorf("unsupported inventory command type %q", meta.CommandType)
+		return fmt.Errorf("unsupported inventory command type %q", commandType)
 	}
 }

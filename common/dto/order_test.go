@@ -15,18 +15,18 @@ func TestOrderPayloadVariants(t *testing.T) {
 
 	choreo := dto.ChoreographyCreateOrderRequest{
 		CustomerID:      "CUST-001",
-		ShippingAddress: "123 Main Street, City, Country",
+		ShippingAddress: "Jl. Ketintang Wiyata, Surabaya 60231, City, Country",
 		Items: []dto.OrderItemRequest{{
 			ProductID:   "PROD-001",
 			ProductName: "Sample Product",
 			Quantity:    2,
-			Price:       json.Number("49.99"),
+			Price:       json.Number("799000"),
 		}},
 	}
 	orch := dto.OrchestrationCreateOrderRequest{
 		CustomerID:      "CUST-001",
 		TotalAmount:     json.Number("99.98"),
-		ShippingAddress: "123 Main Street, City, Country",
+		ShippingAddress: "Jl. Ketintang Wiyata, Surabaya 60231, City, Country",
 		Items:           choreo.Items,
 	}
 
@@ -56,19 +56,24 @@ func TestOrderPayloadVariants(t *testing.T) {
 	}
 
 	response := dto.OrderResponse{
-		OrderID:     "ORDER-123",
-		CustomerID:  choreo.CustomerID,
-		Status:      string(dto.OrderStatusPending),
-		Items:       []dto.OrderItemResponse{{ProductID: "PROD-001", ProductName: "Sample Product", Quantity: 2, Price: json.Number("49.99")}},
-		TotalAmount: json.Number("99.98"),
-		CreatedAt:   time.Unix(1710000000, 0).UTC(),
-		UpdatedAt:   time.Unix(1710000060, 0).UTC(),
+		OrderID:          "ORDER-123",
+		CustomerID:       choreo.CustomerID,
+		Status:           string(dto.OrderStatusCancelled),
+		Items:            []dto.OrderItemResponse{{ProductID: "PROD-001", ProductName: "Sample Product", Quantity: 2, Price: json.Number("799000")}},
+		TotalAmount:      json.Number("99.98"),
+		PaymentID:        "PAY-123",
+		ReservationID:    "RES-123",
+		FailureReason:    "inventory failed",
+		FailureStep:      "inventory",
+		CompensatedSteps: []string{"payment"},
+		CreatedAt:        time.Unix(1710000000, 0).UTC(),
+		UpdatedAt:        time.Unix(1710000060, 0).UTC(),
 	}
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
 		t.Fatalf("marshal order response: %v", err)
 	}
-	for _, field := range []string{"orderId", "customerId", "status", "items", "totalAmount", "createdAt", "updatedAt"} {
+	for _, field := range []string{"orderId", "customerId", "status", "items", "totalAmount", "paymentId", "reservationId", "failureReason", "failureStep", "compensatedSteps", "createdAt", "updatedAt"} {
 		if !bytes.Contains(responseJSON, []byte("\""+field+"\"")) {
 			t.Fatalf("order response missing %s in %s", field, responseJSON)
 		}
@@ -102,7 +107,7 @@ func TestRejectsMalformedCreateOrderRequest(t *testing.T) {
 				_, err := dto.DecodeChoreographyCreateOrderRequest(r)
 				return err
 			},
-			payload: `{"customerId":"CUST-001","totalAmount":99.98,"shippingAddress":"123 Main Street","items":[{"productId":"PROD-001","productName":"Sample Product","quantity":1,"price":49.99}]}`,
+			payload: `{"customerId":"CUST-001","totalAmount":1599000,"shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Sample Product","quantity":1,"price":799000}]}`,
 			wantErr: "unknown field",
 		},
 		{
@@ -111,7 +116,7 @@ func TestRejectsMalformedCreateOrderRequest(t *testing.T) {
 				_, err := dto.DecodeOrchestrationCreateOrderRequest(r)
 				return err
 			},
-			payload: `{"customerId":"CUST-001","shippingAddress":"123 Main Street","items":[{"productId":"PROD-001","productName":"Sample Product","quantity":1,"price":49.99}]}`,
+			payload: `{"customerId":"CUST-001","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Sample Product","quantity":1,"price":799000}]}`,
 			wantErr: "totalAmount",
 		},
 		{
@@ -120,7 +125,7 @@ func TestRejectsMalformedCreateOrderRequest(t *testing.T) {
 				_, err := dto.DecodeChoreographyCreateOrderRequest(r)
 				return err
 			},
-			payload: `{"customerId":"CUST-001","shippingAddress":"","items":[{"productId":"PROD-001","productName":"Sample Product","quantity":1,"price":49.99}]}`,
+			payload: `{"customerId":"CUST-001","shippingAddress":"","items":[{"productId":"PROD-001","productName":"Sample Product","quantity":1,"price":799000}]}`,
 			wantErr: "shippingAddress",
 		},
 		{
@@ -129,7 +134,7 @@ func TestRejectsMalformedCreateOrderRequest(t *testing.T) {
 				_, err := dto.DecodeChoreographyCreateOrderRequest(r)
 				return err
 			},
-			payload: `{"customerId":"CUST-001","shippingAddress":"123 Main Street","items":[]}`,
+			payload: `{"customerId":"CUST-001","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[]}`,
 			wantErr: "items",
 		},
 	}

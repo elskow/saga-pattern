@@ -3,7 +3,7 @@ package config
 import commonconfig "saga-pattern/common/config"
 
 var spec = commonconfig.ServiceSpec{
-	Name:     "choreography-inventory-service",
+	Name:     "inventory-service-choreography",
 	Pattern:  "choreography",
 	HTTPPort: 8083,
 }
