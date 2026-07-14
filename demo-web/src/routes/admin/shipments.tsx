@@ -59,13 +59,13 @@ function ShipmentStatusSelect({ shipment, onStatusChange }: { shipment: Shipment
   };
 
   return (
-    <div className="relative inline-block min-w-[150px]">
+    <div className="relative inline-block min-w-[180px]">
       <select 
         value={shipment.status} 
         onChange={handleChange} 
         disabled={loading}
-        className={`w-full appearance-none border border-border text-xs rounded-full px-2.5 py-1 pr-7 outline-none focus:ring-1 focus:ring-ring transition-colors ${
-          shipment.status === "FAILED" ? "bg-destructive/10 text-destructive border-destructive/20" : "bg-secondary text-secondary-foreground"
+        className={`h-8 min-h-8 w-full py-1 text-xs ${
+          shipment.status === "FAILED" ? "border-destructive/20 bg-destructive/10 text-destructive" : "bg-card text-foreground"
         } ${loading ? "opacity-70" : ""}`}
       >
         {STATUS_OPTIONS.filter(s => s !== "all").map(s => (
@@ -73,12 +73,8 @@ function ShipmentStatusSelect({ shipment, onStatusChange }: { shipment: Shipment
         ))}
       </select>
       {loading ? (
-        <RefreshCw className="h-3 w-3 absolute right-2.5 top-1.5 animate-spin text-muted-foreground" />
-      ) : (
-        <div className="pointer-events-none absolute right-2.5 top-1.5 text-muted-foreground">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-        </div>
-      )}
+        <RefreshCw className="h-3 w-3 absolute right-3 top-2.5 animate-spin text-muted-foreground" />
+      ) : null}
     </div>
   );
 }
@@ -203,7 +199,12 @@ function AdminShipmentsPageInner({
                   <TableCell>{shipment.carrier}</TableCell>
                   <TableCell className="font-mono text-xs">
                     {shipment.trackingNumber ? (
-                      <Link to={`/tracking/${shipment.trackingNumber}`} className="text-blue-500 hover:underline">
+                      <Link
+                        to="/tracking/$trackingId"
+                        params={{ trackingId: shipment.trackingNumber }}
+                        search={{ pattern: shipment.pattern, orderId: shipment.orderId, shipmentId: shipment.shipmentId }}
+                        className="text-foreground hover:underline"
+                      >
                         {shipment.trackingNumber}
                       </Link>
                     ) : (

@@ -33,8 +33,28 @@ func (r *PostgresRepository) Create(ctx context.Context, payment domain.Payment)
 	return payment, nil
 }
 
-func (r *PostgresRepository) Save(ctx context.Context, payment domain.Payment) error {
-	result, err := r.db.ExecContext(ctx, `
+func (r *PostgresRepository) Save(ctx context.Context, payment domain.Payment, hook TxHook) error {
+	if hook == nil {
+		return r.savePayment(ctx, r.db, payment)
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := r.savePaymentTx(ctx, tx, payment); err != nil {
+		return err
+	}
+	if err := hook(ctx, tx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (r *PostgresRepository) savePayment(ctx context.Context, db interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}, payment domain.Payment) error {
+	result, err := db.ExecContext(ctx, `
 	UPDATE payments
 	SET order_id = $2,
 	    customer_id = $3,
@@ -59,6 +79,10 @@ func (r *PostgresRepository) Save(ctx context.Context, payment domain.Payment) e
 		return fmt.Errorf("payment %s not found", payment.PaymentID)
 	}
 	return nil
+}
+
+func (r *PostgresRepository) savePaymentTx(ctx context.Context, tx *sql.Tx, payment domain.Payment) error {
+	return r.savePayment(ctx, tx, payment)
 }
 
 func (r *PostgresRepository) GetByOrderID(ctx context.Context, orderID string) (domain.Payment, bool, error) {

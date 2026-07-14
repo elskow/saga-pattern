@@ -3,10 +3,12 @@ package messaging
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"saga-pattern/common/commands"
 	commonkafka "saga-pattern/common/kafka"
 	"saga-pattern/orchestration-saga/internal/messagingutil"
+	"saga-pattern/orchestration-saga/payment-service/internal/domain"
 )
 
 type PaymentCommandHandler interface {
@@ -33,6 +35,10 @@ func (c *CommandConsumer) Topics() []string {
 }
 
 func (c *CommandConsumer) Consume(ctx context.Context, envelope CommandEnvelope) error {
+	if delay := domain.SimulatedDelayMs.Load(); delay > 0 {
+		time.Sleep(time.Duration(delay) * time.Millisecond)
+	}
+
 	if err := messagingutil.EnsureTopic(envelope.Topic, c.topic, "payment command"); err != nil {
 		return err
 	}

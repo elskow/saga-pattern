@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	sagaRuntime "saga-pattern/orchestration-framework/runtime"
 	"saga-pattern/orchestration-saga/order-service/internal/domain"
@@ -161,6 +162,21 @@ func scanOrders(rows *sql.Rows) ([]domain.Order, error) {
 		return nil, err
 	}
 	return orders, nil
+}
+
+func (r *PostgresRepository) CancelFinalized(ctx context.Context, orderId string) error {
+	res, err := r.db.ExecContext(ctx, "UPDATE orders SET status = $1 WHERE order_id = $2", domain.StatusCancelled, orderId)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return errors.New("order not found")
+	}
+	return nil
 }
 
 var _ Repository = (*PostgresRepository)(nil)

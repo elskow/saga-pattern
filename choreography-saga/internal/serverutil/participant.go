@@ -28,6 +28,18 @@ type ParticipantResources struct {
 }
 
 func BootstrapParticipant(cfg commonconfig.ServiceConfig, migrationScope string, migrationDir string) (*ParticipantResources, error) {
+	return BootstrapParticipantWithExtraMigrations(cfg, migrationScope, migrationDir, nil)
+}
+
+// ExtraMigration describes an additional migration scope run after the primary
+// service migrations. Used to run choreography-framework migrations alongside
+// service-owned migrations.
+type ExtraMigration struct {
+	Scope string
+	Dir   string
+}
+
+func BootstrapParticipantWithExtraMigrations(cfg commonconfig.ServiceConfig, migrationScope string, migrationDir string, extras []ExtraMigration) (*ParticipantResources, error) {
 	logger := commonlogging.NewTextLogger(os.Stdout, cfg.Runtime.LogLevel)
 	tracingShutdown, err := commontracing.Init(context.Background(), cfg.ServiceName, cfg.Runtime.OTLPEndpoint)
 	if err != nil {
@@ -52,6 +64,14 @@ func BootstrapParticipant(cfg commonconfig.ServiceConfig, migrationScope string,
 	}
 	if err := migrations.Run(context.Background(), db, migrationScope, migrationDir); err != nil {
 		return nil, errors.Join(fmt.Errorf("run %s migrations: %w", migrationScope, err), cleanupStartup(observedDB))
+	}
+	for _, extra := range extras {
+		if extra.Scope == "" || extra.Dir == "" {
+			continue
+		}
+		if err := migrations.Run(context.Background(), db, extra.Scope, extra.Dir); err != nil {
+			return nil, errors.Join(fmt.Errorf("run %s migrations: %w", extra.Scope, err), cleanupStartup(observedDB))
+		}
 	}
 	runtimePublisher, err := commonkafka.NewRuntimePublisher(cfg.Runtime.KafkaBrokers)
 	if err != nil {

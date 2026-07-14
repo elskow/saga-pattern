@@ -8,20 +8,25 @@ import {
   DEPOSIT_SERVICE_LABELS_MAP,
 } from "@/lib/admin";
 import { DepositBalanceStatus, DepositServiceKey } from "@/types";
-import { Banknote, Gauge } from "lucide-react";
-import { formatPrice } from "@/lib/currency";
+import { AlertCircle, Banknote, Gauge, RefreshCw } from "lucide-react";
+import { formatCurrencyInput, formatPrice, normalizeCurrencyInput } from "@/lib/currency";
+import { Button } from "@/components/ui/button";
 
 interface AdminPaymentClientProps {
   initialBalances: Record<string, DepositBalanceStatus>;
+  initialError: string | null;
 }
 
-export default function AdminPaymentClient({ initialBalances }: AdminPaymentClientProps) {
+const getErrorMessage = (err: unknown, fallback: string) => err instanceof Error ? err.message : fallback;
+
+export default function AdminPaymentClient({ initialBalances, initialError }: AdminPaymentClientProps) {
   const [balances, setBalances] = useState<Record<string, DepositBalanceStatus>>(initialBalances);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(initialError);
   const [inputValues, setInputValues] = useState<Record<string, string>>(
     Object.fromEntries(
-      Object.entries(initialBalances).map(([key, status]) => [key, status.unlimited ? "" : status.balance])
+      Object.entries(initialBalances).map(([key, status]) => [key, status.unlimited ? "" : formatCurrencyInput(status.balance)])
     )
   );
 
@@ -29,10 +34,20 @@ export default function AdminPaymentClient({ initialBalances }: AdminPaymentClie
     try {
       const status = await fetchDepositBalanceServer({ data: key as DepositServiceKey });
       setBalances((prev) => ({ ...prev, [key]: status }));
-      setInputValues((prev) => ({ ...prev, [key]: status.unlimited ? "" : status.balance }));
-    } catch {
-      setBalances((prev) => ({ ...prev, [key]: { balance: "", unlimited: true } }));
-      setInputValues((prev) => ({ ...prev, [key]: "" }));
+      setInputValues((prev) => ({ ...prev, [key]: status.unlimited ? "" : formatCurrencyInput(status.balance) }));
+      setError(null);
+    } catch (err) {
+      setError(getErrorMessage(err, `Failed to refresh ${key} balance`));
+      throw err;
+    }
+  };
+
+  const refreshAll = async () => {
+    setError(null);
+    const results = await Promise.allSettled(DEPOSIT_SERVICE_KEYS.map((key) => refreshOne(key)));
+    const rejected = results.find((result) => result.status === "rejected");
+    if (rejected && rejected.status === "rejected") {
+      setError(getErrorMessage(rejected.reason, "One or more payment balances could not be refreshed"));
     }
   };
 
@@ -40,11 +55,11 @@ export default function AdminPaymentClient({ initialBalances }: AdminPaymentClie
     setLoading((prev) => ({ ...prev, [key]: true }));
     setEditing((prev) => ({ ...prev, [key]: false }));
     try {
-      const val = inputValues[key];
+      const val = normalizeCurrencyInput(inputValues[key] ?? "");
       await setDepositBalanceServer({ data: { key: key as DepositServiceKey, balance: val || null } });
       await refreshOne(key);
     } catch (err) {
-      console.error(`Failed to update ${key}:`, err);
+      setError(getErrorMessage(err, `Failed to update ${key}`));
     } finally {
       setLoading((prev) => ({ ...prev, [key]: false }));
     }
@@ -54,7 +69,7 @@ export default function AdminPaymentClient({ initialBalances }: AdminPaymentClie
     const current = balances[key];
     setInputValues((prev) => ({
       ...prev,
-      [key]: current?.unlimited ? "" : current.balance,
+      [key]: current?.unlimited ? "" : formatCurrencyInput(current.balance),
     }));
     setEditing((prev) => ({ ...prev, [key]: true }));
   };
@@ -65,7 +80,7 @@ export default function AdminPaymentClient({ initialBalances }: AdminPaymentClie
       await setDepositBalanceServer({ data: { key: key as DepositServiceKey, balance: null } });
       await refreshOne(key);
     } catch (err) {
-      console.error(`Failed to reset ${key}:`, err);
+      setError(getErrorMessage(err, `Failed to reset ${key}`));
     } finally {
       setLoading((prev) => ({ ...prev, [key]: false }));
     }
@@ -74,11 +89,25 @@ export default function AdminPaymentClient({ initialBalances }: AdminPaymentClie
   return (
     <div className="space-y-8 w-full max-w-none">
       <div className="border-b border-border/60 pb-5 mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Payment</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Manage deposit balances for payment services
-        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Payment</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage deposit balances for payment services
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={refreshAll} className="gap-1.5 rounded-full text-xs">
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh Balances
+          </Button>
+        </div>
       </div>
+      {error && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/50 p-4 text-sm text-amber-800">
+          <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
+          <p className="font-medium">{error}</p>
+        </div>
+      )}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -105,8 +134,8 @@ export default function AdminPaymentClient({ initialBalances }: AdminPaymentClie
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${status.unlimited ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-blue-100 dark:bg-blue-900/30"}`}>
-                      <Banknote className={`h-5 w-5 ${status.unlimited ? "text-emerald-600 dark:text-emerald-400" : "text-blue-600 dark:text-blue-400"}`} />
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${status.unlimited ? "bg-emerald-100" : "bg-muted"}`}>
+                      <Banknote className={`h-5 w-5 ${status.unlimited ? "text-emerald-600" : "text-foreground"}`} />
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-foreground">{label}</p>
@@ -115,7 +144,7 @@ export default function AdminPaymentClient({ initialBalances }: AdminPaymentClie
                       </p>
                     </div>
                   </div>
-                  <Gauge className={`h-4 w-4 ${status.unlimited ? "text-emerald-500" : "text-blue-500"}`} />
+                  <Gauge className={`h-4 w-4 ${status.unlimited ? "text-emerald-500" : "text-foreground"}`} />
                 </div>
                 {isEditing ? (
                   <div className="flex items-center gap-2 pt-2 border-t border-border/50">
@@ -125,9 +154,9 @@ export default function AdminPaymentClient({ initialBalances }: AdminPaymentClie
                         type="text"
                         inputMode="numeric"
                         pattern="[0-9]*"
-                        placeholder="e.g. 50000000"
+                        placeholder="e.g. 50.000.000"
                         value={inputValues[key] ?? ""}
-                        onChange={(e) => setInputValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                        onChange={(e) => setInputValues((prev) => ({ ...prev, [key]: formatCurrencyInput(e.target.value) }))}
                         className="w-full pl-10 pr-3 py-2 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                         autoFocus
                         onKeyDown={(e) => {
@@ -163,7 +192,7 @@ export default function AdminPaymentClient({ initialBalances }: AdminPaymentClie
                       <button
                         onClick={() => resetUnlimited(key)}
                         disabled={isLoading}
-                        className="px-3 py-2 text-xs font-semibold rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-900/20 transition-colors disabled:opacity-50"
+                        className="px-3 py-2 text-xs font-semibold rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-50"
                       >
                         Reset
                       </button>

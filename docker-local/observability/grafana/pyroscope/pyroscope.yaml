@@ -1,0 +1,6 @@
+storage:
+  backend: filesystem
+  filesystem:
+    dir: /var/lib/pyroscope
+
+# No retention period set = data persists indefinitely (default behavior)

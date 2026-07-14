@@ -37,6 +37,8 @@ func NewHandler(deps HandlerDependencies) http.Handler {
 	mux.HandleFunc("PATCH /api/shipments/{shippingId}/status", updateShipmentStatusHandler(deps.Logger, deps.Repo))
 	mux.HandleFunc("GET /api/admin/failure-mode", getFailureModeHandler(deps.Service))
 	mux.HandleFunc("PUT /api/admin/failure-mode", putFailureModeHandler(deps.Logger, deps.Service))
+	mux.HandleFunc("GET /api/admin/delay", getDelayHandler())
+	mux.HandleFunc("PUT /api/admin/delay", putDelayHandler(deps.Logger))
 	mux.Handle("/", base)
 	return mux
 }
@@ -108,5 +110,29 @@ func putFailureModeHandler(logger *slog.Logger, svc failureModeTogglable) http.H
 		state := svc.ConfigureFailureMode(req)
 		logger.Info("failure mode updated", "enabled", state.Enabled, "runLabel", state.RunLabel, "remaining", state.Remaining)
 		writeJSON(w, http.StatusOK, state)
+	}
+}
+
+type delayRequest struct {
+	DelayMs int32 `json:"delay_ms"`
+}
+
+func getDelayHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		delay := domain.SimulatedDelayMs.Load()
+		writeJSON(w, http.StatusOK, delayRequest{DelayMs: delay})
+	}
+}
+
+func putDelayHandler(logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req delayRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		domain.SimulatedDelayMs.Store(req.DelayMs)
+		logger.Info("simulated delay updated", "delay_ms", req.DelayMs)
+		writeJSON(w, http.StatusOK, req)
 	}
 }

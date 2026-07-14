@@ -165,7 +165,7 @@ export default function AdminOrdersClient({ initialOrders, initialError }: Admin
                       {order.shippingId ? order.shippingId.slice(0, 8) + "…" : "—"}
                     </TableCell>
                     <TableCell>
-                      <Link to={`/orders/${id}?pattern=${order.pattern}`}>
+                      <Link to="/orders/$orderId" params={{ orderId: id }} search={{ pattern: order.pattern }}>
                         <Button
                           variant="ghost"
                           size="sm"

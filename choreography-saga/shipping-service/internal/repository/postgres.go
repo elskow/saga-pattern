@@ -43,8 +43,28 @@ func (r *PostgresRepository) ClearPendingShippingAddress(ctx context.Context, or
 	return err
 }
 
-func (r *PostgresRepository) SaveShipment(ctx context.Context, shipment domain.Shipment) error {
-	_, err := r.db.ExecContext(ctx, `
+func (r *PostgresRepository) SaveShipment(ctx context.Context, shipment domain.Shipment, hook TxHook) error {
+	if hook == nil {
+		return r.saveShipment(ctx, r.db, shipment)
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := r.saveShipment(ctx, tx, shipment); err != nil {
+		return err
+	}
+	if err := hook(ctx, tx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (r *PostgresRepository) saveShipment(ctx context.Context, db interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}, shipment domain.Shipment) error {
+	_, err := db.ExecContext(ctx, `
 	INSERT INTO shipments (shipping_id, order_id, tracking_number, shipping_address, status, estimated_delivery, created_at, updated_at)
 	VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 	ON CONFLICT (shipping_id) DO UPDATE SET

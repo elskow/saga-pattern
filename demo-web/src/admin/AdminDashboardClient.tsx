@@ -68,6 +68,28 @@ function FailureInjectionPanel() {
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [ready, setReady] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
+  const [simulatedDelay, setSimulatedDelay] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return parseInt(localStorage.getItem("saga-simulated-delay") || "0");
+    }
+    return 0;
+  });
+
+  const handleDelayChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = parseInt(e.target.value);
+    setSimulatedDelay(val);
+    localStorage.setItem("saga-simulated-delay", val.toString());
+    window.setTimeout(() => {
+      void fetch("/api/admin/delay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delay_ms: val }),
+        keepalive: true,
+      }).catch((err) => {
+        console.error("Failed to update simulated delay", err);
+      });
+    }, 0);
+  };
 
   const loadModes = async () => {
     setBootstrapping(true);
@@ -108,9 +130,9 @@ function FailureInjectionPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight">Failure Injection</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Saga Controls</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Toggle failure mode per service to simulate saga failures
+            Configure failure modes and execution delays
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50/50 px-3 py-1.5 text-xs font-medium text-amber-800">
@@ -118,6 +140,26 @@ function FailureInjectionPanel() {
           Testing only
         </div>
       </div>
+      
+      <div className="p-5 rounded-xl border border-border bg-card shadow-sm">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold tracking-tight">Simulated Execution Delay</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">Slows down saga step execution for better visualization.</p>
+          </div>
+          <select 
+            value={simulatedDelay} 
+            onChange={handleDelayChange}
+            className="w-full text-xs sm:w-48"
+          >
+            <option value={0}>⚡ Fast (0ms)</option>
+            <option value={1000}>🐢 Slow (1s)</option>
+            <option value={2000}>🦥 Very Slow (2s)</option>
+            <option value={5000}>🧊 Extremely Slow (5s)</option>
+          </select>
+        </div>
+      </div>
+
       {!ready ? (
         <div className="rounded-xl border border-dashed border-border bg-card/50 p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -159,11 +201,11 @@ function FailureInjectionPanel() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${enabled ? "bg-red-100 dark:bg-red-900/30" : "bg-green-100 dark:bg-green-900/30"}`}>
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${enabled ? "bg-red-100" : "bg-green-100"}`}>
                       {enabled ? (
-                        <ZapOff className="h-5 w-5 text-red-600 dark:text-red-400" />
+                        <ZapOff className="h-5 w-5 text-red-600" />
                       ) : (
-                        <Zap className="h-5 w-5 text-green-600 dark:text-green-400" />
+                        <Zap className="h-5 w-5 text-green-600" />
                       )}
                     </div>
                     <div>
@@ -175,7 +217,7 @@ function FailureInjectionPanel() {
                   </div>
                   <div className="flex items-center gap-2">
                     {enabled ? (
-                      <div className="flex items-center gap-1.5 rounded-full bg-red-100 dark:bg-red-900/30 px-2.5 py-1 text-xs font-bold text-red-700 dark:text-red-400">
+                      <div className="flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">
                         <ToggleRight className="h-3.5 w-3.5" />
                         ON
                       </div>
@@ -302,7 +344,7 @@ export default function AdminDashboardClient({
               ) : (
                 <div className="space-y-3">
                   {services.map((svc) => (
-                    <div key={svc.port} className="flex items-center justify-between text-sm">
+                    <div key={`${svc.pattern}-${svc.name}-${svc.port}`} className="flex items-center justify-between text-sm">
                       <span className="flex items-center gap-3">
                         <HealthDot healthy={svc.healthy} />
                         <span className="text-foreground font-medium">{svc.name}</span>
@@ -356,7 +398,7 @@ export default function AdminDashboardClient({
                   <span className={cn("text-xs font-medium", o.status === "COMPLETED" ? "text-green-600" : "text-muted-foreground")}>
                     {o.status}
                   </span>
-                  <Link to={`/orders/${id}?pattern=${o.pattern}`} className="text-muted-foreground hover:text-foreground">
+                  <Link to="/orders/$orderId" params={{ orderId: id }} search={{ pattern: o.pattern }} className="text-muted-foreground hover:text-foreground">
                     <ArrowLeft className="h-4 w-4 rotate-180" />
                   </Link>
                 </div>

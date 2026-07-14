@@ -15,4 +15,5 @@ type Repository interface {
 	UpsertFinalizedFromRuntimeView(context.Context, sagaRuntime.View[ordersaga.Data], time.Time) (domain.Order, error)
 	ListFinalized(context.Context) ([]domain.Order, error)
 	ListFinalizedByCustomer(context.Context, string) ([]domain.Order, error)
+	CancelFinalized(context.Context, string) error
 }

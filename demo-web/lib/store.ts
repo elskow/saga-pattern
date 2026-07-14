@@ -2,6 +2,90 @@ import { CartItem, CatalogProduct, Pattern } from "@/types";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+export type UserRole = "admin" | "user";
+
+export interface AuthUser {
+  username: string;
+  role: UserRole;
+  email?: string;
+  address?: string;
+}
+
+type LoginResult = "ok" | "invalid-credentials";
+type RegisterResult = "ok" | "user-exists";
+
+interface AuthStore {
+  user: AuthUser | null;
+  users: Record<string, { password: string; role: UserRole; email?: string; address?: string }>;
+  login: (username: string, password: string) => LoginResult;
+  register: (username: string, password: string, email?: string, address?: string) => RegisterResult;
+  updateProfile: (updates: Partial<AuthUser>) => void;
+  logout: () => void;
+  isAdmin: () => boolean;
+  isLoggedIn: () => boolean;
+}
+
+const USERS: Record<string, { password: string; role: UserRole }> = {
+  admin: { password: "admin123", role: "admin" },
+  user:  { password: "user123",  role: "user"  },
+};
+
+export const useAuthStore = create<AuthStore>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      users: { ...USERS },
+
+      login: (username, password) => {
+        const record = get().users[username.toLowerCase()];
+        if (!record || record.password !== password) {
+          return "invalid-credentials";
+        }
+        set({ user: { username: username.toLowerCase(), role: record.role, email: record.email, address: record.address } });
+        return "ok";
+      },
+
+      register: (username, password, email, address) => {
+        const normalized = username.toLowerCase();
+        if (get().users[normalized]) {
+          return "user-exists";
+        }
+        set((state) => ({
+          users: { ...state.users, [normalized]: { password, role: "user", email, address } },
+          user: { username: normalized, role: "user", email, address }
+        }));
+        return "ok";
+      },
+
+      updateProfile: (updates) => {
+        set((state) => {
+          if (!state.user) return state;
+          const updatedUser = { ...state.user, ...updates };
+          const updatedUsers = { ...state.users };
+          if (updatedUsers[state.user.username]) {
+            updatedUsers[state.user.username] = {
+              ...updatedUsers[state.user.username],
+              email: updatedUser.email,
+              address: updatedUser.address
+            };
+          }
+          return { user: updatedUser, users: updatedUsers };
+        });
+      },
+
+      logout: () => set({ user: null }),
+
+      isAdmin: () => get().user?.role === "admin",
+
+      isLoggedIn: () => get().user !== null,
+    }),
+    {
+      name: "saga-demo-auth",
+      partialize: (state) => ({ user: state.user, users: state.users }),
+    }
+  )
+);
+
 type CartMutationReason = "out-of-stock" | "limit";
 
 interface CartMutationResult {

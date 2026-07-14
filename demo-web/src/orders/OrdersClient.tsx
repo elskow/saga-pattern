@@ -1,13 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { fetchAllOrdersServer } from "@/lib/admin";
 import { Order } from "@/types";
 import { formatPrice } from "@/lib/currency";
+import { isTerminalStatus } from "@/lib/api";
 import { OrderStatusBadge } from "@/components/OrderStatusBadge";
 import { Button } from "@/components/ui/button";
-import { Package, ArrowRight, ShoppingBag, RefreshCw } from "lucide-react";
+import { Package, ArrowRight, ShoppingBag, RefreshCw, XCircle } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { useAuthStore } from "@/lib/store";
+import { cancelOrderServer } from "@/lib/admin";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import type { Pattern } from "@/types";
 
 interface OrdersClientProps {
   initialOrders: Order[];
@@ -15,21 +21,46 @@ interface OrdersClientProps {
 }
 
 export default function OrdersClient({ initialOrders, initialError }: OrdersClientProps) {
-  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const user = useAuthStore((s) => s.user);
+  
+  const [orders, setOrders] = useState<Order[]>(() => 
+    user ? initialOrders.filter(o => o.customerId === user.username) : []
+  );
   const [error, setError] = useState<string | null>(initialError);
   const [loading, setLoading] = useState(false);
+  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
+
+  // Refilter if user changes (e.g. hydration or logout)
+  useEffect(() => {
+    if (initialOrders.length > 0) {
+      setOrders(user ? initialOrders.filter(o => o.customerId === user.username) : []);
+    }
+  }, [user, initialOrders]);
 
   const load = async () => {
     setLoading(true);
     try {
       const data = await fetchAllOrdersServer();
-      setOrders(data);
+      const filtered = user ? data.filter(o => o.customerId === user.username) : [];
+      setOrders(filtered);
       setError(null);
     } catch (err) {
-      setOrders([]);
       setError(err instanceof Error ? err.message : "Live order listing is unavailable");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCancel = async (orderId: string, pattern: Pattern) => {
+    setCancellingOrderId(orderId);
+    try {
+      await cancelOrderServer({ data: { pattern, orderId } });
+      toast.success("Order cancelled successfully");
+      await load();
+    } catch (err) {
+      toast.error("Failed to cancel order: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setCancellingOrderId(null);
     }
   };
 
@@ -73,6 +104,24 @@ export default function OrdersClient({ initialOrders, initialError }: OrdersClie
             </Button>
           </Link>
         </div>
+      ) : !user ? (
+        <div className="flex flex-col items-center justify-center py-32 gap-5 text-center rounded-2xl border border-dashed border-border bg-card/50">
+          <div className="h-16 w-16 rounded-full border border-border/60 bg-muted/30 flex items-center justify-center mb-2 shadow-sm">
+            <ShoppingBag className="h-7 w-7 text-muted-foreground/50" />
+          </div>
+          <div>
+            <p className="text-lg font-semibold tracking-tight text-foreground">Sign in to view orders</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+              Your order history is tied to your account so each purchase stays private.
+            </p>
+          </div>
+          <Link to="/login">
+            <Button size="sm" className="mt-2 gap-2 rounded-full shadow-sm group">
+              Sign in
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </Button>
+          </Link>
+        </div>
       ) : orders.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-32 gap-5 text-center rounded-2xl border border-dashed border-border bg-card/50">
           <div className="h-16 w-16 rounded-full border border-border/60 bg-muted/30 flex items-center justify-center mb-2 shadow-sm">
@@ -81,7 +130,7 @@ export default function OrdersClient({ initialOrders, initialError }: OrdersClie
           <div>
             <p className="text-lg font-semibold tracking-tight text-foreground">No orders placed yet</p>
             <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
-              Once you place an order using the orchestration backend, it will appear here.
+              Once you place an order, it will appear here.
             </p>
           </div>
           <Link to="/">
@@ -97,6 +146,8 @@ export default function OrdersClient({ initialOrders, initialError }: OrdersClie
             const id = order.id || order.orderId || "unknown";
             const itemCount = order.items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
             const total = order.totalAmount ?? order.items?.reduce((s, i) => s + i.price * i.quantity, 0) ?? 0;
+            const canCancel = !isTerminalStatus(order.status) && !order.trackingNumber;
+            const isCancelling = cancellingOrderId === id;
 
             return (
               <div
@@ -111,7 +162,10 @@ export default function OrdersClient({ initialOrders, initialError }: OrdersClie
                   <div className="flex items-center gap-3 flex-wrap mb-1.5">
                     <p className="text-sm font-semibold font-mono text-foreground truncate">#{id}</p>
                     <OrderStatusBadge status={order.status} />
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider border border-border bg-muted/40 rounded-md px-2 py-0.5">
+                    <span className={cn(
+                      "text-[10px] font-bold uppercase tracking-wider rounded-md px-2 py-0.5 border",
+                      order.pattern === "choreography" ? "bg-foreground text-background border-foreground" : "bg-muted/50 text-foreground border-border/60"
+                    )}>
                       {order.pattern}
                     </span>
                   </div>
@@ -124,18 +178,31 @@ export default function OrdersClient({ initialOrders, initialError }: OrdersClie
                       minute: "2-digit",
                     })}
                   </p>
+                  <div className="flex items-center gap-2">
+                    {canCancel && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleCancel(id, order.pattern)}
+                        disabled={isCancelling}
+                        className="gap-1.5 text-xs rounded-full font-medium text-destructive hover:bg-destructive/10"
+                      >
+                        <XCircle className="h-3.5 w-3.5" />
+                        {isCancelling ? "Cancelling..." : "Cancel"}
+                      </Button>
+                    )}
+                    <Link to="/orders/$orderId" params={{ orderId: id }} search={{ pattern: order.pattern }}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5 text-xs rounded-full font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      >
+                        View saga
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
-
-                <Link to={`/orders/${id}?pattern=${order.pattern}`}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-1.5 text-xs rounded-full font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                  >
-                    View saga
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Button>
-                </Link>
               </div>
             );
           })}

@@ -479,4 +479,59 @@ func nullableTime(value time.Time) any {
 	return value.UTC()
 }
 
+func (r *PostgresRepository) CreateProduct(ctx context.Context, p domain.Product) (domain.Product, error) {
+	var nextID string
+	row := r.db.QueryRowContext(ctx, `
+	SELECT COALESCE(
+		'PROD-' || LPAD((MAX(CAST(SUBSTRING(product_id FROM 6) AS INTEGER)) + 1)::text, 3, '0'),
+		'PROD-001'
+	) FROM products WHERE product_id ~ '^PROD-[0-9]+$'`)
+	if err := row.Scan(&nextID); err != nil {
+		return domain.Product{}, fmt.Errorf("generate product id: %w", err)
+	}
+	p.ProductID = nextID
+	p.Visible = true
+	_, err := r.db.ExecContext(ctx, `
+	INSERT INTO products (product_id, name, description, price, image, category, visible, quantity, reserved_quantity)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0)`,
+		p.ProductID, p.ProductName, p.Description, p.Price.String(), p.Image, p.Category, p.Visible, p.Quantity)
+	if err != nil {
+		return domain.Product{}, fmt.Errorf("insert product: %w", err)
+	}
+	return p, nil
+}
+
+func (r *PostgresRepository) UpdateProductMeta(ctx context.Context, productId, name, description, category, image string, price json.Number) (domain.Product, error) {
+	_, err := r.db.ExecContext(ctx, `
+	UPDATE products
+	SET name = $2, description = $3, price = $4, image = $5, category = $6
+	WHERE product_id = $1`, productId, name, description, price.String(), image, category)
+	if err != nil {
+		return domain.Product{}, fmt.Errorf("update product meta: %w", err)
+	}
+	product, found, err := r.Product(ctx, productId)
+	if err != nil {
+		return domain.Product{}, err
+	}
+	if !found {
+		return domain.Product{}, domain.ProductNotFoundError{ProductID: productId}
+	}
+	return product, nil
+}
+
+func (r *PostgresRepository) DeleteProduct(ctx context.Context, productId string) error {
+	var reserved int
+	row := r.db.QueryRowContext(ctx, `SELECT reserved_quantity FROM products WHERE product_id = $1`, productId)
+	if err := row.Scan(&reserved); err == sql.ErrNoRows {
+		return domain.ProductNotFoundError{ProductID: productId}
+	} else if err != nil {
+		return fmt.Errorf("check reserved: %w", err)
+	}
+	if reserved > 0 {
+		return fmt.Errorf("cannot delete product %s: %d units are currently reserved", productId, reserved)
+	}
+	_, err := r.db.ExecContext(ctx, `DELETE FROM products WHERE product_id = $1`, productId)
+	return err
+}
+
 var _ Repository = (*PostgresRepository)(nil)

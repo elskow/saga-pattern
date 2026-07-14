@@ -1,0 +1,177 @@
+x-common: &common
+  networks:
+    - saga-network
+  restart: unless-stopped
+  logging:
+    options:
+      max-size: 50m
+      max-file: "3"
+
+services:
+  grafana:
+    <<: *common
+    image: grafana/grafana:12.1.1
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_DEFAULT_THEME: light
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor flameGraph traceToMetrics traceToProfiles correlations
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+      tempo:
+        condition: service_started
+      pyroscope:
+        condition: service_started
+      mimir:
+        condition: service_started
+
+  mimir:
+    <<: *common
+    image: grafana/mimir:latest
+    container_name: mimir
+    command: ["-config.file=/etc/mimir/mimir.yaml"]
+    ports:
+      - "9009:9009"
+    volumes:
+      - ./grafana/mimir/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - mimir_data:/data
+
+  prometheus:
+    <<: *common
+    image: prom/prometheus:v3.5.0
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=24h
+      - --web.enable-remote-write-receiver
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./grafana/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+  tempo:
+    <<: *common
+    image: grafana/tempo:2.8.2
+    container_name: tempo
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    ports:
+      - "3200:3200"
+    volumes:
+      - ./grafana/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo_data:/var/tempo
+
+  alloy:
+    <<: *common
+    image: grafana/alloy:v1.10.2
+    container_name: alloy
+    privileged: true
+    pid: host
+    user: root
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    ports:
+      - "12345:12345"
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - ./grafana/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys/kernel/tracing:/sys/kernel/tracing:ro
+      - /sys/kernel/debug:/sys/kernel/debug:ro
+      - /proc:/host/proc:ro
+      - alloy_symb_cache:/tmp/symb-cache
+    depends_on:
+      tempo:
+        condition: service_started
+      prometheus:
+        condition: service_started
+
+  pyroscope:
+    <<: *common
+    image: grafana/pyroscope:1.14.1
+    container_name: pyroscope
+    command: ["-config.file=/etc/pyroscope/pyroscope.yaml"]
+    ports:
+      - "4040:4040"
+    volumes:
+      - ./grafana/pyroscope/pyroscope.yaml:/etc/pyroscope/pyroscope.yaml:ro
+      - pyroscope_data:/var/lib/pyroscope
+
+  beyla:
+    image: grafana/beyla:latest
+    container_name: beyla-thesis
+    init: true
+    restart: unless-stopped
+    privileged: true
+    pid: host
+    network_mode: host
+    environment:
+      BEYLA_OPEN_PORT: "8081,8082,8083,8084,8091,8092,8093,8094,8095,8096,8097"
+      BEYLA_SERVICE_NAMESPACE: saga-pattern
+      BEYLA_PROMETHEUS_PORT: "8999"
+      BEYLA_METRICS_EXPORT: prometheus
+      BEYLA_TRACES_EXPORT: otlp
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://localhost:4318/v1/traces
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      BEYLA_BPF_TRACK_REQUEST_HEADERS: "true"
+      BEYLA_BPF_TRACK_RESPONSE_HEADERS: "true"
+    volumes:
+      - /sys/kernel/debug:/sys/kernel/debug:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - /proc:/host/proc:ro
+    depends_on:
+      - alloy
+
+  cadvisor:
+    <<: *common
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    privileged: true
+    ports:
+      - "8088:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    container_name: node-exporter
+    network_mode: host
+    pid: host
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+    volumes:
+      - /:/host:ro,rslave
+
+networks:
+  saga-network:
+    external: true
+
+volumes:
+  grafana_data:
+  prometheus_data:
+  tempo_data:
+  pyroscope_data:
+  alloy_symb_cache:
+  mimir_data:

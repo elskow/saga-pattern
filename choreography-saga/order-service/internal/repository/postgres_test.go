@@ -36,7 +36,7 @@ func TestCreateIfAbsentHandlesConcurrentSameIdempotencyKey(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			stored, created, err := repo.CreateIfAbsent(context.Background(), order.IdempotencyKey, order)
+			stored, created, err := repo.CreateIfAbsent(context.Background(), order.IdempotencyKey, order, nil)
 			results <- struct {
 				order   domain.Order
 				created bool
@@ -66,42 +66,9 @@ func TestCreateIfAbsentHandlesConcurrentSameIdempotencyKey(t *testing.T) {
 	}
 }
 
-func TestClaimPendingOrderEventsClaimsRowsOnce(t *testing.T) {
-	db := testutil.OpenPostgres(t, testutil.DefaultChoreographyOrderDatabaseURL, "choreography_order_outbox_claim_test", testutil.Migration{Scope: "choreography-order-service", Dir: "choreography-saga/order-service/db/migrations"})
-	repo, err := NewPostgresRepository(db)
-	if err != nil {
-		t.Fatalf("new postgres repository: %v", err)
-	}
-	now := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
-	if _, err := repo.Create(context.Background(), newOrderForTest(t, "ORDER-CLAIM", "", now)); err != nil {
-		t.Fatalf("create order: %v", err)
-	}
-
-	first, err := repo.ClaimPendingOrderEvents(context.Background(), 10)
-	if err != nil {
-		t.Fatalf("first claim: %v", err)
-	}
-	second, err := repo.ClaimPendingOrderEvents(context.Background(), 10)
-	if err != nil {
-		t.Fatalf("second claim: %v", err)
-	}
-	if len(first) != 1 || first[0].OrderID != "ORDER-CLAIM" {
-		t.Fatalf("first claim = %+v, want one ORDER-CLAIM event", first)
-	}
-	if len(second) != 0 {
-		t.Fatalf("second claim = %+v, want none", second)
-	}
-	if err := repo.MarkOrderEventPublishFailed(context.Background(), first[0].ID, "retry"); err != nil {
-		t.Fatalf("mark failed: %v", err)
-	}
-	retry, err := repo.ClaimPendingOrderEvents(context.Background(), 10)
-	if err != nil {
-		t.Fatalf("retry claim: %v", err)
-	}
-	if len(retry) != 1 || retry[0].ID != first[0].ID || retry[0].Attempts != 1 {
-		t.Fatalf("retry claim = %+v, want original event with one attempt", retry)
-	}
-}
+// TestClaimPendingOrderEventsClaimsRowsOnce was removed. The outbox now lives
+// in the choreography-framework, which has its own store tests. See
+// choreography-framework/internal/store for framework-level outbox coverage.
 
 func newOrderForTest(t *testing.T, orderID, idempotencyKey string, now time.Time) domain.Order {
 	t.Helper()

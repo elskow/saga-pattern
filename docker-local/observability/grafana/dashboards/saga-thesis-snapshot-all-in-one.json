@@ -1,0 +1,3466 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 2,
+  "links": [
+    {
+      "title": "Thesis Overview",
+      "url": "/d/saga-thesis-overview/saga-thesis-defense-overview",
+      "targetBlank": false
+    },
+    {
+      "title": "Evidence Health",
+      "url": "/d/saga-evidence-health/saga-evidence-health",
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Snapshot Reading Guide",
+      "type": "text",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "transparent": false,
+      "options": {
+        "mode": "markdown",
+        "content": "# Saga Thesis Snapshot \u2014 All Evidence\n\nConsolidated fresh continuous thesis rerun evidence. Labels: `fresh-comparison-20260518-121930`, `fresh-scalability-20260518-121930`, `fresh-resilience-20260518-121930`.\n\nRead top to bottom: executive overview, choreography vs orchestration comparison, business correctness, scalability pressure, resilience recovery, compensation, runtime corroboration, resource evidence, then evidence health.",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        }
+      }
+    },
+    {
+      "id": 100,
+      "title": "Executive Overview",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "title": "Completed Iterations",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "expr": "sum(max_over_time(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "iterations",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Started Orders",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 3,
+        "y": 5,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "expr": "sum(max_over_time(k6_saga_orders_started_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "started",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Business Terminal Ratio",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 5,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.95
+              },
+              {
+                "color": "green",
+                "value": 0.999
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "description": "Counter-derived ratio: (completed + cancelled) / started.",
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "expr": "(sum(max_over_time(k6_saga_orders_completed_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])) + sum(max_over_time(k6_saga_orders_cancelled_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))) / clamp_min(sum(max_over_time(k6_saga_orders_started_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])), 1)",
+          "legendFormat": "terminal ratio",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Terminal Success Avg",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 9,
+        "y": 5,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.95
+              },
+              {
+                "color": "green",
+                "value": 0.99
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "expr": "avg(max_over_time(k6_saga_terminal_success_rate{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "terminal success",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Outcome Matched Avg",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.95
+              },
+              {
+                "color": "green",
+                "value": 0.99
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "expr": "avg(max_over_time(k6_saga_outcome_matched_rate{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "outcome matched",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Timed Out Orders",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 15,
+        "y": 5,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "expr": "sum(max_over_time(k6_saga_orders_timed_out_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "timed out",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Failed Orders",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 5,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "expr": "sum(max_over_time(k6_saga_orders_failed_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "failed",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Peak HTTP Rate",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 21,
+        "y": 5,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "expr": "sum(max_over_time(rate(k6_http_reqs_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[1m])[$__range:]))",
+          "legendFormat": "peak http/s",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Executive Thesis Verdict",
+      "type": "text",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "options": {
+        "mode": "markdown",
+        "content": "## Executive thesis verdict\n\nThe clean evidence set is structured to answer whether choreography and orchestration differ under identical workload phases. The thesis-facing interpretation should be made from three layers shown below: client-observed k6 outcomes, service-side application metrics, and independent telemetry corroboration from traces, Beyla, process, and container metrics. Positive speedup and p95-reduction panels mean choreography outperformed orchestration for the selected scenario; correctness panels verify that those performance claims were not produced by lost business terminals.",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Observed Clean Suite Coverage",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false,
+            "filterable": true
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "description": "Expected coverage: comparison has baseline/failure phases, scalability covers gradual-rampup and contention, and resilience separates failure injection from successful-order recovery.",
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "expr": "count by (suite_label) (sum by (suite_label, pattern, scenario, run_label) (max_over_time(k6_iterations_total{suite_label=~\"fresh-comparison-20260518-121930|fresh-scalability-20260518-121930|fresh-resilience-20260518-121930\"}[$__range])))",
+          "legendFormat": "observed_phases",
+          "instant": true,
+          "format": "table",
+          "refId": "A"
+        },
+        {
+          "expr": "count by (suite_label, pattern) (sum by (suite_label, pattern, scenario, run_label) (max_over_time(k6_iterations_total{suite_label=~\"fresh-comparison-20260518-121930|fresh-scalability-20260518-121930|fresh-resilience-20260518-121930\"}[$__range])))",
+          "legendFormat": "observed_pattern_phases",
+          "instant": true,
+          "format": "table",
+          "refId": "B"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Value #A": "Observed Phases",
+              "Value #B": "Observed Pattern Phases"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 101,
+      "title": "Choreography vs Orchestration Comparison",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 13,
+      "title": "Throughput Speedup by Scenario",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "description": "Values above 1.0 mean choreography reached higher peak journey throughput for the same scenario.",
+      "options": {
+        "displayMode": "basic",
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "expr": "sum by (scenario) (max_over_time(rate(k6_iterations_total{suite_label=\"fresh-comparison-20260518-121930\",pattern=\"choreography\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[1m])[$__range:])) / clamp_min(sum by (scenario) (max_over_time(rate(k6_iterations_total{suite_label=\"fresh-comparison-20260518-121930\",pattern=\"orchestration\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[1m])[$__range:])), 0.001)",
+          "legendFormat": "{{scenario}} speedup",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "P95 Latency Reduction by Scenario",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 15,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "description": "Positive values mean choreography has lower client-observed p95 latency.",
+      "options": {
+        "displayMode": "basic",
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "expr": "1 - (avg by (scenario) (max_over_time(k6_saga_duration_ms_p95{suite_label=\"fresh-comparison-20260518-121930\",pattern=\"choreography\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])) / clamp_min(avg by (scenario) (max_over_time(k6_saga_duration_ms_p95{suite_label=\"fresh-comparison-20260518-121930\",pattern=\"orchestration\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])), 1))",
+          "legendFormat": "{{scenario}} reduction",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "P95 Latency Delta by Scenario",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 15,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "description": "Positive milliseconds mean orchestration p95 was slower than choreography.",
+      "options": {
+        "displayMode": "basic",
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "expr": "avg by (scenario) (max_over_time(k6_saga_duration_ms_p95{suite_label=\"fresh-comparison-20260518-121930\",pattern=\"orchestration\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])) - avg by (scenario) (max_over_time(k6_saga_duration_ms_p95{suite_label=\"fresh-comparison-20260518-121930\",pattern=\"choreography\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "{{scenario}} orchestration minus choreography",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "Comparison Peak Journey TPS",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "options": {
+        "displayMode": "basic",
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "expr": "sum by (pattern, scenario) (max_over_time(rate(k6_iterations_total{suite_label=\"fresh-comparison-20260518-121930\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[1m])[$__range:]))",
+          "legendFormat": "{{pattern}} / {{scenario}}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Comparison Client P95 and P99",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 23,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "options": {
+        "displayMode": "basic",
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "expr": "avg by (pattern, scenario) (max_over_time(k6_saga_duration_ms_p95{suite_label=\"fresh-comparison-20260518-121930\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "{{pattern}} / {{scenario}} p95",
+          "instant": true
+        },
+        {
+          "expr": "avg by (pattern, scenario) (max_over_time(k6_saga_duration_ms_p99{suite_label=\"fresh-comparison-20260518-121930\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "{{pattern}} / {{scenario}} p99",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "title": "Comparison Throughput and Client Latency Over Time",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 23,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "custom": {
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true,
+            "gradientMode": "none"
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "description": "Shared time axis for peak-rate context and latency shape.",
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (pattern, scenario) (rate(k6_iterations_total{suite_label=\"fresh-comparison-20260518-121930\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[1m]))",
+          "legendFormat": "{{pattern}} / {{scenario}} journey/s"
+        },
+        {
+          "expr": "avg by (pattern, scenario) (k6_saga_duration_ms_p95{suite_label=\"fresh-comparison-20260518-121930\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"})",
+          "legendFormat": "{{pattern}} / {{scenario}} p95 ms"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "title": "Correctness & Business Terminals",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 20,
+      "title": "Terminal Outcome Matrix by Suite, Pattern, and Scenario",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 24,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false,
+            "filterable": true
+          },
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "description": "Counter-derived terminal ratio is included so saturation or failed phases cannot be hidden by a later clean success sample.",
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "expr": "sum by (suite_label, pattern, scenario, run_label) (max_over_time(k6_saga_orders_started_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "started",
+          "instant": true,
+          "format": "table",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (suite_label, pattern, scenario, run_label) (max_over_time(k6_saga_orders_completed_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "completed",
+          "instant": true,
+          "format": "table",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (suite_label, pattern, scenario, run_label) (max_over_time(k6_saga_orders_cancelled_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "cancelled",
+          "instant": true,
+          "format": "table",
+          "refId": "C"
+        },
+        {
+          "expr": "sum by (suite_label, pattern, scenario, run_label) (max_over_time(k6_saga_orders_failed_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "failed",
+          "instant": true,
+          "format": "table",
+          "refId": "D"
+        },
+        {
+          "expr": "sum by (suite_label, pattern, scenario, run_label) (max_over_time(k6_saga_orders_timed_out_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "timed_out",
+          "instant": true,
+          "format": "table",
+          "refId": "E"
+        },
+        {
+          "expr": "(sum by (suite_label, pattern, scenario, run_label) (max_over_time(k6_saga_orders_completed_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])) + sum by (suite_label, pattern, scenario, run_label) (max_over_time(k6_saga_orders_cancelled_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))) / clamp_min(sum by (suite_label, pattern, scenario, run_label) (max_over_time(k6_saga_orders_started_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])), 1)",
+          "legendFormat": "business_terminal_ratio",
+          "instant": true,
+          "format": "table",
+          "refId": "F"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Value #A": "Started",
+              "Value #B": "Completed",
+              "Value #C": "Cancelled",
+              "Value #D": "Failed",
+              "Value #E": "Timed Out",
+              "Value #F": "Terminal Ratio"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Terminal Ratio Over Time",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "custom": {
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true,
+            "gradientMode": "none"
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "(sum by (suite_label, pattern, scenario) (max_over_time(k6_saga_orders_completed_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__interval])) + sum by (suite_label, pattern, scenario) (max_over_time(k6_saga_orders_cancelled_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__interval]))) / clamp_min(sum by (suite_label, pattern, scenario) (max_over_time(k6_saga_orders_started_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__interval])), 1)",
+          "legendFormat": "{{suite_label}} / {{pattern}} / {{scenario}}"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "Started, Completed, Cancelled, Failed, Timed Out",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 41,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true,
+            "gradientMode": "none"
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (suite_label, pattern, scenario) (max_over_time(k6_saga_orders_started_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__interval]))",
+          "legendFormat": "{{suite_label}} / {{pattern}} / {{scenario}} started"
+        },
+        {
+          "expr": "sum by (suite_label, pattern, scenario) (max_over_time(k6_saga_orders_completed_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__interval]))",
+          "legendFormat": "{{suite_label}} / {{pattern}} / {{scenario}} completed"
+        },
+        {
+          "expr": "sum by (suite_label, pattern, scenario) (max_over_time(k6_saga_orders_cancelled_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__interval]))",
+          "legendFormat": "{{suite_label}} / {{pattern}} / {{scenario}} cancelled"
+        },
+        {
+          "expr": "sum by (suite_label, pattern, scenario) (max_over_time(k6_saga_orders_failed_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__interval]))",
+          "legendFormat": "{{suite_label}} / {{pattern}} / {{scenario}} failed"
+        },
+        {
+          "expr": "sum by (suite_label, pattern, scenario) (max_over_time(k6_saga_orders_timed_out_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__interval]))",
+          "legendFormat": "{{suite_label}} / {{pattern}} / {{scenario}} timed out"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "title": "Outcome Match and Terminal Success by Phase",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 41,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "pluginVersion": "12.1.1",
+      "options": {
+        "displayMode": "basic",
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "expr": "avg by (suite_label, pattern, scenario) (max_over_time(k6_saga_terminal_success_rate{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "{{suite_label}} / {{pattern}} / {{scenario}} terminal",
+          "instant": true
+        },
+        {
+          "expr": "avg by (suite_label, pattern, scenario) (max_over_time(k6_saga_outcome_matched_rate{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+          "legendFormat": "{{suite_label}} / {{pattern}} / {{scenario}} outcome",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "title": "Scalability Pressure",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 49,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 25,
+          "title": "Gradual-Rampup: Journey and HTTP Rate",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 50,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "max",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (pattern) (rate(k6_iterations_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=\"gradual-rampup\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[1m]))",
+              "legendFormat": "{{pattern}} journey/s"
+            },
+            {
+              "expr": "sum by (pattern) (rate(k6_http_reqs_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=\"gradual-rampup\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[1m]))",
+              "legendFormat": "{{pattern}} http/s"
+            }
+          ]
+        },
+        {
+          "id": 26,
+          "title": "Contention: Journey and HTTP Rate",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 8,
+            "y": 50,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "max",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (pattern) (rate(k6_iterations_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=\"contention\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[1m]))",
+              "legendFormat": "{{pattern}} journey/s"
+            },
+            {
+              "expr": "sum by (pattern) (rate(k6_http_reqs_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=\"contention\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[1m]))",
+              "legendFormat": "{{pattern}} http/s"
+            }
+          ]
+        },
+        {
+          "id": 27,
+          "title": "Journey-to-HTTP Efficiency",
+          "type": "bargauge",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 16,
+            "y": 50,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "decimals": 4,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "Shows completed journeys per HTTP request for scalability phases. This avoids VU metrics because k6_vus is unlabeled in this evidence set, so labeled k6_vus queries return no data.",
+          "options": {
+            "displayMode": "basic",
+            "legend": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true
+          },
+          "targets": [
+            {
+              "expr": "sum by (pattern, scenario) (max_over_time(rate(k6_iterations_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=~\"gradual-rampup|contention\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[1m])[$__range:])) / clamp_min(sum by (pattern, scenario) (max_over_time(rate(k6_http_reqs_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=~\"gradual-rampup|contention\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[1m])[$__range:])), 0.001)",
+              "legendFormat": "{{pattern}} / {{scenario}} journey/http",
+              "instant": true
+            }
+          ]
+        },
+        {
+          "id": 28,
+          "title": "Scalability Terminal Ratio Under Pressure",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 58,
+            "w": 8,
+            "h": 9
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 3,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "min",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "(sum by (pattern, scenario) (max_over_time(k6_saga_orders_completed_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=~\"gradual-rampup|contention\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__interval])) + sum by (pattern, scenario) (max_over_time(k6_saga_orders_cancelled_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=~\"gradual-rampup|contention\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__interval]))) / clamp_min(sum by (pattern, scenario) (max_over_time(k6_saga_orders_started_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=~\"gradual-rampup|contention\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__interval])), 1)",
+              "legendFormat": "{{pattern}} / {{scenario}}"
+            }
+          ]
+        },
+        {
+          "id": 29,
+          "title": "Scalability Phase Matrix",
+          "type": "table",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 8,
+            "y": 58,
+            "w": 16,
+            "h": 9
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false,
+                "filterable": true
+              },
+              "decimals": 3
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "Breaks out gradual rampup and contention rather than reducing scalability to a single aggregate.",
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "expr": "sum by (pattern, scenario, run_label) (max_over_time(k6_saga_orders_started_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=~\"gradual-rampup|contention\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__range]))",
+              "legendFormat": "started",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            },
+            {
+              "expr": "sum by (pattern, scenario, run_label) (max_over_time(k6_saga_orders_completed_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=~\"gradual-rampup|contention\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__range]))",
+              "legendFormat": "completed",
+              "instant": true,
+              "format": "table",
+              "refId": "B"
+            },
+            {
+              "expr": "sum by (pattern, scenario, run_label) (max_over_time(k6_saga_orders_cancelled_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=~\"gradual-rampup|contention\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__range]))",
+              "legendFormat": "cancelled",
+              "instant": true,
+              "format": "table",
+              "refId": "C"
+            },
+            {
+              "expr": "sum by (pattern, scenario, run_label) (max_over_time(k6_saga_orders_failed_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=~\"gradual-rampup|contention\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__range]))",
+              "legendFormat": "failed",
+              "instant": true,
+              "format": "table",
+              "refId": "D"
+            },
+            {
+              "expr": "sum by (pattern, scenario, run_label) (max_over_time(k6_saga_orders_timed_out_total{suite_label=\"fresh-scalability-20260518-121930\",scenario=~\"gradual-rampup|contention\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__range]))",
+              "legendFormat": "timed_out",
+              "instant": true,
+              "format": "table",
+              "refId": "E"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "Value #A": "Started",
+                  "Value #B": "Completed",
+                  "Value #C": "Cancelled",
+                  "Value #D": "Failed",
+                  "Value #E": "Timed Out"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 104,
+      "title": "Resilience & Recovery",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 31,
+          "title": "Inventory Failure Phase Outcomes",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 51,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (pattern, scenario) (max_over_time(k6_saga_orders_completed_total{suite_label=\"fresh-resilience-20260518-121930\",scenario=~\"inventory.*failure\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__interval]))",
+              "legendFormat": "{{pattern}} completed"
+            },
+            {
+              "expr": "sum by (pattern, scenario) (max_over_time(k6_saga_orders_cancelled_total{suite_label=\"fresh-resilience-20260518-121930\",scenario=~\"inventory.*failure\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__interval]))",
+              "legendFormat": "{{pattern}} cancelled"
+            },
+            {
+              "expr": "sum by (pattern, scenario) (max_over_time(k6_saga_orders_failed_total{suite_label=\"fresh-resilience-20260518-121930\",scenario=~\"inventory.*failure\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__interval]))",
+              "legendFormat": "{{pattern}} failed"
+            },
+            {
+              "expr": "sum by (pattern, scenario) (max_over_time(k6_saga_orders_timed_out_total{suite_label=\"fresh-resilience-20260518-121930\",scenario=~\"inventory.*failure\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__interval]))",
+              "legendFormat": "{{pattern}} timed out"
+            }
+          ]
+        },
+        {
+          "id": 32,
+          "title": "Shipping Failure Phase Outcomes",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 8,
+            "y": 51,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (pattern, scenario) (max_over_time(k6_saga_orders_completed_total{suite_label=\"fresh-resilience-20260518-121930\",scenario=~\"shipping.*failure\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__interval]))",
+              "legendFormat": "{{pattern}} completed"
+            },
+            {
+              "expr": "sum by (pattern, scenario) (max_over_time(k6_saga_orders_cancelled_total{suite_label=\"fresh-resilience-20260518-121930\",scenario=~\"shipping.*failure\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__interval]))",
+              "legendFormat": "{{pattern}} cancelled"
+            },
+            {
+              "expr": "sum by (pattern, scenario) (max_over_time(k6_saga_orders_failed_total{suite_label=\"fresh-resilience-20260518-121930\",scenario=~\"shipping.*failure\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__interval]))",
+              "legendFormat": "{{pattern}} failed"
+            },
+            {
+              "expr": "sum by (pattern, scenario) (max_over_time(k6_saga_orders_timed_out_total{suite_label=\"fresh-resilience-20260518-121930\",scenario=~\"shipping.*failure\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__interval]))",
+              "legendFormat": "{{pattern}} timed out"
+            }
+          ]
+        },
+        {
+          "id": 33,
+          "title": "Successful-Order Recovery Phases",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 16,
+            "y": 51,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 2,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (pattern, run_label) (max_over_time(k6_saga_orders_completed_total{suite_label=\"fresh-resilience-20260518-121930\",scenario=\"successful-order\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__interval]))",
+              "legendFormat": "{{pattern}} / {{run_label}} completed"
+            },
+            {
+              "expr": "avg by (pattern, run_label) (max_over_time(k6_saga_terminal_success_rate{suite_label=\"fresh-resilience-20260518-121930\",scenario=\"successful-order\",pattern=~\"$pattern\",run_label=~\"$run_label\"}[$__interval]))",
+              "legendFormat": "{{pattern}} / {{run_label}} terminal success"
+            }
+          ]
+        },
+        {
+          "id": 34,
+          "title": "Resilience Phase Outcome Matrix",
+          "type": "table",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 59,
+            "w": 16,
+            "h": 9
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false,
+                "filterable": true
+              },
+              "decimals": 3
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "Keeps failure phases and successful-order recovery phases visible in the same table.",
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "expr": "sum by (pattern, scenario, run_label) (max_over_time(k6_saga_orders_started_total{suite_label=\"fresh-resilience-20260518-121930\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+              "legendFormat": "started",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            },
+            {
+              "expr": "sum by (pattern, scenario, run_label) (max_over_time(k6_saga_orders_completed_total{suite_label=\"fresh-resilience-20260518-121930\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+              "legendFormat": "completed",
+              "instant": true,
+              "format": "table",
+              "refId": "B"
+            },
+            {
+              "expr": "sum by (pattern, scenario, run_label) (max_over_time(k6_saga_orders_cancelled_total{suite_label=\"fresh-resilience-20260518-121930\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+              "legendFormat": "cancelled",
+              "instant": true,
+              "format": "table",
+              "refId": "C"
+            },
+            {
+              "expr": "sum by (pattern, scenario, run_label) (max_over_time(k6_saga_orders_failed_total{suite_label=\"fresh-resilience-20260518-121930\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+              "legendFormat": "failed",
+              "instant": true,
+              "format": "table",
+              "refId": "D"
+            },
+            {
+              "expr": "sum by (pattern, scenario, run_label) (max_over_time(k6_saga_orders_timed_out_total{suite_label=\"fresh-resilience-20260518-121930\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+              "legendFormat": "timed_out",
+              "instant": true,
+              "format": "table",
+              "refId": "E"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "Value #A": "Started",
+                  "Value #B": "Completed",
+                  "Value #C": "Cancelled",
+                  "Value #D": "Failed",
+                  "Value #E": "Timed Out"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 35,
+          "title": "Resilience Terminal Ratio by Phase",
+          "type": "bargauge",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 16,
+            "y": 59,
+            "w": 8,
+            "h": 9
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 3,
+              "min": 0,
+              "max": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "displayMode": "basic",
+            "legend": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true
+          },
+          "targets": [
+            {
+              "expr": "(sum by (pattern, scenario, run_label) (max_over_time(k6_saga_orders_completed_total{suite_label=\"fresh-resilience-20260518-121930\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])) + sum by (pattern, scenario, run_label) (max_over_time(k6_saga_orders_cancelled_total{suite_label=\"fresh-resilience-20260518-121930\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))) / clamp_min(sum by (pattern, scenario, run_label) (max_over_time(k6_saga_orders_started_total{suite_label=\"fresh-resilience-20260518-121930\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range])), 1)",
+              "legendFormat": "{{pattern}} / {{scenario}} / {{run_label}}",
+              "instant": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 105,
+      "title": "Compensation Evidence",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 37,
+          "title": "Compensation Totals by Pattern",
+          "type": "bargauge",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 52,
+            "w": 6,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "displayMode": "basic",
+            "legend": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true
+          },
+          "targets": [
+            {
+              "expr": "sum by (pattern) (increase(saga_compensations_total{pattern=~\"$pattern\"}[$__range]))",
+              "legendFormat": "{{pattern}} total",
+              "instant": true
+            },
+            {
+              "expr": "sum by (pattern) (increase(saga_compensations_payment_total{pattern=~\"$pattern\"}[$__range]))",
+              "legendFormat": "{{pattern}} payment",
+              "instant": true
+            },
+            {
+              "expr": "sum by (pattern) (increase(saga_compensations_inventory_total{pattern=~\"$pattern\"}[$__range]))",
+              "legendFormat": "{{pattern}} inventory",
+              "instant": true
+            },
+            {
+              "expr": "sum by (pattern) (increase(saga_compensations_shipping_total{pattern=~\"$pattern\"}[$__range]))",
+              "legendFormat": "{{pattern}} shipping",
+              "instant": true
+            }
+          ]
+        },
+        {
+          "id": 38,
+          "title": "Compensation Rate Breakdown",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 6,
+            "y": 52,
+            "w": 6,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "decimals": 2,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true,
+              "calcs": [
+                "max",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (pattern) (rate(saga_compensations_total{pattern=~\"$pattern\"}[1m]))",
+              "legendFormat": "{{pattern}} total/s"
+            },
+            {
+              "expr": "sum by (pattern) (rate(saga_compensations_payment_total{pattern=~\"$pattern\"}[1m]))",
+              "legendFormat": "{{pattern}} payment/s"
+            },
+            {
+              "expr": "sum by (pattern) (rate(saga_compensations_inventory_total{pattern=~\"$pattern\"}[1m]))",
+              "legendFormat": "{{pattern}} inventory/s"
+            },
+            {
+              "expr": "sum by (pattern) (rate(saga_compensations_shipping_total{pattern=~\"$pattern\"}[1m]))",
+              "legendFormat": "{{pattern}} shipping/s"
+            }
+          ]
+        },
+        {
+          "id": 39,
+          "title": "Framework Compensation Lifecycle",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 52,
+            "w": 6,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "decimals": 2,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "Uses framework compensation counters when available.",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (pattern) (rate(saga_framework_compensation_started_total{pattern=~\"$pattern\"}[1m]))",
+              "legendFormat": "{{pattern}} framework started/s"
+            },
+            {
+              "expr": "sum by (pattern) (rate(saga_framework_compensation_completed_total{pattern=~\"$pattern\"}[1m]))",
+              "legendFormat": "{{pattern}} framework completed/s"
+            }
+          ]
+        },
+        {
+          "id": 40,
+          "title": "Application Completed, Failed, and Compensation Rates",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 18,
+            "y": 52,
+            "w": 6,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "decimals": 2,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (pattern) (rate(saga_orders_completed_total{pattern=~\"$pattern\"}[1m]))",
+              "legendFormat": "{{pattern}} completed/s"
+            },
+            {
+              "expr": "sum by (pattern) (rate(saga_orders_failed_total{pattern=~\"$pattern\"}[1m]))",
+              "legendFormat": "{{pattern}} failed/s"
+            },
+            {
+              "expr": "sum by (pattern) (rate(saga_compensations_total{pattern=~\"$pattern\"}[1m]))",
+              "legendFormat": "{{pattern}} compensations/s"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 106,
+      "title": "Runtime Corroboration",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 52,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 42,
+          "title": "Service-Side Saga Duration P95",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 53,
+            "w": 6,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "decimals": 3,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le, pattern) (rate(saga_total_duration_seconds_bucket{pattern=~\"$pattern\"}[2m])))",
+              "legendFormat": "{{pattern}} saga p95"
+            }
+          ]
+        },
+        {
+          "id": 43,
+          "title": "Order Processing Average and P95",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 6,
+            "y": 53,
+            "w": 6,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "decimals": 3,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "rate(saga_order_processing_time_seconds_sum{pattern=~\"$pattern\"}[2m]) / rate(saga_order_processing_time_seconds_count{pattern=~\"$pattern\"}[2m])",
+              "legendFormat": "{{pattern}} processing avg"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum by (le, pattern) (rate(saga_order_processing_time_seconds_bucket{pattern=~\"$pattern\"}[2m])))",
+              "legendFormat": "{{pattern}} processing p95"
+            }
+          ]
+        },
+        {
+          "id": 44,
+          "title": "Business Step Latency P95",
+          "type": "bargauge",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 53,
+            "w": 6,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "decimals": 3,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "displayMode": "basic",
+            "legend": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le, pattern) (rate(saga_step_payment_duration_seconds_bucket{pattern=~\"$pattern\"}[2m])))",
+              "legendFormat": "{{pattern}} payment",
+              "instant": true
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum by (le, pattern) (rate(saga_step_inventory_duration_seconds_bucket{pattern=~\"$pattern\"}[2m])))",
+              "legendFormat": "{{pattern}} inventory",
+              "instant": true
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum by (le, pattern) (rate(saga_step_shipping_duration_seconds_bucket{pattern=~\"$pattern\"}[2m])))",
+              "legendFormat": "{{pattern}} shipping",
+              "instant": true
+            }
+          ]
+        },
+        {
+          "id": 45,
+          "title": "Framework Step Latency P95",
+          "type": "bargauge",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 18,
+            "y": 53,
+            "w": 6,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "decimals": 3,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "Orchestration framework step latency when the metric is emitted.",
+          "options": {
+            "displayMode": "basic",
+            "legend": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le, step, result) (rate(saga_framework_step_duration_seconds_bucket[2m])))",
+              "legendFormat": "{{step}} {{result}}",
+              "instant": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 107,
+      "title": "Resource & Network Evidence",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 53,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 47,
+          "title": "Process CPU by Service",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 54,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 3,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (pattern, instance) (rate(process_cpu_seconds_total{job=~\"saga-.*-services\",pattern=~\"$pattern\"}[1m]))",
+              "legendFormat": "{{pattern}} {{instance}}"
+            }
+          ]
+        },
+        {
+          "id": 48,
+          "title": "Resident Memory by Service",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 8,
+            "y": 54,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "process_resident_memory_bytes{job=~\"saga-.*-services\",pattern=~\"$pattern\"}",
+              "legendFormat": "{{pattern}} {{instance}}"
+            }
+          ]
+        },
+        {
+          "id": 49,
+          "title": "Service Goroutines",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 16,
+            "y": 54,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "go_goroutines{job=~\"saga-.*-services\",pattern=~\"$pattern\"}",
+              "legendFormat": "{{pattern}} {{instance}}"
+            }
+          ]
+        },
+        {
+          "id": 50,
+          "title": "Optional cAdvisor CPU Cgroup Corroboration",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 62,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 3,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "Optional host/Docker cgroup corroboration from cAdvisor. This uses exported cgroup id labels and is not per-saga-service container evidence; use the service-level process CPU/memory panels above as the main saga resource evidence.",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "topk(20, sum by (id) (rate(container_cpu_usage_seconds_total{job=\"cadvisor\",id!=\"/\"}[1m])))",
+              "legendFormat": "{{id}}"
+            }
+          ]
+        },
+        {
+          "id": 51,
+          "title": "Optional cAdvisor Memory Cgroup Corroboration",
+          "type": "timeseries",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 8,
+            "y": 62,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "decimals": 0,
+              "custom": {
+                "fillOpacity": 8,
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": true,
+                "gradientMode": "none"
+              }
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "Optional host/Docker cgroup corroboration from cAdvisor. This uses exported cgroup id labels and is not per-saga-service container evidence; use the service-level process CPU/memory panels above as the main saga resource evidence.",
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "expr": "topk(20, container_memory_working_set_bytes{job=\"cadvisor\",id!=\"/\"})",
+              "legendFormat": "{{id}}"
+            }
+          ]
+        },
+        {
+          "id": 52,
+          "title": "Beyla Outbound HTTP Dependencies",
+          "type": "table",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 16,
+            "y": 62,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false,
+                "filterable": true
+              },
+              "decimals": 3
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "Beyla outbound dependency evidence from HTTP client metrics, showing service-to-service calls such as order service -> inventory /api/catalog. Inbound API/server activity is separated in the evidence index panel.",
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "expr": "topk(20, sum by (service_name, http_request_method, http_route, server_address) (increase(http_client_request_duration_seconds_count{job=\"beyla\",server_address!~\".*(alloy|signoz-otel-collector).*\"}[$__range])))",
+              "legendFormat": "beyla_http_calls",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 53,
+          "title": "Tempo, Beyla, and Pyroscope Evidence Index",
+          "type": "table",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 70,
+            "w": 24,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false,
+                "filterable": true
+              },
+              "decimals": 3
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "Keeps trace-derived calls/rates, Tempo span latency, Beyla inbound API activity, Beyla outbound dependency evidence, and Pyroscope profiling-ingestion evidence visible in the static public snapshot.",
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "expr": "topk(30, sum by (service, span_name) (increase(traces_spanmetrics_calls_total{span_name!~\"sql.conn.reset_session|sql.rows\"}[$__range])))",
+              "legendFormat": "span_calls",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            },
+            {
+              "expr": "topk(30, sum by (service, span_name) (rate(traces_spanmetrics_calls_total{span_name!~\"sql.conn.reset_session|sql.rows\"}[1m])))",
+              "legendFormat": "span_rate",
+              "instant": true,
+              "format": "table",
+              "refId": "B"
+            },
+            {
+              "expr": "topk(20, histogram_quantile(0.95, sum by (le, service, span_name) (rate(traces_spanmetrics_latency_bucket{span_name!~\"sql.conn.reset_session|sql.rows\"}[5m]))))",
+              "legendFormat": "tempo_span_p95",
+              "instant": true,
+              "format": "table",
+              "refId": "C"
+            },
+            {
+              "expr": "topk(20, sum by (service_name, http_request_method, http_route, server_address) (increase(http_server_request_duration_seconds_count{job=\"beyla\",http_route!~\"/actuator.*\"}[$__range])))",
+              "legendFormat": "beyla_inbound_api_calls",
+              "instant": true,
+              "format": "table",
+              "refId": "D"
+            },
+            {
+              "expr": "sum by (__name__) ({__name__=~\"pyroscope_ebpf_(active_targets|pprof_samples_total|pprofs_total|pprofs_dropped_total|profiling_sessions_total|profiling_sessions_failing_total)\"})",
+              "legendFormat": "pyroscope_ebpf_activity",
+              "instant": true,
+              "format": "table",
+              "refId": "E"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "Value #A": "Span Calls",
+                  "Value #B": "Span Rate",
+                  "Value #C": "Tempo Span P95",
+                  "Value #D": "Beyla Inbound API Calls",
+                  "Value #E": "Pyroscope eBPF Activity"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 108,
+      "title": "Evidence Health & Snapshot Readiness",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 54,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 55,
+          "title": "k6 Remote-Write Receiver Activity",
+          "type": "table",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 55,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false,
+                "filterable": true
+              },
+              "decimals": 3
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "2xx write traffic indicates Prometheus accepted k6 remote-write samples during the capture window.",
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "expr": "sum by (code) (increase(prometheus_http_requests_total{handler=\"/api/v1/write\"}[$__range]))",
+              "legendFormat": "remote_write_requests",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            },
+            {
+              "expr": "sum by (code) (rate(prometheus_http_requests_total{handler=\"/api/v1/write\"}[1m]))",
+              "legendFormat": "remote_write_rate",
+              "instant": true,
+              "format": "table",
+              "refId": "B"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "Value #A": "Remote-Write Requests",
+                  "Value #B": "Remote-Write Rate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 56,
+          "title": "Clean Label Presence",
+          "type": "table",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 8,
+            "y": 55,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false,
+                "filterable": true
+              },
+              "decimals": 3
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "The three clean rerun labels should appear here for the focused snapshot.",
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "expr": "count by (suite_label) (max_over_time(k6_iterations_total{suite_label=~\"fresh-comparison-20260518-121930|fresh-scalability-20260518-121930|fresh-resilience-20260518-121930\"}[$__range]))",
+              "legendFormat": "iteration_series",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            },
+            {
+              "expr": "count by (suite_label, pattern, scenario, run_label) (max_over_time(k6_iterations_total{suite_label=~\"fresh-comparison-20260518-121930|fresh-scalability-20260518-121930|fresh-resilience-20260518-121930\"}[$__range]))",
+              "legendFormat": "phase_series",
+              "instant": true,
+              "format": "table",
+              "refId": "B"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "Value #A": "Iteration Series",
+                  "Value #B": "Phase Series"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 57,
+          "title": "Telemetry Target Health",
+          "type": "table",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 16,
+            "y": 55,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false,
+                "filterable": true
+              },
+              "decimals": 3
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "Expected observability and application scrape targets during capture. Optional scaled orchestration replica ports are intentionally not referenced.",
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "expr": "up{job=~\"prometheus|alloy|tempo|pyroscope|beyla|saga-.*-services|cadvisor|node-exporter\"}",
+              "legendFormat": "target_up",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 58,
+          "title": "Stale-Label Guard",
+          "type": "table",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 63,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false,
+                "filterable": true
+              },
+              "decimals": 3
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "Large values mean the selected label is historical rather than active in the current time range.",
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "expr": "time() - max by (suite_label) (timestamp(k6_iterations_total{suite_label=~\"fresh-comparison-20260518-121930|fresh-scalability-20260518-121930|fresh-resilience-20260518-121930\"}))",
+              "legendFormat": "seconds_since_last_iteration_sample",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            },
+            {
+              "expr": "time() - max by (suite_label) (timestamp(k6_saga_terminal_success_rate{suite_label=~\"fresh-comparison-20260518-121930|fresh-scalability-20260518-121930|fresh-resilience-20260518-121930\"}))",
+              "legendFormat": "seconds_since_last_terminal_sample",
+              "instant": true,
+              "format": "table",
+              "refId": "B"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "Value #A": "Seconds Since Iteration Sample",
+                  "Value #B": "Seconds Since Terminal Sample"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 59,
+          "title": "Evidence Completeness Checklist",
+          "type": "table",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 63,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false,
+                "filterable": true
+              },
+              "decimals": 3
+            },
+            "overrides": []
+          },
+          "pluginVersion": "12.1.1",
+          "description": "If a row is empty, that evidence path is not available for the selected public snapshot window.",
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "expr": "sum by (suite_label, pattern, scenario, run_label) (max_over_time(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+              "legendFormat": "k6_iterations",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            },
+            {
+              "expr": "avg by (suite_label, pattern, scenario, run_label) (max_over_time(k6_saga_terminal_success_rate{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\",run_label=~\"$run_label\"}[$__range]))",
+              "legendFormat": "k6_terminal_success",
+              "instant": true,
+              "format": "table",
+              "refId": "B"
+            },
+            {
+              "expr": "sum by (pattern) (increase(saga_orders_completed_total{pattern=~\"$pattern\"}[$__range]))",
+              "legendFormat": "app_completed",
+              "instant": true,
+              "format": "table",
+              "refId": "C"
+            },
+            {
+              "expr": "sum by (pattern) (increase(saga_compensations_total{pattern=~\"$pattern\"}[$__range]))",
+              "legendFormat": "app_compensations",
+              "instant": true,
+              "format": "table",
+              "refId": "D"
+            },
+            {
+              "expr": "sum by (service) (increase(traces_spanmetrics_calls_total[$__range]))",
+              "legendFormat": "trace_spans",
+              "instant": true,
+              "format": "table",
+              "refId": "E"
+            },
+            {
+              "expr": "sum by (service_name) (increase(http_client_request_duration_seconds_count{job=\"beyla\"}[$__range]))",
+              "legendFormat": "beyla_http",
+              "instant": true,
+              "format": "table",
+              "refId": "F"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "Value #A": "k6 Iterations",
+                  "Value #B": "k6 Terminal Success",
+                  "Value #C": "App Completed",
+                  "Value #D": "App Compensations",
+                  "Value #E": "Trace Spans",
+                  "Value #F": "Beyla HTTP"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": [
+    "saga",
+    "thesis",
+    "snapshot",
+    "k6",
+    "comparison",
+    "scalability",
+    "resilience"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "suite_label",
+        "label": "Suite label",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "definition": "label_values(k6_iterations_total, suite_label)",
+        "query": {
+          "query": "label_values(k6_iterations_total, suite_label)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": {
+          "selected": true,
+          "text": "Current clean evidence labels",
+          "value": "fresh-comparison-20260518-121930|fresh-scalability-20260518-121930|fresh-resilience-20260518-121930"
+        },
+        "allValue": "fresh-comparison-20260518-121930|fresh-scalability-20260518-121930|fresh-resilience-20260518-121930",
+        "includeAll": true,
+        "multi": true,
+        "hide": 0,
+        "options": [],
+        "refresh": 1,
+        "regex": "/^(fresh-comparison-20260518-121930|fresh-scalability-20260518-121930|fresh-resilience-20260518-121930)$/",
+        "skipUrlSync": false,
+        "sort": 1
+      },
+      {
+        "name": "pattern",
+        "label": "Pattern",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "definition": "label_values(k6_iterations_total{suite_label=~\"$suite_label\"}, pattern)",
+        "query": {
+          "query": "label_values(k6_iterations_total{suite_label=~\"$suite_label\"}, pattern)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "hide": 0,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1
+      },
+      {
+        "name": "scenario",
+        "label": "Scenario",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "definition": "label_values(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\"}, scenario)",
+        "query": {
+          "query": "label_values(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\"}, scenario)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "hide": 0,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1
+      },
+      {
+        "name": "run_label",
+        "label": "Run label",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "definition": "label_values(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\"}, run_label)",
+        "query": {
+          "query": "label_values(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\"}, run_label)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "hide": 0,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ],
+    "time_options": [
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "6h",
+      "12h",
+      "24h"
+    ]
+  },
+  "timezone": "browser",
+  "title": "Saga Thesis Snapshot - All Evidence",
+  "uid": "saga-thesis-snapshot-all-in-one",
+  "version": 1,
+  "weekStart": "",
+  "liveNow": false,
+  "description": "Consolidated thesis evidence dashboard comparing Choreography vs Orchestration saga patterns. Organized into collapsible sections: executive overview, pattern comparison, correctness, scalability, resilience, compensation, runtime corroboration, resources, and evidence health."
+}

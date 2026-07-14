@@ -17,7 +17,7 @@ export function PatternToggle() {
         <div
             role="radiogroup"
             aria-label="Microservice communication pattern"
-            className="inline-flex items-center gap-1 rounded-xl border border-border/80 bg-muted/50 p-1 shadow-sm"
+            className="flex w-full flex-col gap-1 rounded-[1.25rem] border border-border/80 bg-muted/50 p-1 shadow-sm sm:inline-flex sm:w-auto sm:flex-row sm:rounded-full"
         >
             {patterns.map((p) => {
                 const Icon = p.icon;
@@ -38,18 +38,18 @@ export function PatternToggle() {
                             }
                         }}
                         className={cn(
-                            "group relative flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all",
+                            "group relative flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all",
                             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                             isActive
-                                ? "bg-background text-foreground shadow-sm ring-1 ring-border"
+                                ? "bg-foreground text-background shadow-sm"
                                 : "text-muted-foreground hover:bg-background/50 hover:text-foreground"
                         )}
                     >
-                        <Icon 
+                        <Icon
                             className={cn(
-                                "h-4 w-4 transition-colors", 
-                                isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-                            )} 
+                                "h-4 w-4 transition-colors",
+                                isActive ? "text-background" : "text-muted-foreground group-hover:text-foreground"
+                            )}
                         />
                         <span>{p.label}</span>
                     </button>

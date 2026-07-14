@@ -47,6 +47,16 @@ func (p *RuntimePublisher) Publish(ctx context.Context, topic string, key string
 	if err != nil {
 		return fmt.Errorf("marshal kafka message: %w", err)
 	}
+	return p.PublishRaw(ctx, topic, key, payload)
+}
+
+// PublishRaw publishes an already-serialized payload without re-marshaling.
+// Used by the choreography-framework outbox loop which stores JSON payloads
+// in the database and passes raw bytes to the publisher.
+func (p *RuntimePublisher) PublishRaw(ctx context.Context, topic string, key string, payload []byte) error {
+	if p == nil || p.writer == nil {
+		return fmt.Errorf("runtime publisher is not configured")
+	}
 	spanAttrs := append([]attribute.KeyValue{
 		attribute.String("messaging.system", "kafka"),
 		attribute.String("messaging.operation", "publish"),

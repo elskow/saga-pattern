@@ -1,0 +1,165 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels:
+    environment: local
+    thesis_stack: grafana
+
+remote_write:
+  - url: http://mimir:9009/api/v1/push
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  - job_name: alloy
+    static_configs:
+      - targets: ["alloy:12345"]
+
+  - job_name: tempo
+    static_configs:
+      - targets: ["tempo:3200"]
+
+  - job_name: pyroscope
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["pyroscope:4040"]
+
+  - job_name: beyla
+    static_configs:
+      - targets: ["host.docker.internal:8999"]
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+
+  - job_name: saga-choreography-services
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - order-service-choreography:8081
+          - payment-service-choreography:8082
+          - inventory-service-choreography:8083
+          - shipping-service-choreography:8084
+        labels:
+          pattern: choreography
+
+  - job_name: saga-orchestration-services
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - order-service-orchestration:8091
+          - payment-service-orchestration:8092
+          - inventory-service-orchestration:8093
+          - shipping-service-orchestration:8094
+        labels:
+          pattern: orchestration
+
+  # DNS-based discovery for scaled choreography replicas
+  - job_name: choreography-payment
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: ['payment-service-choreography']
+        type: A
+        port: 8082
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: pattern
+        replacement: choreography
+      - target_label: service
+        replacement: payment
+
+  - job_name: choreography-inventory
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: ['inventory-service-choreography']
+        type: A
+        port: 8083
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: pattern
+        replacement: choreography
+      - target_label: service
+        replacement: inventory
+
+  - job_name: choreography-shipping
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: ['shipping-service-choreography']
+        type: A
+        port: 8084
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: pattern
+        replacement: choreography
+      - target_label: service
+        replacement: shipping
+
+  # DNS-based discovery for scaled orchestration replicas
+  - job_name: orchestration-payment
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: ['payment-service-orchestration']
+        type: A
+        port: 8092
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: pattern
+        replacement: orchestration
+      - target_label: service
+        replacement: payment
+
+  - job_name: orchestration-inventory
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: ['inventory-service-orchestration']
+        type: A
+        port: 8093
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: pattern
+        replacement: orchestration
+      - target_label: service
+        replacement: inventory
+
+  - job_name: orchestration-shipping
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: ['shipping-service-orchestration']
+        type: A
+        port: 8094
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: pattern
+        replacement: orchestration
+      - target_label: service
+        replacement: shipping
+
+  - job_name: kafka-jmx
+    static_configs:
+      - targets: ['kafka-jmx-exporter:7072']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: kafka
+
+  - job_name: kafka-exporter
+    static_configs:
+      - targets: ['kafka-exporter:9308']

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"saga-pattern/common/dto"
@@ -16,6 +17,9 @@ type Repository interface {
 	ReleaseReservation(context.Context, string, time.Time, string) (domain.Reservation, error)
 	UpdateTotalStock(context.Context, string, int, time.Time) (domain.Product, error)
 	UpdateVisibility(context.Context, string, bool) (domain.Product, error)
+	CreateProduct(ctx context.Context, p domain.Product) (domain.Product, error)
+	UpdateProductMeta(ctx context.Context, productId, name, description, category, image string, price json.Number) (domain.Product, error)
+	DeleteProduct(ctx context.Context, productId string) error
 	Product(context.Context, string) (domain.Product, bool, error)
 	PingContext(context.Context) error
 	ListProducts(context.Context) ([]domain.Product, error)

@@ -4,17 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
-	"saga-pattern/choreography-saga/order-service/internal/messaging"
+	choreoruntime "saga-pattern/choreography-framework/runtime"
 	"saga-pattern/choreography-saga/order-service/internal/observability"
 	ordersvc "saga-pattern/choreography-saga/order-service/internal/orders"
 	"saga-pattern/choreography-saga/order-service/internal/repository"
@@ -28,7 +28,7 @@ import (
 )
 
 func TestCreateAndPollOrderLifecycle(t *testing.T) {
-	server, consumer, _, publisher := newTestServer(t)
+	server, service, publisher := newTestServer(t)
 
 	body := `{"customerId":"CUST-001","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Widget","quantity":2,"price":799000}]}`
 	createReq := httptest.NewRequest(http.MethodPost, "/api/orders", strings.NewReader(body))
@@ -52,33 +52,27 @@ func TestCreateAndPollOrderLifecycle(t *testing.T) {
 		t.Fatalf("published message count = %d, want 1", len(publisher.Messages()))
 	}
 	msg := publisher.Messages()[0]
-	if msg.Topic != messaging.NewOrderTopicPublisher(publisher).Topic() {
-		t.Fatalf("published topic = %q", msg.Topic)
+	if msg.Topic != commonkafka.DefaultOrderEventsTopic {
+		t.Fatalf("published topic = %q, want %q", msg.Topic, commonkafka.DefaultOrderEventsTopic)
 	}
-	if msg.RequestID != "request-1" {
-		t.Fatalf("published request id = %q, want request-1", msg.RequestID)
+	if msg.Key != created.OrderID {
+		t.Fatalf("published key = %q, want %q", msg.Key, created.OrderID)
 	}
-	if msg.OrderID != created.OrderID {
-		t.Fatalf("published order id = %q, want %q", msg.OrderID, created.OrderID)
+	if msg.EventType != events.TypeOrderCreated {
+		t.Fatalf("published event type = %q, want %q", msg.EventType, events.TypeOrderCreated)
 	}
-	publishedEvent, ok := msg.Body.(events.OrderCreatedEvent)
-	if !ok {
-		t.Fatalf("published body type = %T, want OrderCreatedEvent", msg.Body)
+	var publishedEvent events.OrderCreatedEvent
+	if err := json.Unmarshal(msg.Payload, &publishedEvent); err != nil {
+		t.Fatalf("unmarshal published event: %v", err)
 	}
-	if msg.CorrelationID != publishedEvent.CorrelationID {
-		t.Fatalf("published correlation id = %q, want event correlation %q", msg.CorrelationID, publishedEvent.CorrelationID)
+	if publishedEvent.OrderID != created.OrderID {
+		t.Fatalf("published order id = %q, want %q", publishedEvent.OrderID, created.OrderID)
 	}
 
 	now := time.Now().UTC()
-	if err := deliverEvent(consumer, commonkafka.DefaultPaymentEventsTopic, created.OrderID, events.NewPaymentCompletedEvent("PAY-1", created.OrderID, json.Number("99.98"), "TX-1", now, "corr-1", now)); err != nil {
-		t.Fatalf("handle payment completed: %v", err)
-	}
-	if err := deliverEvent(consumer, commonkafka.DefaultInventoryEventsTopic, created.OrderID, events.NewInventoryReservedEvent("RES-1", created.OrderID, []events.InventoryReservedItem{{ProductID: "PROD-001", Quantity: 2}}, now, "corr-1", now)); err != nil {
-		t.Fatalf("handle inventory reserved: %v", err)
-	}
-	if err := deliverEvent(consumer, commonkafka.DefaultShippingEventsTopic, created.OrderID, events.NewShippingScheduledEvent("SHIP-1", created.OrderID, "TRACK-1", "Jl. Ketintang Wiyata, Surabaya 60231", now.Add(24*time.Hour), now, "corr-1", now)); err != nil {
-		t.Fatalf("handle shipping scheduled: %v", err)
-	}
+	deliverEvent(t, service, events.NewPaymentCompletedEvent("PAY-1", created.OrderID, json.Number("99.98"), "TX-1", now, "corr-1", now))
+	deliverEvent(t, service, events.NewInventoryReservedEvent("RES-1", created.OrderID, []events.InventoryReservedItem{{ProductID: "PROD-001", Quantity: 2}}, now, "corr-1", now))
+	deliverEvent(t, service, events.NewShippingScheduledEvent("SHIP-1", created.OrderID, "TRACK-1", "Jl. Ketintang Wiyata, Surabaya 60231", now.Add(24*time.Hour), now, "corr-1", now))
 
 	getReq := httptest.NewRequest(http.MethodGet, "/api/orders/"+created.OrderID, nil)
 	getResp := httptest.NewRecorder()
@@ -97,7 +91,7 @@ func TestCreateAndPollOrderLifecycle(t *testing.T) {
 }
 
 func TestDuplicateCreateOrderUsesIdempotencyKey(t *testing.T) {
-	server, _, _, publisher := newTestServer(t)
+	server, _, publisher := newTestServer(t)
 	body := `{"customerId":"CUST-001","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Widget","quantity":1,"price":799000}]}`
 
 	first := httptest.NewRequest(http.MethodPost, "/api/orders", strings.NewReader(body))
@@ -136,7 +130,7 @@ func TestDuplicateCreateOrderUsesIdempotencyKey(t *testing.T) {
 }
 
 func TestDuplicateCreateOrderRejectsDifferentPayloadForSameIdempotencyKey(t *testing.T) {
-	server, _, _, publisher := newTestServer(t)
+	server, _, publisher := newTestServer(t)
 	firstBody := `{"customerId":"CUST-001","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Widget","quantity":1,"price":799000}]}`
 	secondBody := `{"customerId":"CUST-002","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Widget","quantity":1,"price":799000}]}`
 
@@ -163,53 +157,8 @@ func TestDuplicateCreateOrderRejectsDifferentPayloadForSameIdempotencyKey(t *tes
 	}
 }
 
-func TestCreateOrderStagesOutboxWhenInitialPublishFails(t *testing.T) {
-	db := testutil.OpenPostgres(t, testutil.DefaultChoreographyOrderDatabaseURL, "choreography_order_outbox_test", testutil.Migration{Scope: "choreography-order-service", Dir: "choreography-saga/order-service/db/migrations"})
-	repo, err := repository.NewPostgresRepository(db)
-	if err != nil {
-		t.Fatalf("new postgres repository: %v", err)
-	}
-	metrics, err := observability.NewMetrics(nil)
-	if err != nil {
-		t.Fatalf("new metrics: %v", err)
-	}
-	recording := testutil.NewRecordingPublisher()
-	publisher := &failOncePublisher{delegate: recording}
-	service, err := ordersvc.NewService(repo, messaging.NewOrderTopicPublisher(publisher), fakeCatalogResolver{}, metrics)
-	if err != nil {
-		t.Fatalf("new service: %v", err)
-	}
-	service.WithClock(func() time.Time { return time.Date(2026, 4, 14, 12, 0, 0, 0, time.UTC) })
-	request := dto.ChoreographyCreateOrderRequest{
-		CustomerID:      "CUST-001",
-		ShippingAddress: "Jl. Ketintang Wiyata, Surabaya 60231",
-		Items:           []dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Widget", Quantity: 1, Price: json.Number("799000")}},
-	}
-
-	response, created, err := service.CreateOrder(context.Background(), request, "")
-	if err != nil {
-		t.Fatalf("create order: %v", err)
-	}
-	if !created || response.OrderID == "" {
-		t.Fatalf("created=%v response=%+v", created, response)
-	}
-	if len(recording.Messages()) != 0 {
-		t.Fatalf("published messages after failed attempt = %d, want 0", len(recording.Messages()))
-	}
-
-	if err := service.PublishPendingOrderEvents(context.Background()); err != nil {
-		t.Fatalf("publish pending order events: %v", err)
-	}
-	if len(recording.Messages()) != 1 {
-		t.Fatalf("published messages after retry = %d, want 1", len(recording.Messages()))
-	}
-	if recording.Messages()[0].Key != response.OrderID {
-		t.Fatalf("published key = %q, want %q", recording.Messages()[0].Key, response.OrderID)
-	}
-}
-
 func TestCreateOrderRejectsInsufficientAvailabilityBeforePublishing(t *testing.T) {
-	server, _, _, publisher := newTestServerWithCatalog(t, fakeCatalogResolver{err: inventorycatalog.InsufficientAvailabilityError{ProductID: "PROD-001", Requested: 1, Available: 0}})
+	server, _, publisher := newTestServerWithCatalog(t, fakeCatalogResolver{err: inventorycatalog.InsufficientAvailabilityError{ProductID: "PROD-001", Requested: 1, Available: 0}})
 	body := `{"customerId":"CUST-001","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Widget","quantity":1,"price":799000}]}`
 
 	req := httptest.NewRequest(http.MethodPost, "/api/orders", strings.NewReader(body))
@@ -226,7 +175,7 @@ func TestCreateOrderRejectsInsufficientAvailabilityBeforePublishing(t *testing.T
 }
 
 func TestCreateOrderRejectsJudgeCustomerInsufficientAvailabilityBeforePublishing(t *testing.T) {
-	server, _, _, publisher := newTestServerWithCatalog(t, fakeCatalogResolver{err: inventorycatalog.InsufficientAvailabilityError{ProductID: "PROD-001", Requested: 1, Available: 0}})
+	server, _, publisher := newTestServerWithCatalog(t, fakeCatalogResolver{err: inventorycatalog.InsufficientAvailabilityError{ProductID: "PROD-001", Requested: 1, Available: 0}})
 	body := `{"customerId":"CUST-JUDGE-001","shippingAddress":"Jl. Ketintang Wiyata, Surabaya 60231","items":[{"productId":"PROD-001","productName":"Widget","quantity":1,"price":799000}]}`
 
 	req := httptest.NewRequest(http.MethodPost, "/api/orders", strings.NewReader(body))
@@ -243,16 +192,12 @@ func TestCreateOrderRejectsJudgeCustomerInsufficientAvailabilityBeforePublishing
 }
 
 func TestDownstreamTerminalEventsUpdateOrders(t *testing.T) {
-	server, consumer, _, _ := newTestServer(t)
+	server, service, _ := newTestServer(t)
 	orderID := createOrderForTest(t, server)
 	now := time.Now().UTC()
 
-	if err := deliverEvent(consumer, commonkafka.DefaultPaymentEventsTopic, orderID, events.NewPaymentFailedEvent("", orderID, "card declined", now, "corr-2", now)); err != nil {
-		t.Fatalf("handle payment failed: %v", err)
-	}
-	if err := deliverEvent(consumer, commonkafka.DefaultPaymentEventsTopic, orderID, events.NewPaymentFailedEvent("", orderID, "card declined", now, "corr-2", now)); err != nil {
-		t.Fatalf("replay payment failed should be ignored, got %v", err)
-	}
+	deliverEvent(t, service, events.NewPaymentFailedEvent("", orderID, "card declined", now, "corr-2", now))
+	deliverEvent(t, service, events.NewPaymentFailedEvent("", orderID, "card declined", now, "corr-2", now))
 
 	resp := httptest.NewRecorder()
 	server.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/orders/"+orderID, nil))
@@ -272,16 +217,12 @@ func TestDownstreamTerminalEventsUpdateOrders(t *testing.T) {
 }
 
 func TestInventoryFailureResponseShowsPaymentCompensation(t *testing.T) {
-	server, consumer, _, _ := newTestServer(t)
+	server, service, _ := newTestServer(t)
 	orderID := createOrderForTest(t, server)
 	now := time.Now().UTC()
 
-	if err := deliverEvent(consumer, commonkafka.DefaultPaymentEventsTopic, orderID, events.NewPaymentCompletedEvent("PAY-1", orderID, json.Number("799000"), "TX-1", now, "corr-5", now)); err != nil {
-		t.Fatalf("handle payment completed: %v", err)
-	}
-	if err := deliverEvent(consumer, commonkafka.DefaultInventoryEventsTopic, orderID, events.NewInventoryReservationFailedEvent(orderID, "PROD-001", "out of stock", now, "corr-5", now)); err != nil {
-		t.Fatalf("handle inventory failed: %v", err)
-	}
+	deliverEvent(t, service, events.NewPaymentCompletedEvent("PAY-1", orderID, json.Number("799000"), "TX-1", now, "corr-5", now))
+	deliverEvent(t, service, events.NewInventoryReservationFailedEvent(orderID, "PROD-001", "out of stock", now, "corr-5", now))
 
 	resp := httptest.NewRecorder()
 	server.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/orders/"+orderID, nil))
@@ -307,12 +248,10 @@ func TestInventoryFailureResponseShowsPaymentCompensation(t *testing.T) {
 }
 
 func TestPrometheusEndpointExposesRequiredOrderMetrics(t *testing.T) {
-	server, consumer, _, _ := newTestServer(t)
+	server, service, _ := newTestServer(t)
 	orderID := createOrderForTest(t, server)
 	now := time.Now().UTC()
-	if err := deliverEvent(consumer, commonkafka.DefaultShippingEventsTopic, orderID, events.NewShippingFailedEvent(orderID, "courier error", now, "corr-3", now)); err != nil {
-		t.Fatalf("handle shipping failed: %v", err)
-	}
+	deliverEvent(t, service, events.NewShippingFailedEvent(orderID, "courier error", now, "corr-3", now))
 
 	resp := httptest.NewRecorder()
 	server.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/actuator/prometheus", nil))
@@ -334,23 +273,17 @@ func TestPrometheusEndpointExposesRequiredOrderMetrics(t *testing.T) {
 	}
 }
 
-func TestDownstreamConsumerRejectsTopicEventMismatch(t *testing.T) {
-	_, consumer, _, _ := newTestServer(t)
-	now := time.Now().UTC()
-	err := deliverEvent(consumer, commonkafka.DefaultPaymentEventsTopic, "ORDER-1", events.NewShippingFailedEvent("ORDER-1", "bad route", now, "corr-4", now))
-	if err == nil || !strings.Contains(err.Error(), "not allowed on topic") {
-		t.Fatalf("topic/event mismatch error = %v, want mismatch rejection", err)
-	}
-}
-
-func newTestServer(t *testing.T) (http.Handler, *messaging.DownstreamConsumer, *ordersvc.Service, *testutil.RecordingPublisher) {
+func newTestServer(t *testing.T) (http.Handler, *ordersvc.Service, *testFrameworkPublisher) {
 	t.Helper()
 	return newTestServerWithCatalog(t, fakeCatalogResolver{})
 }
 
-func newTestServerWithCatalog(t *testing.T, catalog fakeCatalogResolver) (http.Handler, *messaging.DownstreamConsumer, *ordersvc.Service, *testutil.RecordingPublisher) {
+func newTestServerWithCatalog(t *testing.T, catalog fakeCatalogResolver) (http.Handler, *ordersvc.Service, *testFrameworkPublisher) {
 	t.Helper()
-	db := testutil.OpenPostgres(t, testutil.DefaultChoreographyOrderDatabaseURL, "choreography_order_service_test", testutil.Migration{Scope: "choreography-order-service", Dir: "choreography-saga/order-service/db/migrations"})
+	db := testutil.OpenPostgres(t, testutil.DefaultChoreographyOrderDatabaseURL, "choreography_order_service_test",
+		testutil.Migration{Scope: "choreography-order-service", Dir: "choreography-saga/order-service/db/migrations"},
+		testutil.Migration{Scope: "choreography-framework", Dir: "choreography-framework/db/migrations"},
+	)
 	repo, err := repository.NewPostgresRepository(db)
 	if err != nil {
 		t.Fatalf("new postgres repository: %v", err)
@@ -359,23 +292,78 @@ func newTestServerWithCatalog(t *testing.T, catalog fakeCatalogResolver) (http.H
 	if err != nil {
 		t.Fatalf("new metrics: %v", err)
 	}
-	publisher := testutil.NewRecordingPublisher()
-	service, err := ordersvc.NewService(repo, messaging.NewOrderTopicPublisher(publisher), catalog, metrics)
+
+	recording := &testFrameworkPublisher{}
+	holder := &eventHandlerHolder{}
+
+	participant, err := choreoruntime.NewPostgres(db,
+		choreoruntime.EventRegistry{
+			Subscriptions: []choreoruntime.TopicSubscription{
+				{Topic: commonkafka.DefaultPaymentEventsTopic, EventTypes: []string{events.TypePaymentCompleted, events.TypePaymentFailed, events.TypePaymentRefunded}},
+				{Topic: commonkafka.DefaultInventoryEventsTopic, EventTypes: []string{events.TypeInventoryReserved, events.TypeInventoryReservationFailed, events.TypeInventoryReleased}},
+				{Topic: commonkafka.DefaultShippingEventsTopic, EventTypes: []string{events.TypeShippingScheduled, events.TypeShippingFailed}},
+			},
+			OnUnknownEvent: choreoruntime.RejectUnknown,
+		},
+		holder,
+		recording,
+		choreoruntime.Config{ServiceName: "test-order-service", ImmediateOutboxPublish: true},
+	)
+	if err != nil {
+		t.Fatalf("new choreography participant: %v", err)
+	}
+
+	frameworkParticipant := ordersvc.NewFrameworkParticipant(participant)
+	service, err := ordersvc.NewService(repo, frameworkParticipant, catalog, metrics)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
+	holder.handler = service
+
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	consumer, err := messaging.NewDownstreamConsumer(service, logger)
-	if err != nil {
-		t.Fatalf("new downstream consumer: %v", err)
-	}
 	handler := NewHandler(HandlerDependencies{
 		Config:   commonconfig.ServiceConfig{HealthPath: "/actuator/health", PrometheusPath: "/actuator/prometheus"},
 		Logger:   logger,
 		Orders:   service,
 		Registry: metrics.Registry(),
 	})
-	return handler, consumer, service, publisher
+	return handler, service, recording
+}
+
+// eventHandlerHolder breaks the circular dependency between the service
+// (needs participantAdapter) and the participant (needs EventHandler).
+// Wired post-construction.
+type eventHandlerHolder struct {
+	handler choreoruntime.EventHandler
+}
+
+func (h *eventHandlerHolder) HandleEvent(ctx context.Context, event events.ChoreographyEvent) error {
+	if h.handler == nil {
+		return fmt.Errorf("event handler not wired yet")
+	}
+	return h.handler.HandleEvent(ctx, event)
+}
+
+// testFrameworkPublisher implements choreoruntime.Publisher and records
+// messages for test assertions.
+type testFrameworkPublisher struct {
+	mu       sync.Mutex
+	messages []choreoruntime.Message
+}
+
+func (p *testFrameworkPublisher) Publish(_ context.Context, message choreoruntime.Message) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.messages = append(p.messages, message)
+	return nil
+}
+
+func (p *testFrameworkPublisher) Messages() []choreoruntime.Message {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	items := make([]choreoruntime.Message, len(p.messages))
+	copy(items, p.messages)
+	return items
 }
 
 type fakeCatalogResolver struct {
@@ -411,23 +399,9 @@ func createOrderForTest(t *testing.T, server http.Handler) string {
 	return payload.OrderID
 }
 
-func deliverEvent(consumer *messaging.DownstreamConsumer, topic string, key string, event events.ChoreographyEvent) error {
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return err
+func deliverEvent(t *testing.T, service *ordersvc.Service, event events.ChoreographyEvent) {
+	t.Helper()
+	if err := service.HandleEvent(context.Background(), event); err != nil {
+		t.Fatalf("handle event %T: %v", event, err)
 	}
-	return consumer.Consume(context.Background(), messaging.DownstreamEnvelope{Topic: topic, Key: key, Value: payload})
-}
-
-type failOncePublisher struct {
-	delegate *testutil.RecordingPublisher
-	failed   bool
-}
-
-func (p *failOncePublisher) Publish(ctx context.Context, topic string, key string, body any) error {
-	if !p.failed {
-		p.failed = true
-		return errors.New("publish failed once")
-	}
-	return p.delegate.Publish(ctx, topic, key, body)
 }

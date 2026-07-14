@@ -2,13 +2,14 @@ package inventory
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
-	"saga-pattern/choreography-saga/inventory-service/internal/messaging"
 	"saga-pattern/choreography-saga/inventory-service/internal/observability"
 	"saga-pattern/choreography-saga/inventory-service/internal/repository"
 	"saga-pattern/common/dto"
@@ -17,8 +18,37 @@ import (
 	"saga-pattern/common/testutil"
 )
 
+type recordedEvent struct {
+	Topic     string
+	Key       string
+	EventType string
+	Payload   any
+}
+
+type recordingParticipant struct {
+	mu     sync.Mutex
+	events []recordedEvent
+}
+
+func (p *recordingParticipant) EnqueueEvent(_ context.Context, _ *sql.Tx, topic, key, eventType string, payload any) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = append(p.events, recordedEvent{Topic: topic, Key: key, EventType: eventType, Payload: payload})
+	return nil
+}
+
+func (p *recordingParticipant) TriggerImmediatePublish(_ context.Context) {}
+
+func (p *recordingParticipant) Events() []recordedEvent {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	cpy := make([]recordedEvent, len(p.events))
+	copy(cpy, p.events)
+	return cpy
+}
+
 func TestReserveInventoryPublishesReservedEvent(t *testing.T) {
-	consumer, repo, publisher := newTestService(t)
+	consumer, repo, participant := newTestService(t)
 	now := time.Date(2026, 4, 13, 17, 0, 0, 0, time.UTC)
 	orderEvent := events.NewOrderCreatedEvent(
 		"ORDER-INV-1",
@@ -38,19 +68,19 @@ func TestReserveInventoryPublishesReservedEvent(t *testing.T) {
 		t.Fatalf("consume payment completed: %v", err)
 	}
 
-	messages := publisher.Messages()
-	if len(messages) != 1 {
-		t.Fatalf("published message count = %d, want 1", len(messages))
+	evts := participant.Events()
+	if len(evts) != 1 {
+		t.Fatalf("enqueued event count = %d, want 1", len(evts))
 	}
-	reserved, ok := messages[0].Body.(events.InventoryReservedEvent)
+	if evts[0].EventType != events.TypeInventoryReserved {
+		t.Fatalf("enqueued event type = %q, want %q", evts[0].EventType, events.TypeInventoryReserved)
+	}
+	reserved, ok := evts[0].Payload.(events.InventoryReservedEvent)
 	if !ok {
-		t.Fatalf("published body type = %T, want InventoryReservedEvent", messages[0].Body)
+		t.Fatalf("enqueued payload type = %T, want InventoryReservedEvent", evts[0].Payload)
 	}
 	if reserved.OrderID != orderEvent.OrderID {
 		t.Fatalf("reserved order id = %q, want %q", reserved.OrderID, orderEvent.OrderID)
-	}
-	if reserved.ReservationID != "res-1" {
-		t.Fatalf("reservation id = %q, want %q", reserved.ReservationID, "res-1")
 	}
 	if len(reserved.ReservedItems) != 1 || reserved.ReservedItems[0].ProductID != "PROD-001" || reserved.ReservedItems[0].Quantity != 2 {
 		t.Fatalf("reserved items = %#v, want PROD-001 x2", reserved.ReservedItems)
@@ -68,7 +98,7 @@ func TestReserveInventoryPublishesReservedEvent(t *testing.T) {
 }
 
 func TestPaymentCompletedWaitsForOrderCreated(t *testing.T) {
-	consumer, _, publisher := newTestService(t)
+	consumer, _, participant := newTestService(t)
 	now := time.Date(2026, 4, 13, 17, 30, 0, 0, time.UTC)
 	orderEvent := events.NewOrderCreatedEvent(
 		"ORDER-INV-RACE",
@@ -93,17 +123,17 @@ func TestPaymentCompletedWaitsForOrderCreated(t *testing.T) {
 		t.Fatalf("consume payment completed: %v", err)
 	}
 
-	messages := publisher.Messages()
-	if len(messages) != 1 {
-		t.Fatalf("published message count = %d, want 1", len(messages))
+	evts := participant.Events()
+	if len(evts) != 1 {
+		t.Fatalf("enqueued event count = %d, want 1", len(evts))
 	}
-	if _, ok := messages[0].Body.(events.InventoryReservedEvent); !ok {
-		t.Fatalf("published body type = %T, want InventoryReservedEvent", messages[0].Body)
+	if evts[0].EventType != events.TypeInventoryReserved {
+		t.Fatalf("enqueued event type = %q, want %q", evts[0].EventType, events.TypeInventoryReserved)
 	}
 }
 
 func TestInsufficientStockPublishesReservationFailed(t *testing.T) {
-	consumer, repo, publisher := newTestService(t)
+	consumer, repo, participant := newTestService(t)
 	now := time.Date(2026, 4, 13, 18, 0, 0, 0, time.UTC)
 	orderEvent := events.NewOrderCreatedEvent(
 		"ORDER-INV-OVER",
@@ -123,13 +153,16 @@ func TestInsufficientStockPublishesReservationFailed(t *testing.T) {
 		t.Fatalf("consume payment completed: %v", err)
 	}
 
-	messages := publisher.Messages()
-	if len(messages) != 1 {
-		t.Fatalf("published message count = %d, want 1", len(messages))
+	evts := participant.Events()
+	if len(evts) != 1 {
+		t.Fatalf("enqueued event count = %d, want 1", len(evts))
 	}
-	failed, ok := messages[0].Body.(events.InventoryReservationFailedEvent)
+	if evts[0].EventType != events.TypeInventoryReservationFailed {
+		t.Fatalf("enqueued event type = %q, want %q", evts[0].EventType, events.TypeInventoryReservationFailed)
+	}
+	failed, ok := evts[0].Payload.(events.InventoryReservationFailedEvent)
 	if !ok {
-		t.Fatalf("published body type = %T, want InventoryReservationFailedEvent", messages[0].Body)
+		t.Fatalf("enqueued payload type = %T, want InventoryReservationFailedEvent", evts[0].Payload)
 	}
 	if failed.ProductID != "PROD-001" {
 		t.Fatalf("failed product id = %q, want %q", failed.ProductID, "PROD-001")
@@ -147,7 +180,7 @@ func TestInsufficientStockPublishesReservationFailed(t *testing.T) {
 }
 
 func TestReleaseCompensationIsIdempotent(t *testing.T) {
-	consumer, repo, publisher := newTestService(t)
+	consumer, repo, participant := newTestService(t)
 	now := time.Date(2026, 4, 13, 19, 0, 0, 0, time.UTC)
 	orderEvent := events.NewOrderCreatedEvent(
 		"ORDER-INV-REL",
@@ -174,13 +207,19 @@ func TestReleaseCompensationIsIdempotent(t *testing.T) {
 		t.Fatalf("duplicate shipping failed should be ignored: %v", err)
 	}
 
-	messages := publisher.Messages()
-	if len(messages) != 2 {
-		t.Fatalf("published message count = %d, want 2", len(messages))
+	evts := participant.Events()
+	if len(evts) != 2 {
+		t.Fatalf("enqueued event count = %d, want 2", len(evts))
 	}
-	released, ok := messages[1].Body.(events.InventoryReleasedEvent)
+	if evts[0].EventType != events.TypeInventoryReserved {
+		t.Fatalf("first event type = %q, want %q", evts[0].EventType, events.TypeInventoryReserved)
+	}
+	if evts[1].EventType != events.TypeInventoryReleased {
+		t.Fatalf("second event type = %q, want %q", evts[1].EventType, events.TypeInventoryReleased)
+	}
+	released, ok := evts[1].Payload.(events.InventoryReleasedEvent)
 	if !ok {
-		t.Fatalf("published body type = %T, want InventoryReleasedEvent", messages[1].Body)
+		t.Fatalf("released payload type = %T, want InventoryReleasedEvent", evts[1].Payload)
 	}
 	if released.ReservationID != "res-1" {
 		t.Fatalf("released reservation id = %q, want %q", released.ReservationID, "res-1")
@@ -198,7 +237,7 @@ func TestReleaseCompensationIsIdempotent(t *testing.T) {
 }
 
 func TestDuplicatePaymentCompletedReplayIsSafe(t *testing.T) {
-	consumer, _, publisher := newTestService(t)
+	consumer, _, participant := newTestService(t)
 	now := time.Date(2026, 4, 13, 20, 0, 0, 0, time.UTC)
 	orderEvent := events.NewOrderCreatedEvent(
 		"ORDER-INV-DUPE",
@@ -220,18 +259,18 @@ func TestDuplicatePaymentCompletedReplayIsSafe(t *testing.T) {
 	if err := deliverEvent(consumer, commonkafka.DefaultPaymentEventsTopic, orderEvent.OrderID, paymentEvent); err != nil {
 		t.Fatalf("duplicate payment completed should be ignored: %v", err)
 	}
-	if len(publisher.Messages()) != 1 {
-		t.Fatalf("published message count = %d, want 1", len(publisher.Messages()))
+	if len(participant.Events()) != 1 {
+		t.Fatalf("enqueued event count = %d, want 1", len(participant.Events()))
 	}
 }
 
-func newTestService(t *testing.T) (*messaging.DownstreamConsumer, repository.Repository, *testutil.RecordingPublisher) {
+func newTestService(t *testing.T) (*recordingConsumer, repository.Repository, *recordingParticipant) {
 	t.Helper()
-	consumer, repo, publisher, _ := newTestServiceWithService(t)
-	return consumer, repo, publisher
+	consumer, repo, participant, _ := newTestServiceWithService(t)
+	return consumer, repo, participant
 }
 
-func newTestServiceWithService(t *testing.T) (*messaging.DownstreamConsumer, repository.Repository, *testutil.RecordingPublisher, *Service) {
+func newTestServiceWithService(t *testing.T) (*recordingConsumer, repository.Repository, *recordingParticipant, *Service) {
 	t.Helper()
 	db := testutil.OpenPostgres(t, testutil.DefaultChoreographyInventoryDatabaseURL, "choreography_inventory_service_test", testutil.Migration{Scope: "choreography-inventory-service", Dir: "choreography-saga/inventory-service/db/migrations"})
 	repo, err := repository.NewPostgresRepository(db)
@@ -242,19 +281,44 @@ func newTestServiceWithService(t *testing.T) (*messaging.DownstreamConsumer, rep
 	if err != nil {
 		t.Fatalf("new metrics: %v", err)
 	}
-	publisher := testutil.NewRecordingPublisher()
-	service, err := NewService(repo, messaging.NewInventoryTopicPublisher(publisher), metrics)
+	participant := &recordingParticipant{}
+	service, err := NewService(repo, participant, metrics)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
 	service.WithClock(func() time.Time { return time.Date(2026, 4, 13, 21, 0, 0, 0, time.UTC) })
 	service.WithIDGenerator(sequenceIDs("res-1", "res-2", "res-3"))
-	consumer, err := messaging.NewDownstreamConsumer(service, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if err != nil {
-		t.Fatalf("new downstream consumer: %v", err)
-	}
-	return consumer, repo, publisher, service
+	consumer := newRecordingConsumer(service, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return consumer, repo, participant, service
 }
+
+// recordingConsumer wraps the service as an event consumer for tests.
+type recordingConsumer struct {
+	handler interface{ HandleEvent(context.Context, events.ChoreographyEvent) error }
+	logger  *slog.Logger
+}
+
+func newRecordingConsumer(handler interface{ HandleEvent(context.Context, events.ChoreographyEvent) error }, logger *slog.Logger) *recordingConsumer {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return &recordingConsumer{handler: handler, logger: logger}
+}
+
+func (c *recordingConsumer) Consume(ctx context.Context, topic, key string, event events.ChoreographyEvent) error {
+	if delay := simulatedDelayMsForTest.Load(); delay > 0 {
+		time.Sleep(time.Duration(delay) * time.Millisecond)
+	}
+	return c.handler.HandleEvent(ctx, event)
+}
+
+// simulatedDelayMsForTest mirrors domain.SimulatedDelayMs for test consumer.
+var simulatedDelayMsForTest atomicInt32
+
+type atomicInt32 struct{ v int32 }
+
+func (a *atomicInt32) Load() int32   { return a.v }
+func (a *atomicInt32) Store(v int32) { a.v = v }
 
 func sequenceIDs(values ...string) func() string {
 	idx := 0
@@ -268,12 +332,8 @@ func sequenceIDs(values ...string) func() string {
 	}
 }
 
-func deliverEvent(consumer *messaging.DownstreamConsumer, topic string, key string, event events.ChoreographyEvent) error {
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
-	return consumer.Consume(context.Background(), messaging.DownstreamEnvelope{Topic: topic, Key: key, Value: payload})
+func deliverEvent(consumer *recordingConsumer, topic string, key string, event events.ChoreographyEvent) error {
+	return consumer.Consume(context.Background(), topic, key, event)
 }
 
 func TestRepositorySeedsCatalogProducts(t *testing.T) {

@@ -2,14 +2,12 @@ package shipping
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
-	"io"
-	"log/slog"
 	"testing"
 	"time"
 
 	"saga-pattern/choreography-saga/shipping-service/internal/domain"
-	"saga-pattern/choreography-saga/shipping-service/internal/messaging"
 	"saga-pattern/choreography-saga/shipping-service/internal/observability"
 	"saga-pattern/choreography-saga/shipping-service/internal/repository"
 	"saga-pattern/common/dto"
@@ -19,7 +17,7 @@ import (
 )
 
 func TestScheduleShippingPublishesShippingScheduled(t *testing.T) {
-	consumer, repo, publisher := newTestService(t)
+	service, repo, participant := newTestService(t)
 	now := time.Date(2026, 4, 14, 9, 0, 0, 0, time.UTC)
 	orderCreated := events.NewOrderCreatedEvent(
 		"ORDER-SHIP-1",
@@ -39,23 +37,22 @@ func TestScheduleShippingPublishesShippingScheduled(t *testing.T) {
 		now.Add(time.Minute),
 	)
 
-	if err := deliverEvent(consumer, commonkafka.DefaultOrderEventsTopic, orderCreated.OrderID, orderCreated); err != nil {
+	if err := deliverEvent(service, orderCreated); err != nil {
 		t.Fatalf("consume order created: %v", err)
 	}
-	if err := deliverEvent(consumer, commonkafka.DefaultInventoryEventsTopic, orderCreated.OrderID, inventoryReserved); err != nil {
+	if err := deliverEvent(service, inventoryReserved); err != nil {
 		t.Fatalf("consume inventory reserved: %v", err)
 	}
 
-	messages := publisher.Messages()
-	if len(messages) != 1 {
-		t.Fatalf("published message count = %d, want 1", len(messages))
+	if len(participant.enqueued) != 1 {
+		t.Fatalf("enqueued event count = %d, want 1", len(participant.enqueued))
 	}
-	if messages[0].Topic != messaging.NewShippingTopicPublisher(publisher).Topic() {
-		t.Fatalf("published topic = %q", messages[0].Topic)
+	if participant.enqueued[0].Topic != commonkafka.DefaultShippingEventsTopic {
+		t.Fatalf("enqueued topic = %q, want %q", participant.enqueued[0].Topic, commonkafka.DefaultShippingEventsTopic)
 	}
-	scheduled, ok := messages[0].Body.(events.ShippingScheduledEvent)
+	scheduled, ok := participant.enqueued[0].Payload.(events.ShippingScheduledEvent)
 	if !ok {
-		t.Fatalf("published body type = %T, want ShippingScheduledEvent", messages[0].Body)
+		t.Fatalf("enqueued payload type = %T, want ShippingScheduledEvent", participant.enqueued[0].Payload)
 	}
 	if scheduled.ShippingID != "ship-1" {
 		t.Fatalf("shipping id = %q, want %q", scheduled.ShippingID, "ship-1")
@@ -87,7 +84,7 @@ func TestScheduleShippingPublishesShippingScheduled(t *testing.T) {
 }
 
 func TestInventoryReservedWaitsForOrderCreated(t *testing.T) {
-	consumer, _, publisher := newTestService(t)
+	service, _, participant := newTestService(t)
 	now := time.Date(2026, 4, 14, 9, 30, 0, 0, time.UTC)
 	orderCreated := events.NewOrderCreatedEvent(
 		"ORDER-SHIP-RACE",
@@ -109,27 +106,26 @@ func TestInventoryReservedWaitsForOrderCreated(t *testing.T) {
 	errCh := make(chan error, 1)
 
 	go func() {
-		errCh <- deliverEvent(consumer, commonkafka.DefaultInventoryEventsTopic, orderCreated.OrderID, inventoryReserved)
+		errCh <- deliverEvent(service, inventoryReserved)
 	}()
 	time.Sleep(30 * time.Millisecond)
-	if err := deliverEvent(consumer, commonkafka.DefaultOrderEventsTopic, orderCreated.OrderID, orderCreated); err != nil {
+	if err := deliverEvent(service, orderCreated); err != nil {
 		t.Fatalf("consume order created: %v", err)
 	}
 	if err := <-errCh; err != nil {
 		t.Fatalf("consume inventory reserved: %v", err)
 	}
 
-	messages := publisher.Messages()
-	if len(messages) != 1 {
-		t.Fatalf("published message count = %d, want 1", len(messages))
+	if len(participant.enqueued) != 1 {
+		t.Fatalf("enqueued event count = %d, want 1", len(participant.enqueued))
 	}
-	if _, ok := messages[0].Body.(events.ShippingScheduledEvent); !ok {
-		t.Fatalf("published body type = %T, want ShippingScheduledEvent", messages[0].Body)
+	if _, ok := participant.enqueued[0].Payload.(events.ShippingScheduledEvent); !ok {
+		t.Fatalf("enqueued payload type = %T, want ShippingScheduledEvent", participant.enqueued[0].Payload)
 	}
 }
 
 func TestCancelShippingCompensationIsIdempotent(t *testing.T) {
-	consumer, repo, publisher := newTestService(t)
+	service, repo, participant := newTestService(t)
 	now := time.Date(2026, 4, 14, 10, 0, 0, 0, time.UTC)
 	orderCreated := events.NewOrderCreatedEvent(
 		"ORDER-SHIP-CANCEL",
@@ -159,26 +155,24 @@ func TestCancelShippingCompensationIsIdempotent(t *testing.T) {
 
 	for _, delivery := range []struct {
 		topic string
-		key   string
 		event events.ChoreographyEvent
 	}{
-		{topic: commonkafka.DefaultOrderEventsTopic, key: orderCreated.OrderID, event: orderCreated},
-		{topic: commonkafka.DefaultInventoryEventsTopic, key: orderCreated.OrderID, event: inventoryReserved},
-		{topic: commonkafka.DefaultPaymentEventsTopic, key: orderCreated.OrderID, event: refunded},
-		{topic: commonkafka.DefaultPaymentEventsTopic, key: orderCreated.OrderID, event: refunded},
+		{topic: commonkafka.DefaultOrderEventsTopic, event: orderCreated},
+		{topic: commonkafka.DefaultInventoryEventsTopic, event: inventoryReserved},
+		{topic: commonkafka.DefaultPaymentEventsTopic, event: refunded},
+		{topic: commonkafka.DefaultPaymentEventsTopic, event: refunded},
 	} {
-		if err := deliverEvent(consumer, delivery.topic, delivery.key, delivery.event); err != nil {
+		if err := deliverEvent(service, delivery.event); err != nil {
 			t.Fatalf("consume %s: %v", delivery.topic, err)
 		}
 	}
 
-	messages := publisher.Messages()
-	if len(messages) != 2 {
-		t.Fatalf("published message count = %d, want 2", len(messages))
+	if len(participant.enqueued) != 2 {
+		t.Fatalf("enqueued event count = %d, want 2", len(participant.enqueued))
 	}
-	cancelled, ok := messages[1].Body.(events.ShippingCancelledEvent)
+	cancelled, ok := participant.enqueued[1].Payload.(events.ShippingCancelledEvent)
 	if !ok {
-		t.Fatalf("published body type = %T, want ShippingCancelledEvent", messages[1].Body)
+		t.Fatalf("enqueued payload type = %T, want ShippingCancelledEvent", participant.enqueued[1].Payload)
 	}
 	if cancelled.ShippingID != "ship-1" {
 		t.Fatalf("cancelled shipping id = %q, want %q", cancelled.ShippingID, "ship-1")
@@ -196,7 +190,7 @@ func TestCancelShippingCompensationIsIdempotent(t *testing.T) {
 }
 
 func TestDuplicateInventoryReservedReplayIsSafe(t *testing.T) {
-	consumer, _, publisher := newTestService(t)
+	service, _, participant := newTestService(t)
 	now := time.Date(2026, 4, 14, 11, 0, 0, 0, time.UTC)
 	orderCreated := events.NewOrderCreatedEvent(
 		"ORDER-SHIP-DUPE",
@@ -216,21 +210,41 @@ func TestDuplicateInventoryReservedReplayIsSafe(t *testing.T) {
 		now.Add(time.Minute),
 	)
 
-	if err := deliverEvent(consumer, commonkafka.DefaultOrderEventsTopic, orderCreated.OrderID, orderCreated); err != nil {
+	if err := deliverEvent(service, orderCreated); err != nil {
 		t.Fatalf("consume order created: %v", err)
 	}
-	if err := deliverEvent(consumer, commonkafka.DefaultInventoryEventsTopic, orderCreated.OrderID, inventoryReserved); err != nil {
+	if err := deliverEvent(service, inventoryReserved); err != nil {
 		t.Fatalf("first inventory reserved consume: %v", err)
 	}
-	if err := deliverEvent(consumer, commonkafka.DefaultInventoryEventsTopic, orderCreated.OrderID, inventoryReserved); err != nil {
+	if err := deliverEvent(service, inventoryReserved); err != nil {
 		t.Fatalf("duplicate inventory reserved should be ignored: %v", err)
 	}
-	if len(publisher.Messages()) != 1 {
-		t.Fatalf("published message count = %d, want 1", len(publisher.Messages()))
+	if len(participant.enqueued) != 1 {
+		t.Fatalf("enqueued event count = %d, want 1", len(participant.enqueued))
 	}
 }
 
-func newTestService(t *testing.T) (*messaging.DownstreamConsumer, repository.Repository, *testutil.RecordingPublisher) {
+type enqueuedEvent struct {
+	Topic     string
+	Key       string
+	EventType string
+	Payload   any
+}
+
+type stubParticipant struct {
+	enqueued []enqueuedEvent
+}
+
+func (p *stubParticipant) EnqueueEvent(_ context.Context, _ *sql.Tx, topic, key, eventType string, payload any) error {
+	p.enqueued = append(p.enqueued, enqueuedEvent{Topic: topic, Key: key, EventType: eventType, Payload: payload})
+	return nil
+}
+
+func (p *stubParticipant) TriggerImmediatePublish(_ context.Context) {}
+
+var _ participantAdapter = (*stubParticipant)(nil)
+
+func newTestService(t *testing.T) (*Service, repository.Repository, *stubParticipant) {
 	t.Helper()
 	db := testutil.OpenPostgres(t, testutil.DefaultChoreographyShippingDatabaseURL, "choreography_shipping_service_test", testutil.Migration{Scope: "choreography-shipping-service", Dir: "choreography-saga/shipping-service/db/migrations"})
 	repo, err := repository.NewPostgresRepository(db)
@@ -241,18 +255,14 @@ func newTestService(t *testing.T) (*messaging.DownstreamConsumer, repository.Rep
 	if err != nil {
 		t.Fatalf("new metrics: %v", err)
 	}
-	publisher := testutil.NewRecordingPublisher()
-	service, err := NewService(repo, messaging.NewShippingTopicPublisher(publisher), metrics)
+	participant := &stubParticipant{}
+	service, err := NewService(repo, participant, metrics)
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
 	service.WithClock(func() time.Time { return time.Date(2026, 4, 14, 12, 0, 0, 0, time.UTC) })
 	service.WithIDGenerator(sequenceIDs("ship-1", "ship-2", "ship-3"))
-	consumer, err := messaging.NewDownstreamConsumer(service, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if err != nil {
-		t.Fatalf("new downstream consumer: %v", err)
-	}
-	return consumer, repo, publisher
+	return service, repo, participant
 }
 
 func sequenceIDs(values ...string) func() string {
@@ -267,10 +277,6 @@ func sequenceIDs(values ...string) func() string {
 	}
 }
 
-func deliverEvent(consumer *messaging.DownstreamConsumer, topic string, key string, event events.ChoreographyEvent) error {
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
-	return consumer.Consume(context.Background(), messaging.DownstreamEnvelope{Topic: topic, Key: key, Value: payload})
+func deliverEvent(service *Service, event events.ChoreographyEvent) error {
+	return service.HandleEvent(context.Background(), event)
 }

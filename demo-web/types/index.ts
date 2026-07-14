@@ -14,6 +14,10 @@ export interface InventoryItem {
   productId: string;
   productName: string;
   sku: string;
+  description?: string;
+  price?: number;
+  category?: string;
+  image?: string;
   totalStock: number;
   reserved: number;
   available: number;

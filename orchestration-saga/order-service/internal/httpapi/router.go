@@ -33,6 +33,7 @@ type OrderService interface {
 	GetOrder(context.Context, string) (dto.OrderResponse, error)
 	ListOrders(context.Context) ([]dto.OrderResponse, error)
 	ListOrdersByCustomer(context.Context, string) ([]dto.OrderResponse, error)
+	CancelOrder(context.Context, string) error
 }
 
 func NewHandler(deps HandlerDependencies) http.Handler {
@@ -47,6 +48,7 @@ func NewHandler(deps HandlerDependencies) http.Handler {
 	router.Post("/api/orders", createOrderHandler(logger, deps.Orders))
 	router.Get("/api/orders/{orderId}", getOrderHandler(logger, deps.Orders))
 	router.Get("/api/orders/customer/{customerId}", getOrdersByCustomerHandler(logger, deps.Orders))
+	router.Post("/api/orders/{orderId}/cancel", cancelOrderHandler(logger, deps.Orders))
 	router.Get("/api/orders", listOrdersHandler(logger, deps.Orders))
 	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
@@ -102,6 +104,26 @@ func getOrderHandler(logger *slog.Logger, service OrderService) http.HandlerFunc
 			return
 		}
 		writeJSON(w, http.StatusOK, response)
+	}
+}
+
+func cancelOrderHandler(logger *slog.Logger, service OrderService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if service == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "order service unavailable"})
+			return
+		}
+		err := service.CancelOrder(r.Context(), chi.URLParam(r, "orderId"))
+		if err != nil {
+			if errors.Is(err, ordersvc.ErrOrderNotFound) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "order not found"})
+				return
+			}
+			logger.Error("cancel order", "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

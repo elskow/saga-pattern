@@ -7,7 +7,7 @@ import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Loader2, ShoppingBag, ShieldCheck } from "lucide-react";
 
-import { useCartStore } from "@/lib/store";
+import { useCartStore, useAuthStore } from "@/lib/store";
 import { createOrderServer } from "@/lib/api";
 import { fetchLiveCatalogServer } from "@/lib/products";
 import { PatternToggle } from "@/components/PatternToggle";
@@ -19,7 +19,7 @@ import type { CartItem, CatalogProduct, Pattern } from "@/types";
 import { formatPrice } from "@/lib/currency";
 
 const defaultForm = {
-  customerId: "CUST-001",
+  customerId: "",
   firstName: "Alex",
   lastName: "Johnson",
   address: "Jl. Ketintang Wiyata, Ketintang, Kec. Gayungan, Surabaya, Jawa Timur 60231",
@@ -62,6 +62,7 @@ export default function CheckoutClient({ pattern: routePattern }: CheckoutClient
     clearCart,
     hasHydrated,
   } = useCartStore();
+  const user = useAuthStore((s) => s.user);
 
   const activePattern = routePattern ?? pattern;
   const total = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
@@ -77,6 +78,7 @@ export default function CheckoutClient({ pattern: routePattern }: CheckoutClient
 
   const form = {
     ...defaultForm,
+    customerId: user?.username || "CUST-GUEST",
     ...formOverrides,
   };
 
@@ -186,7 +188,7 @@ export default function CheckoutClient({ pattern: routePattern }: CheckoutClient
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Secure Checkout</h1>
           <p className="text-sm text-muted-foreground font-medium mt-1">
-            Place your order and monitor the microservice saga execution.
+            Place your order and follow each fulfillment step in real time.
           </p>
         </div>
       </div>
@@ -205,11 +207,6 @@ export default function CheckoutClient({ pattern: routePattern }: CheckoutClient
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-background border border-border/50 p-2.5 rounded-xl">
                 <PatternToggle />
-                <p className="text-xs text-muted-foreground font-mono bg-muted px-2.5 py-1.5 rounded-md">
-                  {activePattern === "choreography"
-                    ? "Standard Processing"
-                    : "Priority Processing"}
-                </p>
               </div>
             </div>
           </section>
@@ -273,7 +270,7 @@ export default function CheckoutClient({ pattern: routePattern }: CheckoutClient
 
             <div className="space-y-2.5 text-sm">
               <div className="flex justify-between text-muted-foreground font-medium"><span>Subtotal</span><span>{formatPrice(total)}</span></div>
-              <div className="flex justify-between text-muted-foreground font-medium"><span>Shipping</span><span className="text-green-600 dark:text-green-400">Complimentary</span></div>
+              <div className="flex justify-between text-muted-foreground font-medium"><span>Shipping</span><span className="text-green-600">Complimentary</span></div>
               <div className="flex justify-between font-bold text-foreground text-lg pt-3 border-t border-border/60"><span>Total</span><span>{formatPrice(total)}</span></div>
             </div>
 

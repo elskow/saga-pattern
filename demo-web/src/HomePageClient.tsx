@@ -5,14 +5,37 @@ import { fetchLiveCatalogServer } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
 import { CatalogProduct, Pattern } from "@/types";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, ShoppingBag, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { PatternToggle } from "@/components/PatternToggle";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useCartStore } from "@/lib/store";
 
 interface HomePageClientProps {
   initialProducts: CatalogProduct[];
   initialError: string | null;
   initialPattern: Pattern;
+}
+
+function ProductCardSkeleton() {
+  return (
+    <div className="flex h-full flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card">
+      <Skeleton className="aspect-[4/3] w-full rounded-none bg-muted/60" />
+      <div className="flex flex-1 flex-col space-y-4 p-5 pt-4">
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-3 w-20 rounded-full" />
+          <Skeleton className="h-5 w-3/4 rounded-full" />
+          <div className="space-y-1.5">
+            <Skeleton className="h-4 w-full rounded-full" />
+            <Skeleton className="h-4 w-5/6 rounded-full" />
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-3 pt-2">
+          <Skeleton className="h-6 w-20 rounded-full" />
+          <Skeleton className="h-9 w-20 rounded-full" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function HomePageClient({ initialProducts, initialError, initialPattern }: HomePageClientProps) {
@@ -81,40 +104,36 @@ export default function HomePageClient({ initialProducts, initialError, initialP
         </div>
       </section>
 
-      <section id="products" className="space-y-6 pt-4">
-        <div className="flex flex-col gap-4 border-b border-border/60 pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground">
+      <section id="products" className="space-y-10 pt-8">
+        <div className="flex flex-col gap-6 border-b border-border/40 pb-8 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <h2 className="text-4xl font-black tracking-tight text-foreground">
               New Arrivals
             </h2>
-            <p className="text-sm text-muted-foreground mt-1.5 font-medium">
-              Available in {catalogPattern} stock and ready to ship.
+            <p className="text-base font-medium text-muted-foreground mt-3 leading-relaxed">
+              Premium gadgets and technology for the modern professional. Upgrade your workflow today.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="w-full rounded-[1.25rem] border border-border/60 bg-card/70 p-4 shadow-sm lg:w-auto lg:min-w-[24rem]">
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  Processing backend
+                </p>
+                <p className="mt-1 text-xs font-medium text-muted-foreground/80">
+                  Choose which service set powers the live catalog.
+                </p>
+              </div>
+            </div>
             <PatternToggle />
-            <p className="text-xs font-semibold text-muted-foreground rounded-full border border-border/60 bg-muted/30 px-3.5 py-1.5">
-              {loading ? "Loading…" : `${products.length} items`}
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void load(pattern)}
-              className="rounded-full gap-2 text-xs font-medium shadow-sm hover:bg-muted/50 transition-colors"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              Refresh
-            </Button>
           </div>
         </div>
 
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-32 gap-5 text-center rounded-2xl border border-dashed border-border bg-card/50">
-            <ShoppingBag className="h-12 w-12 text-muted-foreground/20 animate-pulse" />
-            <div>
-              <p className="text-lg font-semibold tracking-tight text-foreground">Loading catalog</p>
-              <p className="text-sm text-muted-foreground mt-1">Fetching live inventory...</p>
-            </div>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-label="Loading catalog">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <ProductCardSkeleton key={index} />
+            ))}
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center py-32 gap-5 text-center rounded-2xl border border-dashed border-red-200 bg-red-50/30">

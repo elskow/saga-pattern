@@ -7,14 +7,17 @@ export const Route = createFileRoute('/admin/payment')({
   loader: async () => {
     try {
       const initialBalances = await fetchDepositBalancesServer();
-      return { initialBalances };
+      return { initialBalances, initialError: null };
     } catch (error) {
-      return { initialBalances: {} };
+      return {
+        initialBalances: {},
+        initialError: error instanceof Error ? error.message : "Live payment balances unavailable",
+      };
     }
   }
 })
 
 function AdminPaymentPage() {
   const data = Route.useLoaderData();
-  return <AdminPaymentClient initialBalances={data.initialBalances} />;
+  return <AdminPaymentClient initialBalances={data.initialBalances} initialError={data.initialError} />;
 }

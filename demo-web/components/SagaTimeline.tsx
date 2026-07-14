@@ -92,7 +92,12 @@ export function SagaTimeline({ order }: SagaTimelineProps) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <span className="rounded-full border border-border px-3 py-0.5 text-xs font-medium text-foreground capitalize">
+        <span
+          className={cn(
+            "rounded-full border px-3 py-0.5 text-xs font-medium capitalize",
+            order.pattern === "choreography" ? "bg-foreground text-background border-foreground" : "bg-muted/50 text-foreground border-border/60"
+          )}
+        >
           {order.pattern}
         </span>
         <span className="text-xs text-muted-foreground">
@@ -129,9 +134,17 @@ export function SagaTimeline({ order }: SagaTimelineProps) {
                   {step.status === "FAILED" && (
                     <X className="h-2.5 w-2.5 text-white" strokeWidth={3} />
                   )}
+                  {step.status === "IN_PROGRESS" && (
+                    <Loader2 className="h-2.5 w-2.5 text-white animate-spin" />
+                  )}
                 </div>
                 {!isLast && (
-                  <div className="mt-1 w-px flex-1 bg-border min-h-[2rem]" />
+                  <div
+                    className={cn(
+                      "mt-1 w-px flex-1 min-h-[2rem]",
+                      step.status === "IN_PROGRESS" ? "animate-pulse bg-amber-400/50" : "bg-border"
+                    )}
+                  />
                 )}
               </div>
 
@@ -167,11 +180,17 @@ export function SagaTimeline({ order }: SagaTimelineProps) {
 
       {isCompensating && (
         <div className="rounded-lg border border-border bg-muted/50 p-4 text-sm space-y-1">
-          <p className="font-medium text-foreground">Saga compensation triggered</p>
+          <p className="font-medium text-foreground">Fulfillment rollback started</p>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            {order.pattern === "choreography"
-              ? "Each service listens for failure events and issues its own compensating action."
-              : "The central orchestrator sends compensating commands in reverse order."}
+            {order.pattern === "choreography" ? (
+              <>
+                <span className="font-semibold text-foreground">Choreography</span> lets each service listen for failure events and issue its own compensating action.
+              </>
+            ) : (
+              <>
+                <span className="font-semibold text-foreground">Orchestration</span> sends compensating commands from the central coordinator in reverse order.
+              </>
+            )}
           </p>
           {order.failureReason && (
             <p className="text-xs text-destructive font-mono">

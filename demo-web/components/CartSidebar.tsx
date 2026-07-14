@@ -3,9 +3,7 @@
 import { memo, useCallback, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { formatPrice } from "@/lib/currency";
-
-import { ShoppingCart, Trash2, ArrowRight } from "lucide-react";
-
+import { Minus, Plus, ShoppingCart, Trash2, ArrowRight } from "lucide-react";
 import { useCartStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,9 +20,13 @@ import type { CartItem } from "@/types";
 const CartRow = memo(function CartRow({
   item,
   onRemove,
+  onIncrement,
+  onDecrement,
 }: {
   item: CartItem;
   onRemove: (productId: string) => void;
+  onIncrement: (productId: string) => void;
+  onDecrement: (productId: string) => void;
 }) {
   const { product, quantity } = item;
 
@@ -40,13 +42,30 @@ const CartRow = memo(function CartRow({
         />
       </div>
 
-      <div className="flex flex-1 flex-col justify-center min-w-0">
+      <div className="flex flex-1 flex-col justify-center min-w-0 gap-2">
         <p className="truncate text-base font-semibold text-foreground">
           {product.name}
         </p>
-        <p className="mt-0.5 text-sm font-medium text-muted-foreground">
-          Qty: {quantity}
-        </p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onDecrement(product.id)}
+            className="h-7 w-7 rounded-full border border-border/60 bg-muted/30 hover:bg-muted flex items-center justify-center transition-colors"
+            aria-label="Decrease quantity"
+          >
+            <Minus className="h-3 w-3" />
+          </button>
+          <span className="w-6 text-center text-sm font-semibold tabular-nums">{quantity}</span>
+          <button
+            type="button"
+            onClick={() => onIncrement(product.id)}
+            disabled={quantity >= product.stock}
+            className="h-7 w-7 rounded-full border border-border/60 bg-muted/30 hover:bg-muted flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label="Increase quantity"
+          >
+            <Plus className="h-3 w-3" />
+          </button>
+        </div>
       </div>
 
       <div className="flex shrink-0 flex-col items-end gap-2">
@@ -70,12 +89,21 @@ export function CartSidebar() {
   const navigate = useNavigate();
   const items = useCartStore((state) => state.items);
   const removeItem = useCartStore((state) => state.removeItem);
+  const updateQuantity = useCartStore((state) => state.updateQuantity);
   const count = useMemo(() => items.reduce((sum, item) => sum + item.quantity, 0), [items]);
   const total = useMemo(
     () => items.reduce((sum, item) => sum + item.product.price * item.quantity, 0),
     [items]
   );
   const handleRemove = useCallback((productId: string) => removeItem(productId), [removeItem]);
+  const handleIncrement = useCallback((productId: string) => {
+    const item = useCartStore.getState().items.find((i) => i.product.id === productId);
+    if (item) updateQuantity(productId, item.quantity + 1);
+  }, [updateQuantity]);
+  const handleDecrement = useCallback((productId: string) => {
+    const item = useCartStore.getState().items.find((i) => i.product.id === productId);
+    if (item) updateQuantity(productId, item.quantity - 1);
+  }, [updateQuantity]);
   const handleCheckout = useCallback(() => {
     void navigate({ to: "/checkout" });
   }, [navigate]);
@@ -97,9 +125,7 @@ export function CartSidebar() {
         <span className="sr-only">Open cart</span>
       </SheetTrigger>
 
-      
       <SheetContent keepMounted className="flex w-full flex-col border-l border-border/60 bg-background p-0 sm:max-w-lg shadow-2xl">
-        
         <SheetHeader className="border-b border-border/50 p-6 text-left space-y-1">
           <SheetTitle className="text-2xl font-bold tracking-tight text-foreground">
             Your Cart
@@ -132,13 +158,18 @@ export function CartSidebar() {
           ) : (
             <div className="space-y-4">
               {items.map((item) => (
-                <CartRow key={item.product.id} item={item} onRemove={handleRemove} />
+                <CartRow
+                  key={item.product.id}
+                  item={item}
+                  onRemove={handleRemove}
+                  onIncrement={handleIncrement}
+                  onDecrement={handleDecrement}
+                />
               ))}
             </div>
           )}
         </div>
 
-        
         {items.length > 0 && (
           <div className="border-t border-border/50 bg-background p-6 space-y-5">
             <div className="flex items-center justify-between">
@@ -147,7 +178,6 @@ export function CartSidebar() {
                 {formatPrice(total)}
               </span>
             </div>
-            
             <SheetClose
               render={
                 <Button

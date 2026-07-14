@@ -5,10 +5,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { findShipmentByTrackingServer } from "@/lib/admin";
 import { Pattern } from "@/types";
 
+type TrackingSearch = {
+  shipmentId?: string | null;
+  orderId?: string | null;
+  pattern?: Pattern | null;
+};
+
+const toPattern = (value: unknown): Pattern | null =>
+  value === "choreography" || value === "orchestration" ? value : null;
+
+const toOptionalString = (value: unknown): string | null =>
+  typeof value === "string" && value.length > 0 ? value : null;
+
 export const Route = createFileRoute('/tracking/$trackingId')({
   component: ShipmentTrackingPage,
   loader: async ({ params, location }) => {
-    const searchParams = location.search as any;
+    const searchParams = location.search as TrackingSearch;
     let initialShipment = null;
     let initialError: string | null = null;
 
@@ -16,9 +28,9 @@ export const Route = createFileRoute('/tracking/$trackingId')({
       initialShipment = await findShipmentByTrackingServer({
         data: {
           trackingId: params.trackingId,
-          shipmentId: searchParams.shipmentId ?? null,
-          orderId: searchParams.orderId ?? null,
-          pattern: searchParams.pattern ?? null,
+          shipmentId: toOptionalString(searchParams.shipmentId),
+          orderId: toOptionalString(searchParams.orderId),
+          pattern: toPattern(searchParams.pattern),
         }
       });
     } catch (error) {

@@ -16,15 +16,15 @@ import { createServerFn } from "@tanstack/react-start";
 import { Effect, Either } from "effect";
 import { requestJson, getServiceUrl } from "./effect-services";
 
-const SERVICE_PORTS: { name: "order" | "payment" | "inventory" | "shipping"; pattern: Pattern }[] = [
-  { name: "order", pattern: "choreography" },
-  { name: "payment", pattern: "choreography" },
-  { name: "inventory", pattern: "choreography" },
-  { name: "shipping", pattern: "choreography" },
-  { name: "order", pattern: "orchestration" },
-  { name: "payment", pattern: "orchestration" },
-  { name: "inventory", pattern: "orchestration" },
-  { name: "shipping", pattern: "orchestration" },
+const SERVICE_PORTS: { name: "order" | "payment" | "inventory" | "shipping"; pattern: Pattern; port: number }[] = [
+  { name: "order", pattern: "choreography", port: 8081 },
+  { name: "payment", pattern: "choreography", port: 8082 },
+  { name: "inventory", pattern: "choreography", port: 8083 },
+  { name: "shipping", pattern: "choreography", port: 8084 },
+  { name: "order", pattern: "orchestration", port: 8091 },
+  { name: "payment", pattern: "orchestration", port: 8092 },
+  { name: "inventory", pattern: "orchestration", port: 8093 },
+  { name: "shipping", pattern: "orchestration", port: 8094 },
 ];
 
 const ORDERS_CACHE_TTL_MS = 5_000;
@@ -105,8 +105,8 @@ export async function fetchAllServiceHealth(): Promise<ServiceHealth[]> {
             try: () => fetch(url, { signal: AbortSignal.timeout(5000) }),
             catch: () => false,
           }).pipe(
-            Effect.map((res) => ({ name: svc.name.charAt(0).toUpperCase() + svc.name.slice(1), port: 0, pattern: svc.pattern, healthy: typeof res === "boolean" ? false : res.ok })),
-            Effect.catchAll(() => Effect.succeed({ name: svc.name.charAt(0).toUpperCase() + svc.name.slice(1), port: 0, pattern: svc.pattern, healthy: false }))
+            Effect.map((res) => ({ name: svc.name.charAt(0).toUpperCase() + svc.name.slice(1), port: svc.port, pattern: svc.pattern, healthy: typeof res === "boolean" ? false : res.ok })),
+            Effect.catchAll(() => Effect.succeed({ name: svc.name.charAt(0).toUpperCase() + svc.name.slice(1), port: svc.port, pattern: svc.pattern, healthy: false }))
           );
         }),
         { concurrency: "unbounded" }
@@ -135,8 +135,8 @@ export const fetchAllServiceHealthServer = createServerFn({ method: "GET" })
           try: () => fetch(url, { signal: AbortSignal.timeout(2000), cache: "no-store" }),
           catch: () => false,
         }).pipe(
-          Effect.map((res) => ({ name: svc.name.charAt(0).toUpperCase() + svc.name.slice(1), port: 0, pattern: svc.pattern, healthy: typeof res === "boolean" ? false : res.ok })),
-          Effect.catchAll(() => Effect.succeed({ name: svc.name.charAt(0).toUpperCase() + svc.name.slice(1), port: 0, pattern: svc.pattern, healthy: false }))
+          Effect.map((res) => ({ name: svc.name.charAt(0).toUpperCase() + svc.name.slice(1), port: svc.port, pattern: svc.pattern, healthy: typeof res === "boolean" ? false : res.ok })),
+          Effect.catchAll(() => Effect.succeed({ name: svc.name.charAt(0).toUpperCase() + svc.name.slice(1), port: svc.port, pattern: svc.pattern, healthy: false }))
         );
       }),
       { concurrency: "unbounded" }
@@ -193,32 +193,64 @@ export function computeMetrics(orders: Order[]): AdminMetrics {
 interface RawProductChoreo {
   ProductID: string;
   ProductName: string;
+  Description?: string;
+  Price?: number | string;
+  Category?: string;
+  Image?: string;
   QuantityAvailable: number;
   QuantityReserved: number;
   Visible?: boolean;
   LastRestockedAt?: string;
+  productId?: string;
+  name?: string;
+  description?: string;
+  price?: number | string;
+  category?: string;
+  image?: string;
+  stock?: number;
+  reserved?: number;
+  available?: number;
 }
 interface RawProductOrch {
   ProductID: string;
   ProductName: string;
+  Description?: string;
+  Price?: number | string;
+  Category?: string;
+  Image?: string;
   Quantity: number;
   ReservedQuantity: number;
   Visible?: boolean;
   LastRestockedAt?: string;
+  productId?: string;
+  name?: string;
+  description?: string;
+  price?: number | string;
+  category?: string;
+  image?: string;
+  stock?: number;
+  reserved?: number;
+  available?: number;
 }
 
 function mapInventoryItem(p: RawProductChoreo & RawProductOrch): InventoryItem {
-  const total = p.Quantity ?? ((p.QuantityAvailable ?? 0) + (p.QuantityReserved ?? 0));
-  const reserved = p.ReservedQuantity ?? p.QuantityReserved ?? 0;
-  const available = p.QuantityAvailable ?? (total - reserved);
+  const total = p.Quantity ?? p.stock ?? ((p.QuantityAvailable ?? 0) + (p.QuantityReserved ?? 0));
+  const reserved = p.ReservedQuantity ?? p.QuantityReserved ?? p.reserved ?? 0;
+  const available = p.QuantityAvailable ?? p.available ?? (total - reserved);
   const lastRestocked = p.LastRestockedAt && !Number.isNaN(Date.parse(p.LastRestockedAt))
     ? new Date(p.LastRestockedAt).toISOString()
     : new Date(0).toISOString();
+  const productId = p.ProductID ?? p.productId;
+  const price = p.Price ?? p.price;
 
   return {
-    productId: p.ProductID,
-    productName: p.ProductName ?? p.ProductID,
-    sku: `SKU-${p.ProductID}`,
+    productId,
+    productName: p.ProductName ?? p.name ?? productId,
+    sku: `SKU-${productId}`,
+    description: p.Description ?? p.description,
+    price: typeof price === "string" ? Number(price) : price,
+    category: p.Category ?? p.category,
+    image: p.Image ?? p.image,
     totalStock: total,
     reserved,
     available,
@@ -648,6 +680,18 @@ export const fetchDepositBalancesServer = createServerFn({ method: "GET" })
     return Effect.runPromise(program);
   });
 
+export const cancelOrderServer = createServerFn({ method: "POST" })
+  .inputValidator((data: { pattern: Pattern; orderId: string }) => data)
+  .handler(async ({ data }: { data: { pattern: Pattern; orderId: string } }): Promise<void> => {
+    const program = Effect.gen(function* () {
+      const url = `${getServiceUrl("order", data.pattern, true)}/api/orders/${data.orderId}/cancel`;
+      yield* requestJson<any>(url, {
+        method: "POST",
+      }).pipe(Effect.timeout("5 seconds"));
+    });
+    return Effect.runPromise(program);
+  });
+
 export async function fetchDepositBalance(
   key: DepositServiceKey
 ): Promise<DepositBalanceStatus> {
@@ -713,3 +757,122 @@ export const setDepositBalanceServer = createServerFn({ method: "POST" })
 
 export const DEPOSIT_SERVICE_LABELS_MAP: Record<DepositServiceKey, string> = DEPOSIT_SERVICE_LABELS;
 export const DEPOSIT_SERVICE_KEYS: DepositServiceKey[] = Object.keys(DEPOSIT_SERVICE_LABELS) as DepositServiceKey[];
+
+export interface CreateProductPayload {
+  name: string;
+  description: string;
+  price: string; // numeric string e.g. "19999000"
+  category: string;
+  image: string;
+  choreographyStock: number;
+  orchestrationStock: number;
+}
+
+export interface UpdateProductMetaPayload {
+  productId: string;
+  name: string;
+  description: string;
+  price: string;
+  category: string;
+  image: string;
+}
+
+export const createProductServer = createServerFn({ method: "POST" })
+  .inputValidator((data: CreateProductPayload) => data)
+  .handler(async ({ data }: { data: CreateProductPayload }): Promise<{ choreography: InventoryItem; orchestration: InventoryItem }> => {
+    const program = Effect.gen(function* () {
+      const [choreoResult, orchResult] = yield* Effect.all(
+        [
+          requestJson<any>(
+            `${getServiceUrl("inventory", "choreography", true)}/api/products`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: data.name,
+                description: data.description,
+                price: data.price,
+                category: data.category,
+                image: data.image,
+                stock: data.choreographyStock,
+              }),
+            }
+          ).pipe(Effect.timeout("8 seconds")),
+          requestJson<any>(
+            `${getServiceUrl("inventory", "orchestration", true)}/api/products`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: data.name,
+                description: data.description,
+                price: data.price,
+                category: data.category,
+                image: data.image,
+                stock: data.orchestrationStock,
+              }),
+            }
+          ).pipe(Effect.timeout("8 seconds")),
+        ],
+        { concurrency: 2 }
+      );
+      return {
+        choreography: mapInventoryItem(choreoResult as any),
+        orchestration: mapInventoryItem(orchResult as any),
+      };
+    });
+    return Effect.runPromise(program);
+  });
+
+export const updateProductMetaServer = createServerFn({ method: "POST" })
+  .inputValidator((data: UpdateProductMetaPayload) => data)
+  .handler(async ({ data }: { data: UpdateProductMetaPayload }): Promise<{ choreography: InventoryItem; orchestration: InventoryItem }> => {
+    const body = JSON.stringify({
+      name: data.name,
+      description: data.description,
+      price: data.price,
+      category: data.category,
+      image: data.image,
+    });
+    const program = Effect.gen(function* () {
+      const [choreoResult, orchResult] = yield* Effect.all(
+        [
+          requestJson<any>(
+            `${getServiceUrl("inventory", "choreography", true)}/api/products/${data.productId}`,
+            { method: "PATCH", headers: { "Content-Type": "application/json" }, body }
+          ).pipe(Effect.timeout("8 seconds")),
+          requestJson<any>(
+            `${getServiceUrl("inventory", "orchestration", true)}/api/products/${data.productId}`,
+            { method: "PATCH", headers: { "Content-Type": "application/json" }, body }
+          ).pipe(Effect.timeout("8 seconds")),
+        ],
+        { concurrency: 2 }
+      );
+      return {
+        choreography: mapInventoryItem(choreoResult as any),
+        orchestration: mapInventoryItem(orchResult as any),
+      };
+    });
+    return Effect.runPromise(program);
+  });
+
+export const deleteProductServer = createServerFn({ method: "POST" })
+  .inputValidator((data: { productId: string }) => data)
+  .handler(async ({ data }: { data: { productId: string } }): Promise<void> => {
+    const program = Effect.gen(function* () {
+      yield* Effect.all(
+        [
+          requestJson<any>(
+            `${getServiceUrl("inventory", "choreography", true)}/api/products/${data.productId}`,
+            { method: "DELETE" }
+          ).pipe(Effect.timeout("8 seconds")),
+          requestJson<any>(
+            `${getServiceUrl("inventory", "orchestration", true)}/api/products/${data.productId}`,
+            { method: "DELETE" }
+          ).pipe(Effect.timeout("8 seconds")),
+        ],
+        { concurrency: 2 }
+      );
+    });
+    return Effect.runPromise(program);
+  });

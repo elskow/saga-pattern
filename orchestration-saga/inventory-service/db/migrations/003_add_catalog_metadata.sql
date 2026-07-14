@@ -38,3 +38,24 @@ UPDATE products SET
     image = '/products/monitor.png',
     category = 'Monitors'
 WHERE product_id = 'PROD-005';
+
+UPDATE products SET
+    description = 'Fitness tracking, heart rate monitoring, and seamless notifications. Your active lifestyle companion.',
+    price = 3499000,
+    image = '/products/smartwatch.png',
+    category = 'Wearables'
+WHERE product_id = 'PROD-006';
+
+UPDATE products SET
+    description = 'Ergonomic wireless mouse with precision tracking and 70-day battery life. Designed for comfort.',
+    price = 1299000,
+    image = '/products/mouse.png',
+    category = 'Peripherals'
+WHERE product_id = 'PROD-007';
+
+UPDATE products SET
+    description = '11-inch liquid retina display, powerful M-series chip, all-day battery. Creativity without limits.',
+    price = 11999000,
+    image = '/products/tablet.png',
+    category = 'Tablets'
+WHERE product_id = 'PROD-008';

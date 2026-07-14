@@ -11,6 +11,22 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 
+type TrackingParams = {
+  trackingId: string;
+};
+
+type TrackingSearch = {
+  shipmentId?: string | null;
+  orderId?: string | null;
+  pattern?: Pattern | null;
+};
+
+const toPattern = (value: unknown): Pattern | null =>
+  value === "choreography" || value === "orchestration" ? value : null;
+
+const toOptionalString = (value: unknown): string | null =>
+  typeof value === "string" && value.length > 0 ? value : null;
+
 interface ShipmentTrackingClientProps {
   initialShipment?: Shipment | null;
   initialError?: string | null;
@@ -20,13 +36,13 @@ export default function ShipmentTrackingClient({
   initialShipment = null,
   initialError = null,
 }: ShipmentTrackingClientProps) {
-  const params = useParams({ strict: false }) as any;
-  const searchParams = useSearch({ strict: false }) as any;
+  const params = useParams({ strict: false }) as TrackingParams;
+  const searchParams = useSearch({ strict: false }) as TrackingSearch;
 
-  const trackingId = params.trackingId as string;
-  const shipmentId = searchParams.shipmentId;
-  const orderId = searchParams.orderId;
-  const pattern = (searchParams.pattern ?? "choreography") as Pattern;
+  const trackingId = params.trackingId;
+  const shipmentId = toOptionalString(searchParams.shipmentId);
+  const orderId = toOptionalString(searchParams.orderId);
+  const pattern = toPattern(searchParams.pattern);
 
   const [shipment, setShipment] = useState<Shipment | null>(initialShipment);
   const [loading, setLoading] = useState(initialShipment == null && initialError == null);

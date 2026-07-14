@@ -1,0 +1,628 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "title": "Overview",
+      "url": "/d/saga-thesis-overview/saga-thesis-defense-overview",
+      "targetBlank": false
+    },
+    {
+      "title": "k6 Throughput",
+      "url": "/d/saga-k6-throughput-analysis/saga-k6-throughput-analysis",
+      "targetBlank": false
+    },
+    {
+      "title": "Pattern Comparison",
+      "url": "/d/saga-comparative-analysis/saga-comparative-analysis",
+      "targetBlank": false
+    },
+    {
+      "title": "Root Cause",
+      "url": "/d/saga-root-cause-analysis/saga-root-cause-analysis",
+      "targetBlank": false
+    },
+    {
+      "title": "Evidence Health",
+      "url": "/d/saga-evidence-health/saga-evidence-health",
+      "targetBlank": false
+    },
+    {
+      "title": "Explore Traces",
+      "url": "/explore?schemaVersion=1&panes=%7B%22trace%22:%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22queryType%22:%22traceqlSearch%22%7D%5D%7D%7D",
+      "targetBlank": true
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "How To Use",
+      "type": "text",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "mode": "markdown",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "# Root-Cause Observability\n\nUse this after the k6 and comparative dashboards. It explains why the result happened using service histograms, Tempo spanmetrics, Beyla network visibility, and process resource metrics."
+      },
+      "pluginVersion": "12.1.1"
+    },
+    {
+      "id": 2,
+      "title": "Trace Span Activity by Service",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "topk(20, sum by (service, span_name) (rate(traces_spanmetrics_calls_total{service=~\".*$pattern.*\",span_name!~\"sql.conn.reset_session|sql.rows\"}[1m])))",
+          "legendFormat": "{{service}} / {{span_name}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Beyla Network Calls Between Services",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "sum by (service_name, http_request_method, http_route, server_address) (rate(http_client_request_duration_seconds_count{job=\"beyla\",service_name=~\".*$pattern.*\",server_address!~\".*(alloy|signoz-otel-collector).*\"}[1m]))",
+          "legendFormat": "{{service_name}} {{http_request_method}} {{server_address}}{{http_route}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Business Step Latency P95",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, pattern) (rate(saga_step_payment_duration_seconds_bucket{pattern=~\"$pattern\"}[2m])))",
+          "legendFormat": "{{pattern}} payment p95"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, pattern) (rate(saga_step_inventory_duration_seconds_bucket{pattern=~\"$pattern\"}[2m])))",
+          "legendFormat": "{{pattern}} inventory p95"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, pattern) (rate(saga_step_shipping_duration_seconds_bucket{pattern=~\"$pattern\"}[2m])))",
+          "legendFormat": "{{pattern}} shipping p95"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Orchestration Framework Step P95",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, step, result) (rate(saga_framework_step_duration_seconds_bucket[2m])))",
+          "legendFormat": "{{step}} {{result}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Order Processing and Saga Duration",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "rate(saga_order_processing_time_seconds_sum{pattern=~\"$pattern\"}[2m]) / rate(saga_order_processing_time_seconds_count{pattern=~\"$pattern\"}[2m])",
+          "legendFormat": "{{pattern}} order processing avg"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, pattern) (rate(saga_total_duration_seconds_bucket{pattern=~\"$pattern\"}[2m])))",
+          "legendFormat": "{{pattern}} saga p95"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Service CPU Usage",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "sum by (pattern, instance) (rate(process_cpu_seconds_total{job=~\"saga-.*-services\",pattern=~\"$pattern\"}[1m]))",
+          "legendFormat": "{{pattern}} {{instance}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Service Memory Usage",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "process_resident_memory_bytes{job=~\"saga-.*-services\",pattern=~\"$pattern\"}",
+          "legendFormat": "{{pattern}} {{instance}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Service Goroutines",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "go_goroutines{job=~\"saga-.*-services\",pattern=~\"$pattern\"}",
+          "legendFormat": "{{pattern}} {{instance}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Trace and Network Evidence Index",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 24,
+        "h": 8
+      },
+      "description": "Use this to pick representative services/spans/routes before opening Tempo Explore or Pyroscope.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "expr": "topk(20, sum by (service, span_name) (increase(traces_spanmetrics_calls_total{span_name!~\"sql.conn.reset_session|sql.rows\"}[$__range])))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "span_calls"
+        },
+        {
+          "expr": "topk(20, sum by (service_name, server_address, http_route) (increase(http_client_request_duration_seconds_count{job=\"beyla\",server_address!~\".*(alloy|signoz-otel-collector).*\"}[$__range])))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "network_calls"
+        }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": [
+    "saga",
+    "thesis",
+    "tempo",
+    "beyla",
+    "pyroscope"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "suite_label",
+        "label": "Suite label",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "definition": "label_values(k6_iterations_total, suite_label)",
+        "query": {
+          "query": "label_values(k6_iterations_total, suite_label)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "hide": 0,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1
+      },
+      {
+        "name": "pattern",
+        "label": "Pattern",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "definition": "label_values(k6_iterations_total{suite_label=~\"$suite_label\"}, pattern)",
+        "query": {
+          "query": "label_values(k6_iterations_total{suite_label=~\"$suite_label\"}, pattern)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "hide": 0,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1
+      },
+      {
+        "name": "scenario",
+        "label": "Scenario",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "definition": "label_values(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\"}, scenario)",
+        "query": {
+          "query": "label_values(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\"}, scenario)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "hide": 0,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1
+      },
+      {
+        "name": "run_label",
+        "label": "Run label",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "definition": "label_values(k6_iterations_total{suite_label=~\"$suite_label\"}, run_label)",
+        "query": {
+          "query": "label_values(k6_iterations_total{suite_label=~\"$suite_label\",pattern=~\"$pattern\",scenario=~\"$scenario\"}, run_label)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "hide": 0,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1
+      }
+    ]
+  },
+  "time": {
+    "from": "now-2h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ],
+    "time_options": [
+      "15m",
+      "30m",
+      "1h",
+      "6h",
+      "12h",
+      "24h"
+    ]
+  },
+  "timezone": "browser",
+  "title": "Saga Root Cause Analysis",
+  "uid": "saga-root-cause-analysis",
+  "version": 1,
+  "weekStart": ""
+}

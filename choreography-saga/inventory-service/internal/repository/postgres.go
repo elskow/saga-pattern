@@ -77,7 +77,7 @@ func (r *PostgresRepository) DeleteProcessedEvent(ctx context.Context, key strin
 	return err
 }
 
-func (r *PostgresRepository) ReserveInventory(ctx context.Context, orderID string, reservationID string, items []domain.PendingOrderItem, at time.Time) ([]domain.Reservation, error) {
+func (r *PostgresRepository) ReserveInventory(ctx context.Context, orderID string, reservationID string, items []domain.PendingOrderItem, at time.Time, onReserve TxHook, onFail TxHook) ([]domain.Reservation, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -91,9 +91,19 @@ func (r *PostgresRepository) ReserveInventory(ctx context.Context, orderID strin
 	for _, item := range items {
 		product, ok := products[item.ProductID]
 		if !ok {
+			if onFail != nil {
+				if hookErr := onFail(ctx, tx, "", domain.ProductNotFoundError{ProductID: item.ProductID}); hookErr != nil {
+					return nil, hookErr
+				}
+			}
 			return nil, domain.ProductNotFoundError{ProductID: item.ProductID}
 		}
 		if err := product.Reserve(item.Quantity, at); err != nil {
+			if onFail != nil {
+				if hookErr := onFail(ctx, tx, "", err); hookErr != nil {
+					return nil, hookErr
+				}
+			}
 			return nil, err
 		}
 		products[item.ProductID] = product
@@ -119,13 +129,18 @@ func (r *PostgresRepository) ReserveInventory(ctx context.Context, orderID strin
 		reservations = append(reservations, reservation)
 	}
 
+	if onReserve != nil {
+		if err := onReserve(ctx, tx, reservationID, nil); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return reservations, nil
 }
 
-func (r *PostgresRepository) ReleaseInventory(ctx context.Context, orderID string, at time.Time) (string, bool, error) {
+func (r *PostgresRepository) ReleaseInventory(ctx context.Context, orderID string, at time.Time, hook TxHook) (string, bool, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", false, err
@@ -216,6 +231,11 @@ func (r *PostgresRepository) ReleaseInventory(ctx context.Context, orderID strin
 		return "", false, err
 	}
 
+	if hook != nil {
+		if err := hook(ctx, tx, reservationID, nil); err != nil {
+			return "", false, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return "", false, err
 	}
@@ -522,4 +542,60 @@ func (r *PostgresRepository) ListReservations(ctx context.Context) ([]domain.Res
 	return reservations, rows.Err()
 }
 
+func (r *PostgresRepository) CreateProduct(ctx context.Context, p domain.Product) (domain.Product, error) {
+	var nextID string
+	row := r.db.QueryRowContext(ctx, `
+	SELECT COALESCE(
+		'PROD-' || LPAD((MAX(CAST(SUBSTRING(product_id FROM 6) AS INTEGER)) + 1)::text, 3, '0'),
+		'PROD-001'
+	) FROM products WHERE product_id ~ '^PROD-[0-9]+$'`)
+	if err := row.Scan(&nextID); err != nil {
+		return domain.Product{}, fmt.Errorf("generate product id: %w", err)
+	}
+	p.ProductID = nextID
+	p.Visible = true
+	_, err := r.db.ExecContext(ctx, `
+	INSERT INTO products (product_id, product_name, description, price, image, category, visible, quantity_available, quantity_reserved)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0)`,
+		p.ProductID, p.ProductName, p.Description, p.Price.String(), p.Image, p.Category, p.Visible, p.QuantityAvailable)
+	if err != nil {
+		return domain.Product{}, fmt.Errorf("insert product: %w", err)
+	}
+	return p, nil
+}
+
+func (r *PostgresRepository) UpdateProductMeta(ctx context.Context, productId, name, description, category, image string, price json.Number) (domain.Product, error) {
+	_, err := r.db.ExecContext(ctx, `
+	UPDATE products
+	SET product_name = $2, description = $3, price = $4, image = $5, category = $6
+	WHERE product_id = $1`, productId, name, description, price.String(), image, category)
+	if err != nil {
+		return domain.Product{}, fmt.Errorf("update product meta: %w", err)
+	}
+	product, found, err := r.Product(ctx, productId)
+	if err != nil {
+		return domain.Product{}, err
+	}
+	if !found {
+		return domain.Product{}, domain.ProductNotFoundError{ProductID: productId}
+	}
+	return product, nil
+}
+
+func (r *PostgresRepository) DeleteProduct(ctx context.Context, productId string) error {
+	var reserved int
+	row := r.db.QueryRowContext(ctx, `SELECT quantity_reserved FROM products WHERE product_id = $1`, productId)
+	if err := row.Scan(&reserved); err == sql.ErrNoRows {
+		return domain.ProductNotFoundError{ProductID: productId}
+	} else if err != nil {
+		return fmt.Errorf("check reserved: %w", err)
+	}
+	if reserved > 0 {
+		return fmt.Errorf("cannot delete product %s: %d units are currently reserved", productId, reserved)
+	}
+	_, err := r.db.ExecContext(ctx, `DELETE FROM products WHERE product_id = $1`, productId)
+	return err
+}
+
 var _ Repository = (*PostgresRepository)(nil)
+

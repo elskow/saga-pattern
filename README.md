@@ -48,8 +48,6 @@ These are the root commands you should reach for first:
 * `make smoke-orchestration` runs the Go orchestration smoke harness.
 * `make k6-choreography-quick` runs the quick k6 choreography thesis smoke.
 * `make k6-orchestration-quick` runs the quick k6 orchestration thesis smoke.
-* `make verify-thesis-surface` checks docs and frozen benchmark references against the compatibility matrix.
-* `make verify-jenkins-benchmark` checks `Jenkinsfile.benchmark` surface expectations.
 
 ## Service ports
 
@@ -144,13 +142,10 @@ curl -X POST http://localhost:8091/api/orders \
 
 ## Testing and benchmarking
 
-### Go test and verification
+### Go test
 
 ```bash
 make test
-make verify-thesis-surface
-make verify-jenkins-benchmark
-go test ./test/compatibility/... -run TestDocsMatchCompatibilityMatrix
 ```
 
 ### Quick k6 Runs
@@ -184,25 +179,6 @@ load-testing/thesis/run-k6-thesis.sh --suite --suite-kind resilience --suite-lab
 
 `scalability` covers `gradual-rampup` and `contention`; `resilience` covers injected inventory/shipping failures followed by recovery successful-order phases.
 
-### Jenkins benchmark contract
-
-`Jenkinsfile.benchmark` keeps the benchmark parameter names frozen for reproducible thesis runs:
-
-* `BUILD_LABEL`
-* `PROFILE`
-* `SCENARIO`
-* `RUN_CHOREOGRAPHY`
-* `RUN_ORCHESTRATION`
-* `SAGA_NODE_IP`
-* `PULL_FRESH_IMAGES`
-
-Supported benchmark profiles stay:
-
-* `quick`
-* `thesis-targeted`
-* `thesis-baseline`
-* `thesis-stress`
-
 ## Metrics used by the thesis surface
 
 The docs, scripts, and compatibility checks treat these as required metric names:
@@ -235,9 +211,7 @@ rate(saga_total_duration_seconds_count{pattern="orchestration",service="orchestr
 ## Repository guide
 
 * `docs/README.md` is the short project guide.
-* `docs/TESTING.md` describes compatibility, metrics, Make targets, and benchmark flows.
 * `docs/THESIS.md` keeps the research framing and measurement method.
-* `test/compatibility/fixtures/compatibility-matrix.json` is the frozen compatibility source of truth.
 
 ## Thesis framing
 

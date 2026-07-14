@@ -1,4 +1,4 @@
-import { createRootRoute, Outlet, HeadContent, Scripts, Link } from '@tanstack/react-router'
+import { createRootRoute, Outlet, HeadContent, Scripts, Link, useLocation } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
 import { Navbar } from "@/components/Navbar";
@@ -29,6 +29,11 @@ export const Route = createRootRoute({
         rel: 'stylesheet',
         href: appCss,
       },
+      {
+        rel: 'icon',
+        type: 'image/svg+xml',
+        href: '/favicon.svg',
+      },
     ],
   }),
   notFoundComponent: () => (
@@ -48,8 +53,8 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
       <head>
         <HeadContent />
       </head>
-      <body className="flex min-h-full flex-col bg-[#f8f9fa] dark:bg-[#0a0a0a] text-foreground antialiased selection:bg-foreground selection:text-background relative">
-        <div className="fixed inset-0 -z-10 h-full w-full bg-[radial-gradient(ellipse_100%_100%_at_50%_0%,rgba(0,0,0,0.04),transparent)] dark:bg-[radial-gradient(ellipse_100%_100%_at_50%_0%,rgba(255,255,255,0.04),transparent)]"></div>
+      <body className="flex min-h-full flex-col bg-[#f8f9fa] text-foreground antialiased selection:bg-foreground selection:text-background relative">
+        <div className="fixed inset-0 -z-10 h-full w-full bg-[radial-gradient(ellipse_100%_100%_at_50%_0%,rgba(0,0,0,0.04),transparent)]"></div>
         {children}
         <Scripts />
       </body>
@@ -58,48 +63,33 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
 }
 
 function RootComponent() {
+  const pathname = useLocation().pathname;
+  const isAuthRoute = pathname === '/login' || pathname === '/register' || pathname === '/admin/login';
+
   return (
     <>
-      <Navbar />
+      {!isAuthRoute && <Navbar />}
 
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-28">
+      <main className={!isAuthRoute ? "flex-1 w-full max-w-7xl mx-auto px-6 sm:px-8 py-24 md:py-28" : "flex-1 w-full flex flex-col"}>
         <Outlet />
       </main>
 
-      <footer className="mt-auto w-full bg-muted/20 border-t border-border/40 pb-8 pt-12">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col md:flex-row justify-between items-center md:items-start gap-8">
-                <div className="flex flex-col items-center md:items-start gap-2 max-w-sm text-center md:text-left">
-                    <span className="text-xl font-bold tracking-tight text-foreground">
-                        SagaStore
-                    </span>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                        Premium gadgets and technology for the modern professional. Upgrade your workflow today.
-                    </p>
-                </div>
-
-                <div className="flex gap-8 text-sm font-semibold text-muted-foreground">
-                    <Link to="/" className="hover:text-foreground transition-colors">
-                        Shop
-                    </Link>
-                    <Link to="/orders" className="hover:text-foreground transition-colors">
-                        Tracking
-                    </Link>
-                    <Link to="/admin" className="hover:text-foreground transition-colors">
-                        Admin Console
-                    </Link>
-                </div>
+      {!isAuthRoute && (
+        <footer className="mt-auto w-full border-t border-border/50 bg-background/50 backdrop-blur-lg">
+          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-6 py-8 text-center sm:px-8 md:flex-row md:text-left">
+            <p className="text-xs font-medium text-muted-foreground">
+              © {new Date().getFullYear()} SagaStore. All rights reserved.
+            </p>
+            <div className="flex gap-6 text-sm font-medium text-muted-foreground">
+              <Link to="/" className="hover:text-foreground transition-colors">Shop</Link>
+              <Link to="/orders" className="hover:text-foreground transition-colors">Orders</Link>
+              <Link to="/about" className="hover:text-foreground transition-colors">About</Link>
             </div>
+          </div>
+        </footer>
+      )}
 
-            <div className="mt-12 flex items-center justify-center border-t border-border/40 pt-8">
-                <p className="text-xs font-medium text-muted-foreground">
-                    © {new Date().getFullYear()} SagaStore. All rights reserved.
-                </p>
-            </div>
-        </div>
-      </footer>
-
-      <Toaster position="bottom-left" theme="system" richColors closeButton />
+      <Toaster position="bottom-left" theme="light" richColors closeButton />
     </>
   )
 }

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"saga-pattern/choreography-saga/order-service/internal/domain"
 	"saga-pattern/common/dto"
@@ -25,7 +24,7 @@ func NewPostgresRepository(db *sql.DB) (*PostgresRepository, error) {
 	return &PostgresRepository{db: db}, nil
 }
 
-func (r *PostgresRepository) Create(ctx context.Context, order domain.Order) (domain.Order, error) {
+func (r *PostgresRepository) Create(ctx context.Context, order domain.Order, hook TxHook) (domain.Order, error) {
 	itemsJSON, err := marshalItems(order.Items)
 	if err != nil {
 		return domain.Order{}, fmt.Errorf("marshal order items: %w", err)
@@ -40,8 +39,10 @@ func (r *PostgresRepository) Create(ctx context.Context, order domain.Order) (do
 	if err := insertOrder(ctx, tx, order, order.IdempotencyKey, itemsJSON); err != nil {
 		return domain.Order{}, err
 	}
-	if err := insertOrderCreatedOutbox(ctx, tx, order); err != nil {
-		return domain.Order{}, err
+	if hook != nil {
+		if err := hook(ctx, tx); err != nil {
+			return domain.Order{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return domain.Order{}, err
@@ -60,7 +61,7 @@ func insertOrder(ctx context.Context, tx *sql.Tx, order domain.Order, idempotenc
 	return err
 }
 
-func (r *PostgresRepository) CreateIfAbsent(ctx context.Context, idempotencyKey string, order domain.Order) (domain.Order, bool, error) {
+func (r *PostgresRepository) CreateIfAbsent(ctx context.Context, idempotencyKey string, order domain.Order, hook TxHook) (domain.Order, bool, error) {
 	itemsJSON, err := marshalItems(order.Items)
 	if err != nil {
 		return domain.Order{}, false, fmt.Errorf("marshal order items: %w", err)
@@ -106,8 +107,10 @@ func (r *PostgresRepository) CreateIfAbsent(ctx context.Context, idempotencyKey 
 		}
 		return existing, false, nil
 	}
-	if err := insertOrderCreatedOutbox(ctx, tx, order); err != nil {
-		return domain.Order{}, false, err
+	if hook != nil {
+		if err := hook(ctx, tx); err != nil {
+			return domain.Order{}, false, err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -201,11 +204,26 @@ func (r *PostgresRepository) Save(ctx context.Context, order domain.Order) error
 	return nil
 }
 
-func (r *PostgresRepository) TryMarkProcessedEvent(ctx context.Context, key string) (bool, error) {
+func (r *PostgresRepository) CancelOrder(ctx context.Context, orderId string) error {
+	res, err := r.db.ExecContext(ctx, "UPDATE orders SET status = $1 WHERE order_id = $2", dto.OrderStatusCancelled, orderId)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return errors.New("order not found")
+	}
+	return nil
+}
+
+func (r *PostgresRepository) TryMarkProcessedEvent(ctx context.Context, eventID string) (bool, error) {
 	result, err := r.db.ExecContext(ctx, `
 	INSERT INTO processed_events (event_key)
 	VALUES ($1)
-	ON CONFLICT (event_key) DO NOTHING`, key)
+	ON CONFLICT (event_key) DO NOTHING`, eventID)
 	if err != nil {
 		return false, err
 	}
@@ -218,102 +236,6 @@ func (r *PostgresRepository) TryMarkProcessedEvent(ctx context.Context, key stri
 
 func (r *PostgresRepository) DeleteProcessedEvent(ctx context.Context, key string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM processed_events WHERE event_key = $1`, key)
-	return err
-}
-
-func (r *PostgresRepository) ClaimPendingOrderEvents(ctx context.Context, limit int) ([]OrderOutboxMessage, error) {
-	if limit <= 0 {
-		limit = 100
-	}
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	rows, err := tx.QueryContext(ctx, `
-	UPDATE order_outbox_messages
-	SET status = 'publishing', updated_at = NOW()
-	WHERE id IN (
-		SELECT id
-		FROM order_outbox_messages
-		WHERE status = 'pending'
-		   OR (status = 'publishing' AND updated_at < NOW() - INTERVAL '30 seconds')
-		ORDER BY created_at ASC
-		FOR UPDATE SKIP LOCKED
-		LIMIT $1
-	)
-	RETURNING id, order_id, event_type, payload_json, attempt_count`, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	messages := make([]OrderOutboxMessage, 0)
-	for rows.Next() {
-		var message OrderOutboxMessage
-		if err := rows.Scan(&message.ID, &message.OrderID, &message.EventType, &message.PayloadJSON, &message.Attempts); err != nil {
-			return nil, err
-		}
-		messages = append(messages, message)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return messages, nil
-}
-
-func (r *PostgresRepository) pendingOrderEventsForTest(ctx context.Context, limit int) ([]OrderOutboxMessage, error) {
-	if limit <= 0 {
-		limit = 100
-	}
-	rows, err := r.db.QueryContext(ctx, `
-	SELECT id, order_id, event_type, payload_json, attempt_count
-	FROM order_outbox_messages
-	WHERE status IN ('pending', 'publishing')
-	ORDER BY created_at ASC
-	LIMIT $1`, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	messages := make([]OrderOutboxMessage, 0)
-	for rows.Next() {
-		var message OrderOutboxMessage
-		if err := rows.Scan(&message.ID, &message.OrderID, &message.EventType, &message.PayloadJSON, &message.Attempts); err != nil {
-			return nil, err
-		}
-		messages = append(messages, message)
-	}
-	return messages, rows.Err()
-}
-
-func (r *PostgresRepository) MarkOrderEventPublished(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, `
-	UPDATE order_outbox_messages
-	SET status = 'sent', updated_at = $2
-	WHERE id = $1`, id, time.Now().UTC())
-	return err
-}
-
-func (r *PostgresRepository) MarkOrderEventPublishFailed(ctx context.Context, id int64, errMessage string) error {
-	_, err := r.db.ExecContext(ctx, `
-	UPDATE order_outbox_messages
-	SET status = 'pending', attempt_count = attempt_count + 1, last_error = $2, updated_at = $3
-	WHERE id = $1`, id, errMessage, time.Now().UTC())
-	return err
-}
-
-func insertOrderCreatedOutbox(ctx context.Context, tx *sql.Tx, order domain.Order) error {
-	payload, err := json.Marshal(order.ToOrderCreatedEvent(order.CreatedAt))
-	if err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, `
-	INSERT INTO order_outbox_messages (order_id, event_type, payload_json, status, created_at, updated_at)
-	VALUES ($1, $2, $3, 'pending', $4, $4)`, order.OrderID, "OrderCreated", string(payload), order.CreatedAt.UTC())
 	return err
 }
 

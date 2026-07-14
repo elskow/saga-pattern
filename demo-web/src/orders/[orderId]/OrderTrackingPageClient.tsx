@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { getOrderServer, isTerminalStatus } from "@/lib/api";
+import { cancelOrderServer } from "@/lib/admin";
 import { Order, Pattern } from "@/types";
 import { formatPrice } from "@/lib/currency";
 import { SagaTimeline } from "@/components/SagaTimeline";
@@ -9,8 +10,9 @@ import { OrderStatusBadge } from "@/components/OrderStatusBadge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, ArrowRight, RefreshCw, Loader2, Info } from "lucide-react";
+import { ArrowLeft, ArrowRight, RefreshCw, Loader2, Info, XCircle } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { toast } from "sonner";
 
 interface OrderTrackingPageClientProps {
   orderId: string;
@@ -37,6 +39,7 @@ export default function OrderTrackingPageClient({
   const [polling, setPolling] = useState(false);
   const [pollCount, setPollCount] = useState(0);
   const [awaitingProjection, setAwaitingProjection] = useState(initialAwaitingProjection);
+  const [cancelling, setCancelling] = useState(false);
 
   const fetchOrder = useCallback(async () => {
     try {
@@ -65,6 +68,19 @@ export default function OrderTrackingPageClient({
     setLoading(true);
     fetchOrder().finally(() => setLoading(false));
   }, [fetchOrder, initialError, initialOrder]);
+
+  const handleCancel = useCallback(async () => {
+    setCancelling(true);
+    try {
+      await cancelOrderServer({ data: { pattern, orderId } });
+      toast.success("Order cancelled successfully");
+      await fetchOrder();
+    } catch (err) {
+      toast.error("Failed to cancel order: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setCancelling(false);
+    }
+  }, [fetchOrder, orderId, pattern]);
 
   useEffect(() => {
     if ((!order && !awaitingProjection) || (order && isTerminalStatus(order.status))) return;
@@ -160,7 +176,7 @@ export default function OrderTrackingPageClient({
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold tracking-tight text-foreground">Order Tracking</h1>
-              <span className="flex items-center gap-1.5 text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-full">
+              <span className="flex items-center gap-1.5 text-xs font-semibold bg-amber-500/10 text-amber-600 border border-amber-500/20 px-2.5 py-1 rounded-full">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Awaiting final projection
               </span>
@@ -183,6 +199,7 @@ export default function OrderTrackingPageClient({
 
   const resolvedOrder = order!;
   const isComplete = isTerminalStatus(resolvedOrder.status);
+  const canCancel = !isComplete && !resolvedOrder.trackingNumber;
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 w-full pb-12">
@@ -214,21 +231,34 @@ export default function OrderTrackingPageClient({
           </div>
         </div>
 
-        <Button
-          variant="outline"
-          onClick={() => fetchOrder()}
-          className="gap-2 rounded-full text-xs font-semibold shadow-sm hover:bg-muted/50"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          Refresh Status
-        </Button>
+        <div className="flex flex-wrap gap-3">
+          {canCancel && (
+            <Button
+              variant="destructive"
+              onClick={handleCancel}
+              disabled={cancelling}
+              className="gap-2 rounded-full text-xs font-semibold shadow-sm"
+            >
+              {cancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+              {cancelling ? "Cancelling..." : "Cancel Order"}
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => fetchOrder()}
+            className="gap-2 rounded-full text-xs font-semibold shadow-sm hover:bg-muted/50"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh Status
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-12">
         <div className="lg:col-span-3">
           <div className="rounded-[1.5rem] border border-border/50 bg-card/40 backdrop-blur-xl p-7 sm:p-9 shadow-xl shadow-muted/20">
             <div className="flex items-center gap-2 mb-8">
-              <h2 className="text-lg font-bold tracking-tight text-foreground">Saga Execution</h2>
+              <h2 className="text-lg font-bold tracking-tight text-foreground">Fulfillment Progress</h2>
             </div>
             <SagaTimeline order={resolvedOrder} />
           </div>
@@ -301,7 +331,11 @@ export default function OrderTrackingPageClient({
           {isComplete && resolvedOrder.status === "COMPLETED" && (
             <div className="space-y-3 pt-2">
               {(resolvedOrder.trackingNumber || resolvedOrder.shippingId) && (
-                <Link to={`/tracking/${resolvedOrder.trackingNumber || resolvedOrder.shippingId}?pattern=${resolvedOrder.pattern}&orderId=${resolvedOrder.id || resolvedOrder.orderId}${resolvedOrder.shippingId ? `&shipmentId=${resolvedOrder.shippingId}` : ""}`}>
+                <Link
+                  to="/tracking/$trackingId"
+                  params={{ trackingId: resolvedOrder.trackingNumber || resolvedOrder.shippingId || "" }}
+                  search={{ pattern: resolvedOrder.pattern, orderId: resolvedOrder.id || resolvedOrder.orderId, shipmentId: resolvedOrder.shippingId ?? null }}
+                >
                   <Button variant="outline" className="w-full h-11 rounded-full gap-2 text-sm font-semibold shadow-sm hover:bg-muted/50 transition-all mb-2">
                     Track Shipment Transit
                     <ArrowRight className="h-4 w-4" />

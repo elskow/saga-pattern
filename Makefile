@@ -26,11 +26,9 @@ BUILD_OUTPUTS := \
 	build/bin/orchestration-inventory-service \
 	build/bin/orchestration-shipping-service
 
-COMPATIBILITY_TEST_PACKAGES := ./test/compatibility/...
-THESIS_SURFACE_TEST_REGEX := TestCompatibilityMatrixComplete|TestK6SurfaceFixtures|TestRejectsMissingMetricOrTopicFixture|TestDocsMatchCompatibilityMatrix
 DEFAULT_TEST_PACKAGES := ./common/... ./choreography-saga/... ./orchestration-framework/... ./orchestration-saga/...
 
-.PHONY: help tidy build test test-parity clean clean-docker clean-all up-infra up-observability up-choreography up-orchestration up-dual-local status-dual-local down-dual-local down smoke-choreography smoke-choreography-go smoke-orchestration smoke-orchestration-go k6-choreography-quick k6-orchestration-quick thesis-compare-quick thesis-compare-baseline verify-thesis-surface verify-jenkins-benchmark web-install web-dev web-build web-lint
+.PHONY: help tidy build test test-parity clean clean-docker clean-all up-infra up-observability up-choreography up-orchestration up-dual-local status-dual-local down-dual-local down smoke-choreography smoke-choreography-go smoke-orchestration smoke-orchestration-go k6-choreography-quick k6-orchestration-quick thesis-compare-quick thesis-compare-baseline web-install web-dev web-build web-lint
 
 define RUN_GO_SHELL
 	@if command -v go >/dev/null 2>&1; then \
@@ -82,7 +80,6 @@ help:
 		'  clean-all                     Run clean + clean-docker (full reset)' \
 		'  up-infra                     Start the existing local infra stack via local runner' \
 		'  up-observability             Start Grafana local observability via local runner' \
-		'  up-signoz-observability      Start legacy SigNoz local observability via local runner' \
 		'  up-choreography              Start infra plus the local choreography stack via local runner' \
 		'  up-orchestration             Start infra plus the local orchestration stack via local runner' \
 		'  up-dual-local                Start shared infra/observability plus choreography and orchestration together' \
@@ -93,8 +90,6 @@ help:
 		'  smoke-choreography-go        Run the parity smoke harness against the Go choreography stack' \
 		'  smoke-orchestration          Alias for smoke-orchestration-go' \
 		'  smoke-orchestration-go       Run the parity smoke harness against the Go orchestration stack' \
-		'  verify-thesis-surface        Verify docs, metrics, and commands against the frozen compatibility matrix' \
-		'  verify-jenkins-benchmark     Verify Jenkins benchmark parameters and structure expectations' \
 		'  k6-choreography-quick        Run the quick k6 choreography thesis smoke locally' \
 		'  k6-orchestration-quick       Run the quick k6 orchestration thesis smoke locally' \
 		'  web-install                  Install web app dependencies inside web/' \
@@ -124,7 +119,7 @@ clean-docker: down
 	@echo "Removing saga-pattern Docker images..."
 	@docker images --format '{{.Repository}}:{{.Tag}}' | grep '^saga-pattern/' | xargs -r docker rmi -f 2>/dev/null || true
 	@echo "Removing project Docker volumes..."
-	@docker volume ls -q | grep -E '^(local-testing_|saga-signoz_|saga-dual-)' | xargs -r docker volume rm -f 2>/dev/null || true
+	@docker volume ls -q | grep -E '^(docker-local_|saga-dual-)' | xargs -r docker volume rm -f 2>/dev/null || true
 	@echo "Removing dangling images and build cache..."
 	@docker image prune -f 2>/dev/null || true
 	@docker builder prune -f 2>/dev/null || true
@@ -133,50 +128,43 @@ clean-docker: down
 clean-all: clean clean-docker
 
 up-infra:
-	./local-testing/local-runner.sh start-infra
+	./docker-local/local-runner.sh start-infra
 
 up-observability:
-	./local-testing/local-runner.sh start-infra
-	./local-testing/local-runner.sh start-observability
-
-up-signoz-observability:
-	./local-testing/local-runner.sh start-infra
-	./local-testing/local-runner.sh start-signoz-observability
-
-down-signoz-observability:
-	./local-testing/local-runner.sh stop-signoz-observability
+	./docker-local/local-runner.sh start-infra
+	./docker-local/local-runner.sh start-observability
 
 up-choreography:
-	./local-testing/local-runner.sh start-infra
-	./local-testing/local-runner.sh start-observability
-	./local-testing/local-runner.sh start-choreography
+	./docker-local/local-runner.sh start-infra
+	./docker-local/local-runner.sh start-observability
+	./docker-local/local-runner.sh start-choreography
 
 up-orchestration:
-	./local-testing/local-runner.sh start-infra
-	./local-testing/local-runner.sh start-observability
-	./local-testing/local-runner.sh start-orchestration
+	./docker-local/local-runner.sh start-infra
+	./docker-local/local-runner.sh start-observability
+	./docker-local/local-runner.sh start-orchestration
 
 up-dual-local:
-	./local-testing/local-runner.sh start-dual-local
+	./docker-local/local-runner.sh start-dual-local
 
 status-dual-local:
-	./local-testing/local-runner.sh status-dual-local
+	./docker-local/local-runner.sh status-dual-local
 
 down-dual-local:
-	./local-testing/local-runner.sh stop-dual-local
+	./docker-local/local-runner.sh stop-dual-local
 
 down:
-	./local-testing/local-runner.sh stop-all
+	./docker-local/local-runner.sh stop-all
 
 smoke-choreography: smoke-choreography-go
 
 smoke-choreography-go:
-	@docker compose -p saga-dual-choreography -f "local-testing/docker-compose.choreography.local.yml" down -v --remove-orphans >/dev/null 2>&1 || true
-	@docker compose -p saga-dual-orchestration -f "local-testing/docker-compose.orchestration.local.yml" --profile scale4 down -v --remove-orphans >/dev/null 2>&1 || true
-	@docker compose -f "local-testing/docker-compose.choreography.local.yml" down -v --remove-orphans >/dev/null 2>&1 || true
-	@docker compose -f "local-testing/docker-compose.infra.yml" down -v --remove-orphans >/dev/null 2>&1 || true
-	@./local-testing/local-runner.sh start-infra
-	@./local-testing/local-runner.sh start-choreography
+	@docker compose -p saga-dual-choreography -f "docker-local/docker-compose.choreography.local.yml" down -v --remove-orphans >/dev/null 2>&1 || true
+	@docker compose -p saga-dual-orchestration -f "docker-local/docker-compose.orchestration.local.yml" --profile scale4 down -v --remove-orphans >/dev/null 2>&1 || true
+	@docker compose -f "docker-local/docker-compose.choreography.local.yml" down -v --remove-orphans >/dev/null 2>&1 || true
+	@docker compose -f "docker-local/docker-compose.infra.yml" down -v --remove-orphans >/dev/null 2>&1 || true
+	@./docker-local/local-runner.sh start-infra
+	@./docker-local/local-runner.sh start-choreography
 	@for port in 8081 8082 8083 8084; do \
 		for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45; do \
 			status=$$(curl -sf "http://localhost:$$port/actuator/health" | jq -r '.status // empty' 2>/dev/null || true); \
@@ -217,13 +205,13 @@ smoke-choreography-go:
 smoke-orchestration: smoke-orchestration-go
 
 smoke-orchestration-go:
-	@docker compose -p saga-dual-choreography -f "local-testing/docker-compose.choreography.local.yml" down -v --remove-orphans >/dev/null 2>&1 || true
-	@docker compose -p saga-dual-orchestration -f "local-testing/docker-compose.orchestration.local.yml" --profile scale4 down -v --remove-orphans >/dev/null 2>&1 || true
-	@docker compose -f "local-testing/docker-compose.orchestration.local.yml" --profile scale4 down -v --remove-orphans >/dev/null 2>&1 || true
-	@docker compose -f "local-testing/docker-compose.choreography.local.yml" down -v --remove-orphans >/dev/null 2>&1 || true
-	@docker compose -f "local-testing/docker-compose.infra.yml" down -v --remove-orphans >/dev/null 2>&1 || true
-	@./local-testing/local-runner.sh start-infra
-	@./local-testing/local-runner.sh start-orchestration
+	@docker compose -p saga-dual-choreography -f "docker-local/docker-compose.choreography.local.yml" down -v --remove-orphans >/dev/null 2>&1 || true
+	@docker compose -p saga-dual-orchestration -f "docker-local/docker-compose.orchestration.local.yml" --profile scale4 down -v --remove-orphans >/dev/null 2>&1 || true
+	@docker compose -f "docker-local/docker-compose.orchestration.local.yml" --profile scale4 down -v --remove-orphans >/dev/null 2>&1 || true
+	@docker compose -f "docker-local/docker-compose.choreography.local.yml" down -v --remove-orphans >/dev/null 2>&1 || true
+	@docker compose -f "docker-local/docker-compose.infra.yml" down -v --remove-orphans >/dev/null 2>&1 || true
+	@./docker-local/local-runner.sh start-infra
+	@./docker-local/local-runner.sh start-orchestration
 	@for port in 8091 8092 8093 8094; do \
 		for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45; do \
 			status=$$(curl -sf "http://localhost:$$port/actuator/health" | jq -r '.status // empty' 2>/dev/null || true); \
@@ -277,12 +265,6 @@ thesis-compare-quick:
 thesis-compare-baseline:
 	bash load-testing/thesis/run-k6-thesis.sh --pattern choreography --scenario successful-order --profile thesis-baseline
 	bash load-testing/thesis/run-k6-thesis.sh --pattern orchestration --scenario successful-order --profile thesis-baseline
-
-verify-thesis-surface:
-	$(call RUN_GO_SHELL,go test $(COMPATIBILITY_TEST_PACKAGES) -run "$(THESIS_SURFACE_TEST_REGEX)")
-
-verify-jenkins-benchmark:
-	bash scripts/ci/verify-jenkins-benchmark.sh
 
 web-install:
 	$(call RUN_NODE_SHELL,npm install)

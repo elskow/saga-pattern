@@ -14,7 +14,9 @@ import (
 	"saga-pattern/orchestration-saga/internal/httpapiutil"
 	serviceconfig "saga-pattern/orchestration-saga/payment-service/internal/config"
 	"saga-pattern/orchestration-saga/payment-service/internal/repository"
+	"saga-pattern/orchestration-saga/payment-service/internal/domain"
 )
+
 
 type depositBalanceManager interface {
 	GetDepositBalance() *big.Rat
@@ -42,6 +44,8 @@ func NewHandler(deps HandlerDependencies) http.Handler {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/payments", listPaymentsHandler(deps.Logger, deps.Repo))
+	mux.HandleFunc("GET /api/admin/delay", getDelayHandler())
+	mux.HandleFunc("PUT /api/admin/delay", putDelayHandler(deps.Logger))
 	if deps.Balancer != nil {
 		mux.HandleFunc("GET /api/admin/deposit-balance", getDepositBalanceHandler(deps.Balancer))
 		mux.HandleFunc("PUT /api/admin/deposit-balance", putDepositBalanceHandler(deps.Logger, deps.Balancer))
@@ -113,5 +117,28 @@ func putDepositBalanceHandler(logger *slog.Logger, balancer depositBalanceManage
 		balancer.SetDepositBalance(rat)
 		logger.Info("deposit balance updated", "balance", *req.Balance)
 		writeJSON(w, http.StatusOK, depositBalanceResponse{Balance: *req.Balance, Unlimited: false})
+	}
+}
+
+type delayRequest struct {
+	DelayMs int32 `json:"delay_ms"`
+}
+
+func getDelayHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, delayRequest{DelayMs: domain.SimulatedDelayMs.Load()})
+	}
+}
+
+func putDelayHandler(logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req delayRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		domain.SimulatedDelayMs.Store(req.DelayMs)
+		logger.Info("simulated delay updated", "delay_ms", req.DelayMs)
+		writeJSON(w, http.StatusOK, req)
 	}
 }

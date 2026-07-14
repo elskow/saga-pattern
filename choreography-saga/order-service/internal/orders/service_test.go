@@ -2,6 +2,7 @@ package orders
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -53,12 +54,12 @@ type recordingRepo struct {
 	processed map[string]bool
 }
 
-func (r *recordingRepo) Create(context.Context, domain.Order) (domain.Order, error) {
-	return domain.Order{}, nil
+func (r *recordingRepo) Create(_ context.Context, order domain.Order, _ repository.TxHook) (domain.Order, error) {
+	return order, nil
 }
 
-func (r *recordingRepo) CreateIfAbsent(context.Context, string, domain.Order) (domain.Order, bool, error) {
-	return domain.Order{}, false, nil
+func (r *recordingRepo) CreateIfAbsent(_ context.Context, _ string, order domain.Order, _ repository.TxHook) (domain.Order, bool, error) {
+	return order, false, nil
 }
 
 func (r *recordingRepo) Get(context.Context, string) (domain.Order, bool, error) {
@@ -72,6 +73,10 @@ func (r *recordingRepo) List(context.Context) ([]domain.Order, error) {
 func (r *recordingRepo) Save(_ context.Context, order domain.Order) error {
 	r.saved = true
 	r.order = order
+	return nil
+}
+
+func (r *recordingRepo) CancelOrder(_ context.Context, _ string) error {
 	return nil
 }
 
@@ -91,14 +96,14 @@ func (r *recordingRepo) DeleteProcessedEvent(_ context.Context, key string) erro
 	return nil
 }
 
-func (r *recordingRepo) ClaimPendingOrderEvents(context.Context, int) ([]repository.OrderOutboxMessage, error) {
-	return nil, nil
-}
+// stubParticipant is a no-op participantAdapter for service tests that don't
+// exercise the publishing path.
+type stubParticipant struct{}
 
-func (r *recordingRepo) MarkOrderEventPublished(context.Context, int64) error {
+func (stubParticipant) EnqueueOrderCreated(context.Context, *sql.Tx, string, events.OrderCreatedEvent) error {
 	return nil
 }
 
-func (r *recordingRepo) MarkOrderEventPublishFailed(context.Context, int64, string) error {
-	return nil
-}
+func (stubParticipant) TriggerImmediatePublish(context.Context) {}
+
+var _ participantAdapter = stubParticipant{}
