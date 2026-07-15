@@ -17,16 +17,15 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	commontracing "saga-pattern/common/tracing"
 	internalkafka "saga-pattern/choreography-framework/internal/kafka"
 	"saga-pattern/choreography-framework/internal/loops"
 	"saga-pattern/choreography-framework/internal/model"
 	"saga-pattern/choreography-framework/internal/observability"
 	"saga-pattern/choreography-framework/internal/store"
 	"saga-pattern/common/events"
+	commontracing "saga-pattern/common/tracing"
 )
 
-// Mirrors orchestration-framework/runtime/Runtime[D] but without a saga state machine.
 type Participant struct {
 	config      Config
 	registry    EventRegistry
@@ -327,6 +326,14 @@ func (p *Participant) TriggerImmediatePublish(ctx context.Context) {
 
 func (p *Participant) Cleanup(ctx context.Context) error {
 	return p.cleanupLoop.RunOnce(ctx, p.clock().UTC())
+}
+
+func (p *Participant) RecordCompensationStarted(eventType string) {
+	p.metrics.RecordCompensationStarted(p.config.ServiceName, eventType)
+}
+
+func (p *Participant) RecordCompensationCompleted(eventType string) {
+	p.metrics.RecordCompensationCompleted(p.config.ServiceName, eventType)
 }
 
 func defaultWorkerID(serviceName string) string {

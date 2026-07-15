@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,10 +23,11 @@ import (
 )
 
 type HandlerDependencies struct {
-	Config   commonconfig.ServiceConfig
-	Logger   *slog.Logger
-	Orders   OrderService
-	Registry prometheus.Gatherer
+	Config                commonconfig.ServiceConfig
+	Logger                *slog.Logger
+	Orders                OrderService
+	Registry              prometheus.Gatherer
+	SagaTimeoutConfigurer SagaTimeoutConfigurer
 }
 
 type OrderService interface {
@@ -34,6 +36,11 @@ type OrderService interface {
 	ListOrders(context.Context) ([]dto.OrderResponse, error)
 	ListOrdersByCustomer(context.Context, string) ([]dto.OrderResponse, error)
 	CancelOrder(context.Context, string) error
+}
+
+type SagaTimeoutConfigurer interface {
+	SetSagaTimeout(time.Duration)
+	GetSagaTimeout() time.Duration
 }
 
 func NewHandler(deps HandlerDependencies) http.Handler {
@@ -50,6 +57,7 @@ func NewHandler(deps HandlerDependencies) http.Handler {
 	router.Get("/api/orders/customer/{customerId}", getOrdersByCustomerHandler(logger, deps.Orders))
 	router.Post("/api/orders/{orderId}/cancel", cancelOrderHandler(logger, deps.Orders))
 	router.Get("/api/orders", listOrdersHandler(logger, deps.Orders))
+	router.Put("/api/admin/saga-timeout", sagaTimeoutHandler(logger, deps.SagaTimeoutConfigurer))
 	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		logger.Debug("route not found", "path", r.URL.Path, "method", r.Method)
@@ -163,4 +171,31 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+func sagaTimeoutHandler(logger *slog.Logger, configurer SagaTimeoutConfigurer) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if configurer == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "saga timeout configurer unavailable"})
+			return
+		}
+		var body struct {
+			TimeoutMs *int64 `json:"timeoutMs"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+		if body.TimeoutMs == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "timeoutMs is required"})
+			return
+		}
+		if *body.TimeoutMs <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "timeoutMs must be positive"})
+			return
+		}
+		configurer.SetSagaTimeout(time.Duration(*body.TimeoutMs) * time.Millisecond)
+		logger.Info("saga timeout config updated", "timeoutMs", configurer.GetSagaTimeout().Milliseconds())
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
 }

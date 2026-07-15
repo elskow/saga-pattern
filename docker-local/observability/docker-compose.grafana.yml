@@ -162,7 +162,7 @@ services:
     command:
       - --path.rootfs=/host
     volumes:
-      - /:/host:ro,rslave
+      - /:/host:ro
 
 networks:
   saga-network:

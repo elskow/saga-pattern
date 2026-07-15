@@ -16,6 +16,7 @@ import (
 	"saga-pattern/choreography-saga/payment-service/internal/payments"
 	"saga-pattern/choreography-saga/payment-service/internal/repository"
 	"saga-pattern/common/events"
+	"saga-pattern/common/httpcompat"
 	commonkafka "saga-pattern/common/kafka"
 )
 
@@ -95,7 +96,7 @@ func run() (err error) {
 	defer stopWorkers()
 	go participant.RunWorkers(workerCtx)
 
-	handler := httpapi.NewHandler(httpapi.HandlerDependencies{Config: cfg, Logger: resources.Logger, Registry: metrics.Registry(), Repo: repo, Balancer: service})
+	handler := httpapi.NewHandler(httpapi.HandlerDependencies{Config: cfg, Logger: resources.Logger, Registry: metrics.Registry(), Repo: repo, Balancer: service, HealthProvider: httpcompat.NewDBAndKafkaHealthProvider(resources.DB, cfg.Runtime.KafkaBrokers)})
 	return serverutil.RunParticipantServer(cfg, resources.Logger, handler, participant.Topics(), consumerGroup)
 }
 

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"saga-pattern/choreography-saga/payment-service/internal/domain"
 	"saga-pattern/choreography-saga/payment-service/internal/repository"
 	commonconfig "saga-pattern/common/config"
+	"saga-pattern/common/httpcompat"
 )
 
 type depositBalanceManager interface {
@@ -21,18 +23,20 @@ type depositBalanceManager interface {
 }
 
 type HandlerDependencies struct {
-	Config   commonconfig.ServiceConfig
-	Logger   *slog.Logger
-	Registry prometheus.Gatherer
-	Repo     repository.Repository
-	Balancer depositBalanceManager
+	Config         commonconfig.ServiceConfig
+	Logger         *slog.Logger
+	Registry       prometheus.Gatherer
+	Repo           repository.Repository
+	Balancer       depositBalanceManager
+	HealthProvider func(context.Context) httpcompat.HealthResponse
 }
 
 func NewHandler(deps HandlerDependencies) http.Handler {
 	base := httpapiutil.NewParticipantHandler(httpapiutil.ParticipantHandlerDependencies{
-		Config:   deps.Config,
-		Logger:   deps.Logger,
-		Registry: deps.Registry,
+		Config:         deps.Config,
+		Logger:         deps.Logger,
+		Registry:       deps.Registry,
+		HealthProvider: deps.HealthProvider,
 	})
 	if deps.Repo == nil {
 		return base

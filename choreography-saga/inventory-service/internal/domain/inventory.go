@@ -13,6 +13,7 @@ type ReservationStatus string
 const (
 	ReservationStatusReserved  ReservationStatus = "RESERVED"
 	ReservationStatusCommitted ReservationStatus = "COMMITTED"
+	ReservationStatusFailed    ReservationStatus = "FAILED"
 	ReservationStatusReleased  ReservationStatus = "RELEASED"
 )
 
@@ -75,6 +76,7 @@ type Reservation struct {
 	ProductID     string
 	Quantity      int
 	Status        ReservationStatus
+	FailureReason string
 	CreatedAt     time.Time
 	ReleasedAt    time.Time
 }

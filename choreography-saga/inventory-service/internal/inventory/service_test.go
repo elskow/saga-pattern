@@ -177,6 +177,29 @@ func TestInsufficientStockPublishesReservationFailed(t *testing.T) {
 	if product.QuantityAvailable != 100 || product.QuantityReserved != 0 {
 		t.Fatalf("product quantities = available:%d reserved:%d, want 100/0", product.QuantityAvailable, product.QuantityReserved)
 	}
+	reservations, err := repo.ListReservations(context.Background())
+	if err != nil {
+		t.Fatalf("list reservations: %v", err)
+	}
+	var foundFailed bool
+	for _, res := range reservations {
+		if res.OrderID == "ORDER-INV-OVER" && res.Status == "FAILED" {
+			foundFailed = true
+			if res.ProductID != "PROD-001" {
+				t.Fatalf("failed reservation product_id = %q, want PROD-001", res.ProductID)
+			}
+			if res.FailureReason == "" {
+				t.Fatal("failed reservation has empty failure_reason")
+			}
+			if res.Quantity != 1000 {
+				t.Fatalf("failed reservation quantity = %d, want 1000", res.Quantity)
+			}
+			break
+		}
+	}
+	if !foundFailed {
+		t.Fatal("no FAILED reservation row found for ORDER-INV-OVER")
+	}
 }
 
 func TestReleaseCompensationIsIdempotent(t *testing.T) {

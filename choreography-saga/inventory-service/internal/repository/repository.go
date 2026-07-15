@@ -22,6 +22,7 @@ type Repository interface {
 	TryMarkProcessedEvent(context.Context, string) (bool, error)
 	DeleteProcessedEvent(context.Context, string) error
 	ReserveInventory(ctx context.Context, orderID, reservationID string, items []domain.PendingOrderItem, at time.Time, onReserve TxHook, onFail TxHook) ([]domain.Reservation, error)
+	SaveFailedReservation(ctx context.Context, reservationID, orderID string, items []domain.PendingOrderItem, reason string, at time.Time) error
 	CommitInventory(context.Context, string) (string, bool, error)
 	ReleaseInventory(ctx context.Context, orderID string, at time.Time, hook TxHook) (string, bool, error)
 	UpdateTotalStock(context.Context, string, int, time.Time) (domain.Product, error)

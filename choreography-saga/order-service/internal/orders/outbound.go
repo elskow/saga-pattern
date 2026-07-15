@@ -13,6 +13,7 @@ import (
 
 type participantAdapter interface {
 	EnqueueOrderCreated(ctx context.Context, tx *sql.Tx, orderID string, event events.OrderCreatedEvent) error
+	EnqueueOrderCancelled(ctx context.Context, tx *sql.Tx, orderID string, event events.OrderCancelledEvent) error
 	TriggerImmediatePublish(ctx context.Context)
 }
 
@@ -22,6 +23,11 @@ type FrameworkParticipant struct {
 }
 
 func (fp FrameworkParticipant) EnqueueOrderCreated(ctx context.Context, tx *sql.Tx, orderID string, event events.OrderCreatedEvent) error {
+	wrapped := choreoruntime.WrapSQLTx(tx)
+	return fp.Participant.EnqueueEvent(ctx, wrapped, fp.Topic, orderID, event.EventType(), event)
+}
+
+func (fp FrameworkParticipant) EnqueueOrderCancelled(ctx context.Context, tx *sql.Tx, orderID string, event events.OrderCancelledEvent) error {
 	wrapped := choreoruntime.WrapSQLTx(tx)
 	return fp.Participant.EnqueueEvent(ctx, wrapped, fp.Topic, orderID, event.EventType(), event)
 }

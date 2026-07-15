@@ -76,6 +76,14 @@ func (r *recordingRepo) Save(_ context.Context, order domain.Order) error {
 	return nil
 }
 
+func (r *recordingRepo) SaveWithHook(_ context.Context, order domain.Order, _ repository.TxHook) error {
+	return r.Save(nil, order)
+}
+
+func (r *recordingRepo) FindStuckOrders(_ context.Context, _ time.Time) ([]domain.Order, error) {
+	return nil, nil
+}
+
 func (r *recordingRepo) CancelOrder(_ context.Context, _ string) error {
 	return nil
 }
@@ -101,6 +109,10 @@ func (r *recordingRepo) DeleteProcessedEvent(_ context.Context, key string) erro
 type stubParticipant struct{}
 
 func (stubParticipant) EnqueueOrderCreated(context.Context, *sql.Tx, string, events.OrderCreatedEvent) error {
+	return nil
+}
+
+func (stubParticipant) EnqueueOrderCancelled(context.Context, *sql.Tx, string, events.OrderCancelledEvent) error {
 	return nil
 }
 

@@ -90,6 +90,10 @@ func (s *Service) ReservePendingOrderItems(ctx context.Context, orderID string, 
 	return s.repo.ReserveInventory(ctx, orderID, reservationID, pendingItems, reservedAt, onReserve, onFail)
 }
 
+func (s *Service) SaveFailedReservation(ctx context.Context, reservationID, orderID string, items []domain.PendingOrderItem, reason string, at time.Time) error {
+	return s.repo.SaveFailedReservation(ctx, reservationID, orderID, items, reason, at)
+}
+
 func (s *Service) ReleaseInventory(ctx context.Context, orderID string, releasedAt time.Time, hook repository.TxHook) (string, bool, error) {
 	return s.repo.ReleaseInventory(ctx, orderID, releasedAt, hook)
 }

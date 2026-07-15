@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"saga-pattern/choreography-saga/order-service/internal/domain"
 	"saga-pattern/common/dto"
@@ -166,12 +167,22 @@ func (r *PostgresRepository) List(ctx context.Context) ([]domain.Order, error) {
 }
 
 func (r *PostgresRepository) Save(ctx context.Context, order domain.Order) error {
+	return r.SaveWithHook(ctx, order, nil)
+}
+
+func (r *PostgresRepository) SaveWithHook(ctx context.Context, order domain.Order, hook TxHook) error {
 	itemsJSON, err := marshalItems(order.Items)
 	if err != nil {
 		return fmt.Errorf("marshal order items: %w", err)
 	}
 
-	result, err := r.db.ExecContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `
 	UPDATE orders
 	SET customer_id = $2,
 	    shipping_address = $3,
@@ -201,7 +212,12 @@ func (r *PostgresRepository) Save(ctx context.Context, order domain.Order) error
 	if rows == 0 {
 		return fmt.Errorf("order %s not found", order.OrderID)
 	}
-	return nil
+	if hook != nil {
+		if err := hook(ctx, tx); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (r *PostgresRepository) CancelOrder(ctx context.Context, orderId string) error {
@@ -302,6 +318,32 @@ func nullableString(value string) any {
 		return nil
 	}
 	return value
+}
+
+func (r *PostgresRepository) FindStuckOrders(ctx context.Context, olderThan time.Time) ([]domain.Order, error) {
+	rows, err := r.db.QueryContext(ctx, `
+	SELECT order_id, customer_id, shipping_address, status, items_json, total_amount, payment_id, reservation_id, shipping_id, tracking_number, failure_reason, correlation_id, idempotency_key, created_at, updated_at
+	FROM orders
+	WHERE status NOT IN ($1, $2) AND updated_at < $3
+	ORDER BY updated_at ASC`, dto.OrderStatusCompleted, dto.OrderStatusCancelled, olderThan.UTC())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	orders := make([]domain.Order, 0)
+	for rows.Next() {
+		order, ok, err := scanOrderRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			orders = append(orders, order)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return orders, nil
 }
 
 var _ Repository = (*PostgresRepository)(nil)

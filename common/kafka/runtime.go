@@ -368,6 +368,9 @@ func kafkaHeadersFromContext(ctx context.Context) []kafkago.Header {
 		if data.BenchmarkPhase != "" {
 			headers[commoncontext.HeaderBenchmarkPhase] = data.BenchmarkPhase
 		}
+		if data.SuiteLabel != "" {
+			headers[commoncontext.HeaderSuiteLabel] = data.SuiteLabel
+		}
 	}
 
 	kafkaHeaders := make([]kafkago.Header, 0, len(headers))
@@ -387,8 +390,9 @@ func contextFromKafkaHeaders(ctx context.Context, headers map[string]string) con
 		BenchmarkRun:   strings.TrimSpace(headers[commoncontext.HeaderBenchmarkRun]),
 		BenchmarkScene: strings.TrimSpace(headers[commoncontext.HeaderBenchmarkScene]),
 		BenchmarkPhase: strings.TrimSpace(headers[commoncontext.HeaderBenchmarkPhase]),
+		SuiteLabel:     strings.TrimSpace(headers[commoncontext.HeaderSuiteLabel]),
 	}
-	if data.OrderID == "" && data.RequestID == "" && data.CorrelationID == "" && data.SagaID == "" && data.SagaType == "" && data.BenchmarkRun == "" && data.BenchmarkScene == "" && data.BenchmarkPhase == "" {
+	if data.OrderID == "" && data.RequestID == "" && data.CorrelationID == "" && data.SagaID == "" && data.SagaType == "" && data.BenchmarkRun == "" && data.BenchmarkScene == "" && data.BenchmarkPhase == "" && data.SuiteLabel == "" {
 		return ctx
 	}
 	return commoncontext.With(ctx, data)
@@ -417,6 +421,9 @@ func contextAttributes(ctx context.Context) []attribute.KeyValue {
 	}
 	if data.BenchmarkPhase != "" {
 		attrs = append(attrs, attribute.String("benchmark.phase", data.BenchmarkPhase))
+	}
+	if data.SuiteLabel != "" {
+		attrs = append(attrs, attribute.String("suite_label", data.SuiteLabel))
 	}
 	return attrs
 }

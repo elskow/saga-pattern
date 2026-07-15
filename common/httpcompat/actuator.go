@@ -1,6 +1,8 @@
 package httpcompat
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 
@@ -13,6 +15,7 @@ const (
 	HealthPath     = "/actuator/health"
 	PrometheusPath = "/actuator/prometheus"
 	StatusUp       = "UP"
+	StatusDown     = "DOWN"
 )
 
 type HealthComponent struct {
@@ -48,6 +51,46 @@ func NewHealthHandler(provider func(*http.Request) HealthResponse) http.Handler 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(response)
 	})
+}
+
+// NewDBPingHealthProvider returns a HealthProvider that pings the database
+// on each health check request. Returns UP if ping succeeds, DOWN otherwise.
+func NewDBPingHealthProvider(db *sql.DB) func(context.Context) HealthResponse {
+	return func(ctx context.Context) HealthResponse {
+		if err := db.PingContext(ctx); err != nil {
+			return HealthResponse{
+				Status: StatusDown,
+				Components: map[string]HealthComponent{
+					"db": {Status: StatusDown, Details: map[string]any{"error": err.Error()}},
+				},
+			}
+		}
+		return HealthResponse{
+			Status: StatusUp,
+			Components: map[string]HealthComponent{
+				"db": {Status: StatusUp},
+			},
+		}
+	}
+}
+
+// NewDBAndKafkaHealthProvider returns a HealthProvider that pings the database
+// and reports Kafka broker connectivity status.
+func NewDBAndKafkaHealthProvider(db *sql.DB, kafkaBrokers string) func(context.Context) HealthResponse {
+	return func(ctx context.Context) HealthResponse {
+		response := HealthResponse{
+			Status: StatusUp,
+			Components: map[string]HealthComponent{
+				"db":    {Status: StatusUp},
+				"kafka": {Status: StatusUp, Details: map[string]any{"brokers": kafkaBrokers}},
+			},
+		}
+		if err := db.PingContext(ctx); err != nil {
+			response.Status = StatusDown
+			response.Components["db"] = HealthComponent{Status: StatusDown, Details: map[string]any{"error": err.Error()}}
+		}
+		return response
+	}
 }
 
 func NewPrometheusHandler(reg prometheus.Gatherer, opts promhttp.HandlerOpts) http.Handler {

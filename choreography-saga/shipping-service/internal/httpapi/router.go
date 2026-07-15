@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -13,21 +14,24 @@ import (
 	"saga-pattern/choreography-saga/shipping-service/internal/shipping"
 	commonconfig "saga-pattern/common/config"
 	"saga-pattern/common/faultinjection"
+	"saga-pattern/common/httpcompat"
 )
 
 type HandlerDependencies struct {
-	Config   commonconfig.ServiceConfig
-	Logger   *slog.Logger
-	Registry prometheus.Gatherer
-	Repo     repository.Repository
-	Service  *shipping.Service
+	Config         commonconfig.ServiceConfig
+	Logger         *slog.Logger
+	Registry       prometheus.Gatherer
+	Repo           repository.Repository
+	Service        *shipping.Service
+	HealthProvider func(context.Context) httpcompat.HealthResponse
 }
 
 func NewHandler(deps HandlerDependencies) http.Handler {
 	base := httpapiutil.NewParticipantHandler(httpapiutil.ParticipantHandlerDependencies{
-		Config:   deps.Config,
-		Logger:   deps.Logger,
-		Registry: deps.Registry,
+		Config:         deps.Config,
+		Logger:         deps.Logger,
+		Registry:       deps.Registry,
+		HealthProvider: deps.HealthProvider,
 	})
 	if deps.Repo == nil {
 		return base

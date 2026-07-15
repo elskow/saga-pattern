@@ -140,6 +140,17 @@ func (r *PostgresRepository) ReserveInventory(ctx context.Context, orderID strin
 	return reservations, nil
 }
 
+func (r *PostgresRepository) SaveFailedReservation(ctx context.Context, reservationID, orderID string, items []domain.PendingOrderItem, reason string, at time.Time) error {
+	for _, item := range items {
+		if _, err := r.db.ExecContext(ctx, `
+		INSERT INTO inventory_reservations (order_id, reservation_id, product_id, quantity, status, failure_reason, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`, orderID, reservationID, item.ProductID, item.Quantity, domain.ReservationStatusFailed, reason, at.UTC()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *PostgresRepository) ReleaseInventory(ctx context.Context, orderID string, at time.Time, hook TxHook) (string, bool, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -522,7 +533,7 @@ func (r *PostgresRepository) UpdateVisibility(ctx context.Context, productID str
 
 func (r *PostgresRepository) ListReservations(ctx context.Context) ([]domain.Reservation, error) {
 	rows, err := r.db.QueryContext(ctx, `
-	SELECT reservation_id, order_id, product_id, quantity, status, created_at, COALESCE(released_at, '0001-01-01') as released_at
+	SELECT reservation_id, order_id, product_id, quantity, status, COALESCE(failure_reason, '') as failure_reason, created_at, COALESCE(released_at, '0001-01-01') as released_at
 	FROM inventory_reservations
 	ORDER BY created_at DESC`)
 	if err != nil {
@@ -532,7 +543,7 @@ func (r *PostgresRepository) ListReservations(ctx context.Context) ([]domain.Res
 	var reservations []domain.Reservation
 	for rows.Next() {
 		var res domain.Reservation
-		if err := rows.Scan(&res.ReservationID, &res.OrderID, &res.ProductID, &res.Quantity, &res.Status, &res.CreatedAt, &res.ReleasedAt); err != nil {
+		if err := rows.Scan(&res.ReservationID, &res.OrderID, &res.ProductID, &res.Quantity, &res.Status, &res.FailureReason, &res.CreatedAt, &res.ReleasedAt); err != nil {
 			return nil, err
 		}
 		res.CreatedAt = res.CreatedAt.UTC()

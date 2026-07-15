@@ -31,10 +31,11 @@ type OrderService interface {
 }
 
 type HandlerDependencies struct {
-	Config   commonconfig.ServiceConfig
-	Logger   *slog.Logger
-	Orders   OrderService
-	Registry prometheus.Gatherer
+	Config         commonconfig.ServiceConfig
+	Logger         *slog.Logger
+	Orders         OrderService
+	Registry       prometheus.Gatherer
+	HealthProvider func(context.Context) httpcompat.HealthResponse
 }
 
 func NewHandler(deps HandlerDependencies) http.Handler {
@@ -44,12 +45,18 @@ func NewHandler(deps HandlerDependencies) http.Handler {
 	}
 
 	router := chi.NewRouter()
-	router.Handle(deps.Config.HealthPath, httpcompat.NewStaticHealthHandler(httpcompat.StatusUp))
+	router.Handle(deps.Config.HealthPath, httpcompat.NewHealthHandler(func(r *http.Request) httpcompat.HealthResponse {
+		if deps.HealthProvider == nil {
+			return httpcompat.HealthResponse{Status: httpcompat.StatusUp}
+		}
+		return deps.HealthProvider(r.Context())
+	}))
 	router.Handle(deps.Config.PrometheusPath, httpcompat.NewPrometheusHandler(deps.Registry, promhttp.HandlerOpts{}))
 	router.Post("/api/orders", createOrderHandler(logger, deps.Orders))
 	router.Get("/api/orders", listOrdersHandler(logger, deps.Orders))
 	router.Get("/api/orders/{orderId}", getOrderHandler(logger, deps.Orders))
 	router.Post("/api/orders/{orderId}/cancel", cancelOrderHandler(logger, deps.Orders))
+	router.Put("/api/admin/saga-timeout", sagaTimeoutHandler(logger))
 	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		logger.Debug("route not found", "path", r.URL.Path, "method", r.Method)
@@ -154,5 +161,36 @@ func cancelOrderHandler(logger *slog.Logger, service OrderService) http.HandlerF
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func sagaTimeoutHandler(logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ThresholdMs *int64 `json:"thresholdMs"`
+			IntervalMs  *int64 `json:"intervalMs"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+		if body.ThresholdMs != nil {
+			if *body.ThresholdMs <= 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "thresholdMs must be positive"})
+				return
+			}
+			ordersvc.SagaTimeoutThreshold.Store(*body.ThresholdMs)
+		}
+		if body.IntervalMs != nil {
+			if *body.IntervalMs <= 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "intervalMs must be positive"})
+				return
+			}
+			ordersvc.SagaTimeoutInterval.Store(*body.IntervalMs)
+		}
+		logger.Info("saga timeout config updated",
+			"thresholdMs", ordersvc.SagaTimeoutThreshold.Load(),
+			"intervalMs", ordersvc.SagaTimeoutInterval.Load())
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
 }

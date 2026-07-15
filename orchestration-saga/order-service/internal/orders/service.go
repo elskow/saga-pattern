@@ -36,6 +36,8 @@ type OrchestrationRuntime interface {
 	ConsumeReply(context.Context, sagaRuntime.ReplyEnvelope) error
 	PublishPending(context.Context) error
 	View(context.Context, string) (sagaRuntime.View[ordersaga.Data], bool, error)
+	SetSagaTimeout(time.Duration)
+	GetSagaTimeout() time.Duration
 }
 
 type Service struct {
@@ -148,10 +150,19 @@ func (s *Service) GetOrder(ctx context.Context, orderID string) (dto.OrderRespon
 	if err != nil {
 		return dto.OrderResponse{}, err
 	}
-	if !ok {
+	if ok {
+		return order.Response(), nil
+	}
+	// Finalized projection not found — check the runtime for an in-flight saga.
+	view, found, err := s.runtime.View(ctx, orderID)
+	if err != nil {
+		return dto.OrderResponse{}, err
+	}
+	if !found {
 		return dto.OrderResponse{}, ErrOrderNotFound
 	}
-	return order.Response(), nil
+	inProgress := domain.InProgressFromRuntimeView(view, s.clock().UTC())
+	return inProgress.Response(), nil
 }
 
 func sameOrchestrationRequest(existing ordersaga.Data, incoming dto.OrchestrationCreateOrderRequest) bool {

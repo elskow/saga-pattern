@@ -18,6 +18,7 @@ const (
 	HeaderBenchmarkRun   = "X-Run-Label"
 	HeaderBenchmarkScene = "X-Scenario"
 	HeaderBenchmarkPhase = "X-Benchmark-Phase"
+	HeaderSuiteLabel     = "X-Suite-Label"
 )
 
 type Data struct {
@@ -29,6 +30,7 @@ type Data struct {
 	BenchmarkRun   string
 	BenchmarkScene string
 	BenchmarkPhase string
+	SuiteLabel     string
 }
 
 type contextKey struct{}
@@ -115,6 +117,9 @@ func ApplyHeaders(headers http.Header, data Data, idempotencyKey string) {
 	if data.BenchmarkPhase != "" {
 		headers.Set(HeaderBenchmarkPhase, data.BenchmarkPhase)
 	}
+	if data.SuiteLabel != "" {
+		headers.Set(HeaderSuiteLabel, data.SuiteLabel)
+	}
 	if key := ResolveIdempotencyKey(idempotencyKey); key != "" {
 		headers.Set(HeaderIdempotencyKey, key)
 	}
@@ -130,6 +135,7 @@ func FromHeaders(headers http.Header) Data {
 		BenchmarkRun:   headers.Get(HeaderBenchmarkRun),
 		BenchmarkScene: headers.Get(HeaderBenchmarkScene),
 		BenchmarkPhase: headers.Get(HeaderBenchmarkPhase),
+		SuiteLabel:     headers.Get(HeaderSuiteLabel),
 	})
 }
 
@@ -141,6 +147,7 @@ func normalize(data Data) Data {
 	data.BenchmarkRun = strings.TrimSpace(data.BenchmarkRun)
 	data.BenchmarkScene = strings.TrimSpace(data.BenchmarkScene)
 	data.BenchmarkPhase = strings.TrimSpace(data.BenchmarkPhase)
+	data.SuiteLabel = strings.TrimSpace(data.SuiteLabel)
 	data.CorrelationID = ResolveCorrelationID(data.CorrelationID)
 	return data
 }

@@ -53,6 +53,9 @@ func Wrap(next http.Handler, opts Options) http.Handler {
 		if strings.TrimSpace(r.Header.Get(commoncontext.HeaderBenchmarkPhase)) != "" {
 			data.BenchmarkPhase = headerData.BenchmarkPhase
 		}
+		if strings.TrimSpace(r.Header.Get(commoncontext.HeaderSuiteLabel)) != "" {
+			data.SuiteLabel = headerData.SuiteLabel
+		}
 		r = r.WithContext(commoncontext.With(r.Context(), data))
 		w.Header().Set(commoncontext.HeaderRequestID, data.RequestID)
 		recorder := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
@@ -93,6 +96,9 @@ func Wrap(next http.Handler, opts Options) http.Handler {
 		if data.BenchmarkPhase != "" {
 			attrs = append(attrs, attribute.String("benchmark.phase", data.BenchmarkPhase))
 		}
+		if data.SuiteLabel != "" {
+			attrs = append(attrs, attribute.String("suite_label", data.SuiteLabel))
+		}
 		span.SetAttributes(attrs...)
 		span.AddEvent("http.request.completed", trace.WithAttributes(attrs...))
 
@@ -129,6 +135,9 @@ func Wrap(next http.Handler, opts Options) http.Handler {
 		}
 		if data.BenchmarkPhase != "" {
 			logAttrs = append(logAttrs, slog.String("benchmark_phase", data.BenchmarkPhase))
+		}
+		if data.SuiteLabel != "" {
+			logAttrs = append(logAttrs, slog.String("suite_label", data.SuiteLabel))
 		}
 		logger.LogAttrs(r.Context(), level, "http request completed", logAttrs...)
 	})

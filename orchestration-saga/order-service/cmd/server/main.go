@@ -158,10 +158,11 @@ func run() (err error) {
 	go runtime.RunWorkers(ctx)
 
 	handler := commontracing.WrapHTTP(cfg.ServiceName, commonhttpobs.Wrap(httpapi.NewHandler(httpapi.HandlerDependencies{
-		Config:   cfg,
-		Logger:   logger,
-		Orders:   service,
-		Registry: metrics.Registry(),
+		Config:                cfg,
+		Logger:                logger,
+		Orders:                service,
+		Registry:              metrics.Registry(),
+		SagaTimeoutConfigurer: runtime,
 	}), commonhttpobs.Options{ServiceName: cfg.ServiceName, Pattern: cfg.Pattern, Logger: logger}))
 
 	server := &http.Server{Addr: cfg.Address(), Handler: handler}

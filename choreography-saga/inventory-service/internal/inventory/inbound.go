@@ -19,6 +19,9 @@ func (s *Service) HandleEvent(ctx context.Context, event events.ChoreographyEven
 	_, span := commontracing.Tracer("choreography/inventory-service").Start(ctx, "choreography.inventory.handle_event",
 		trace.WithAttributes(attribute.String("event.type", event.EventType())))
 	defer span.End()
+	if delay := domain.SimulatedDelayMs.Load(); delay > 0 {
+		time.Sleep(time.Duration(delay) * time.Millisecond)
+	}
 	switch e := event.(type) {
 	case events.OrderCreatedEvent:
 		return s.handleOrderCreated(ctx, e)
@@ -108,9 +111,13 @@ func (s *Service) handlePaymentCompleted(ctx context.Context, event events.Payme
 		span.SetStatus(codes.Error, err.Error())
 		failedEvent := s.buildReservationFailedEvent(event, err, s.now())
 		_, onFail := s.buildReserveHooks(event, nil, failedEvent, s.now())
-		if _, reserveErr := s.ReservePendingOrderItems(ctx, event.OrderID, s.newID(), pendingItems, s.now(), nil, onFail); reserveErr != nil {
+		reservationID := s.newID()
+		if _, reserveErr := s.ReservePendingOrderItems(ctx, event.OrderID, reservationID, pendingItems, s.now(), nil, onFail); reserveErr != nil {
 			span.RecordError(reserveErr)
 			span.SetStatus(codes.Error, reserveErr.Error())
+			if saveErr := s.SaveFailedReservation(ctx, reservationID, event.OrderID, pendingItems, reserveErr.Error(), s.now()); saveErr != nil {
+				return saveErr
+			}
 			return reserveErr
 		}
 		span.AddEvent("inventory_reservation_failed_published", trace.WithAttributes(attribute.String("failure.type", "failure_mode")))
@@ -136,6 +143,9 @@ func (s *Service) handlePaymentCompleted(ctx context.Context, event events.Payme
 		span.AddEvent("inventory_reservation_failed_published", trace.WithAttributes(attribute.String("failure.type", "reservation_failure")))
 		s.metrics.RecordInventoryStep(s.now().Sub(startedAt))
 		s.participant.TriggerImmediatePublish(ctx)
+		if saveErr := s.SaveFailedReservation(ctx, reservationID, event.OrderID, pendingItems, err.Error(), reservedAt); saveErr != nil {
+			return saveErr
+		}
 		if err := s.ClearPendingReservation(ctx, event.OrderID); err != nil {
 			return err
 		}

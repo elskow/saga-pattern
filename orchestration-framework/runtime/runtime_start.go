@@ -66,7 +66,7 @@ func (r *Runtime[D]) StartSaga(ctx context.Context, input StartSagaInput[D]) (sa
 		PendingReplyType:   pendingReplyTypes(step.ForwardReplies),
 		StartedAt:          now,
 		UpdatedAt:          now,
-		DeadlineAt:         now.Add(r.config.SagaTimeout),
+		DeadlineAt:         now.Add(r.GetSagaTimeout()),
 		StepDeadlineAt:     now.Add(r.config.PendingCommandRetryDelay),
 		RetryCount:         0,
 		MaxRetryCount:      r.config.MaxStepRetries,

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,18 +21,19 @@ import (
 )
 
 type Runtime[D any] struct {
-	definition  Definition[D]
-	store       store.Store
-	publisher   Publisher
-	metrics     *observability.Metrics
-	clock       func() time.Time
-	idGenerator func() string
-	workerID    string
-	config      Config
-	outboxLoop  *loops.OutboxLoop
-	outboxMu    sync.Mutex
-	timeoutLoop *loops.TimeoutLoop
-	cleanupLoop *loops.CleanupLoop
+	definition          Definition[D]
+	store               store.Store
+	publisher           Publisher
+	metrics             *observability.Metrics
+	clock               func() time.Time
+	idGenerator         func() string
+	workerID            string
+	config              Config
+	sagaTimeoutOverride atomic.Int64 // nanoseconds; 0 means use config default
+	outboxLoop          *loops.OutboxLoop
+	outboxMu            sync.Mutex
+	timeoutLoop         *loops.TimeoutLoop
+	cleanupLoop         *loops.CleanupLoop
 }
 
 type publisherAdapter struct{ publisher Publisher }
@@ -204,6 +206,19 @@ func (r *Runtime[D]) RecoverTimeouts(ctx context.Context) error {
 
 func (r *Runtime[D]) Cleanup(ctx context.Context) error {
 	return r.cleanupLoop.RunOnce(ctx, r.clock().UTC())
+}
+
+// SetSagaTimeout overrides the saga timeout for new sagas at runtime.
+func (r *Runtime[D]) SetSagaTimeout(d time.Duration) {
+	r.sagaTimeoutOverride.Store(int64(d))
+}
+
+// GetSagaTimeout returns the effective saga timeout.
+func (r *Runtime[D]) GetSagaTimeout() time.Duration {
+	if override := r.sagaTimeoutOverride.Load(); override > 0 {
+		return time.Duration(override)
+	}
+	return r.config.SagaTimeout
 }
 
 func (r *Runtime[D]) startSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {

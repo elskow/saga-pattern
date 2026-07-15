@@ -171,18 +171,50 @@ func TestInventoryFailureShowsPaymentCompensation(t *testing.T) {
 	}
 }
 
-func TestAcceptedOrderIsNotQueryableUntilTerminalProjectionExists(t *testing.T) {
+func TestAcceptedOrderShowsInProgressSagaProgress(t *testing.T) {
 	server, service, publisher := newTestServer(t)
 	accepted := decodeAcceptedResponse(t, createOrder(t, server).Body.Bytes())
 
-	missingResp := httptest.NewRecorder()
-	server.ServeHTTP(missingResp, httptest.NewRequest(http.MethodGet, "/api/orders/"+accepted.OrderID, nil))
-	if missingResp.Code != http.StatusNotFound {
-		t.Fatalf("initial poll status = %d, want %d body=%s", missingResp.Code, http.StatusNotFound, missingResp.Body.String())
+	inProgressResp := httptest.NewRecorder()
+	server.ServeHTTP(inProgressResp, httptest.NewRequest(http.MethodGet, "/api/orders/"+accepted.OrderID, nil))
+	if inProgressResp.Code != http.StatusOK {
+		t.Fatalf("in-progress poll status = %d, want %d body=%s", inProgressResp.Code, http.StatusOK, inProgressResp.Body.String())
+	}
+	var inProgress dto.OrderResponse
+	if err := json.Unmarshal(inProgressResp.Body.Bytes(), &inProgress); err != nil {
+		t.Fatalf("decode in-progress response: %v", err)
+	}
+	if inProgress.Status != "PAYMENT_PENDING" {
+		t.Fatalf("in-progress status = %q, want PAYMENT_PENDING", inProgress.Status)
+	}
+	if inProgress.CurrentStep != "payment" {
+		t.Fatalf("in-progress currentStep = %q, want payment", inProgress.CurrentStep)
 	}
 
+	// Advance through payment and check intermediate state
 	assertPublishStep(t, service, publisher, 0, commonkafka.DefaultPaymentCommandsTopic, "PROCESS_PAYMENT")
 	deliverReply(t, service, accepted.OrderID, "reply-payment", commonkafka.DefaultPaymentRepliesTopic, commonreplies.NewPaymentCompletedReply("PAY-1", accepted.OrderID))
+
+	afterPayment := httptest.NewRecorder()
+	server.ServeHTTP(afterPayment, httptest.NewRequest(http.MethodGet, "/api/orders/"+accepted.OrderID, nil))
+	if afterPayment.Code != http.StatusOK {
+		t.Fatalf("after-payment poll status = %d, want %d body=%s", afterPayment.Code, http.StatusOK, afterPayment.Body.String())
+	}
+	var paid dto.OrderResponse
+	if err := json.Unmarshal(afterPayment.Body.Bytes(), &paid); err != nil {
+		t.Fatalf("decode after-payment response: %v", err)
+	}
+	if paid.Status != "PAYMENT_COMPLETED" {
+		t.Fatalf("after-payment status = %q, want PAYMENT_COMPLETED", paid.Status)
+	}
+	if paid.CurrentStep != "inventory" {
+		t.Fatalf("after-payment currentStep = %q, want inventory", paid.CurrentStep)
+	}
+	if len(paid.CompletedSteps) != 1 || paid.CompletedSteps[0] != "payment" {
+		t.Fatalf("after-payment completedSteps = %v, want [payment]", paid.CompletedSteps)
+	}
+
+	// Complete the remaining steps
 	assertPublishStep(t, service, publisher, 1, commonkafka.DefaultInventoryCommandsTopic, "RESERVE_INVENTORY")
 	deliverReply(t, service, accepted.OrderID, "reply-inventory", commonkafka.DefaultInventoryRepliesTopic, commonreplies.NewInventoryReservedReply("RES-1", accepted.OrderID))
 	assertPublishStep(t, service, publisher, 2, commonkafka.DefaultShippingCommandsTopic, "SCHEDULE_SHIPPING")

@@ -101,7 +101,7 @@ services:
     restart: unless-stopped
 
   kafka-exporter:
-    image: danielqsj/kafka_exporter:latest
+    image: danielqsj/kafka-exporter:latest
     container_name: kafka-exporter
     depends_on:
       kafka:

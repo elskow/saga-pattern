@@ -147,6 +147,8 @@ type OrderResponse struct {
 	FailureReason    string              `json:"failureReason,omitempty"`
 	FailureStep      string              `json:"failureStep,omitempty"`
 	CompensatedSteps []string            `json:"compensatedSteps,omitempty"`
+	CurrentStep      string              `json:"currentStep,omitempty"`
+	CompletedSteps   []string            `json:"completedSteps,omitempty"`
 	CreatedAt        time.Time           `json:"createdAt"`
 	UpdatedAt        time.Time           `json:"updatedAt"`
 }
