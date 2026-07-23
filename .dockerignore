@@ -21,6 +21,10 @@ docs/
 # Infrastructure (not needed for build)
 infrastructure/
 load-testing/
+docker-local/
+benchmarks/
+.superpowers/
+.opencode/
 
 # Misc
 .DS_Store

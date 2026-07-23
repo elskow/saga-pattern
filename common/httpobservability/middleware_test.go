@@ -115,10 +115,35 @@ func TestWrapDefaultsStatusToOK(t *testing.T) {
 		Logger:      slog.New(slog.NewTextHandler(&logs, nil)),
 	})
 
-	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/actuator/health", nil))
+	// Use a business path — ops probe paths intentionally skip access logs.
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/orders", nil))
 
 	if logLine := logs.String(); !strings.Contains(logLine, "status=200") {
 		t.Fatalf("log line missing default 200 status: %s", logLine)
+	}
+}
+
+func TestWrapSkipsAccessLogForOpsProbePaths(t *testing.T) {
+	var logs bytes.Buffer
+	handler := httpobservability.Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "ok")
+	}), httpobservability.Options{
+		ServiceName: "inventory-service",
+		Pattern:     "choreography",
+		Logger:      slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+
+	for _, path := range []string{"/actuator/health", "/actuator/prometheus", "/metrics", "/actuator/health/"} {
+		logs.Reset()
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, want 200", path, rec.Code)
+		}
+		if got := logs.String(); got != "" {
+			t.Fatalf("%s produced access log (want empty): %s", path, got)
+		}
 	}
 }
 

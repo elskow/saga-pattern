@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"os"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,6 +18,17 @@ const (
 	labelDirection      = "direction"
 )
 
+// suiteLabel is captured once at process start (empty string is a valid value).
+var suiteLabel = os.Getenv("SUITE_LABEL")
+
+// sagaDurationBuckets extends prometheus.DefBuckets past 10s to cover
+// choreography compensation cascades (empirically ~65–70s, headroom to 120s).
+var sagaDurationBuckets = []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 25, 50, 75, 100, 120}
+
+func constLabels() prometheus.Labels {
+	return prometheus.Labels{"suite_label": suiteLabel}
+}
+
 type Metrics struct {
 	registry              *prometheus.Registry
 	sagaDuration          *prometheus.HistogramVec
@@ -32,22 +44,26 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 	metrics := &Metrics{
 		registry: registry,
 		sagaDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    metricSagaDuration,
-			Help:    "Duration of orchestration sagas in seconds.",
-			Buckets: prometheus.DefBuckets,
+			Name:        metricSagaDuration,
+			Help:        "Duration of orchestration sagas in seconds.",
+			Buckets:     sagaDurationBuckets,
+			ConstLabels: constLabels(),
 		}, []string{labelSagaType, labelResult}),
 		stepDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    metricStepDuration,
-			Help:    "Duration of orchestration steps in seconds.",
-			Buckets: prometheus.DefBuckets,
+			Name:        metricStepDuration,
+			Help:        "Duration of orchestration steps in seconds.",
+			Buckets:     sagaDurationBuckets,
+			ConstLabels: constLabels(),
 		}, []string{labelSagaType, labelStep, labelDirection, labelResult}),
 		compensationStarted: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: metricCompStarted,
-			Help: "Count of compensation commands started.",
+			Name:        metricCompStarted,
+			Help:        "Count of compensation commands started.",
+			ConstLabels: constLabels(),
 		}, []string{labelSagaType, labelStep}),
 		compensationCompleted: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: metricCompCompleted,
-			Help: "Count of compensation commands completed.",
+			Name:        metricCompCompleted,
+			Help:        "Count of compensation commands completed.",
+			ConstLabels: constLabels(),
 		}, []string{labelSagaType, labelStep}),
 	}
 	registered := make([]prometheus.Collector, 0, 4)

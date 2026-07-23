@@ -52,6 +52,27 @@ wait_for_health() {
     echo ""; log_error "$name failed to start"; return 1
 }
 
+# each spec is "url|name|max"; waits run in parallel, rc is nonzero if any fails
+wait_for_health_parallel() {
+    local spec url name max pid pids=() rc=0
+    for spec in "$@"; do
+        IFS='|' read -r url name max <<< "$spec"
+        wait_for_health "$url" "$name" "$max" &
+        pids+=($!)
+    done
+    for pid in "${pids[@]}"; do
+        wait "$pid" || rc=1
+    done
+    return $rc
+}
+
+# APP_BUILD_POLICY=cache skips --build on repeat runs. Plain `up -d` still
+# recreates containers when compose config changes (e.g. new SUITE_LABEL env),
+# but the image tag is reused as-is — cache assumes it already has current code.
+app_build_flag() {
+    [ "${APP_BUILD_POLICY:-build}" = "cache" ] || echo "--build"
+}
+
 wait_for_topic_bootstrap() {
     local attempt=1 max=${1:-30}
     log_info "Waiting for Kafka topic bootstrap..."
@@ -74,7 +95,6 @@ wait_for_topic_bootstrap() {
 
 start_infra() {
     docker compose -f "$COMPOSE_INFRA" up -d
-    sleep 10
     local attempt=1
     while [ $attempt -le 30 ]; do
         docker compose -f "$COMPOSE_INFRA" exec -T kafka kafka-broker-api-versions --bootstrap-server localhost:29092 > /dev/null 2>&1 && { log_success "Kafka ready"; break; }
@@ -86,11 +106,114 @@ start_infra() {
 
 start_observability() {
     grafana_compose up -d
-    wait_for_health "http://localhost:9090/-/healthy" "observability:prometheus" 45
-    wait_for_health "http://localhost:3200/ready" "observability:tempo" 45
-    wait_for_health "http://localhost:4040/metrics" "observability:pyroscope" 45
-    wait_for_health "http://localhost:3000/api/health" "observability:grafana" 90
-    wait_for_health "http://localhost:12345/-/ready" "observability:alloy" 45
+    local health_checks=(
+        "http://localhost:9102/minio/health/live|observability:minio|30"
+        "http://localhost:9009/ready|observability:mimir|60"
+        "http://localhost:3100/ready|observability:loki|45"
+        "http://localhost:9090/-/healthy|observability:prometheus|45"
+        "http://localhost:3200/ready|observability:tempo|45"
+        "http://localhost:4040/metrics|observability:pyroscope|45"
+        "http://localhost:3000/api/health|observability:grafana|90"
+        "http://localhost:12345/-/ready|observability:alloy|45"
+    )
+    wait_for_health_parallel "${health_checks[@]}" || return 1
+}
+
+MINIO_DATA_DIR="${SCRIPT_DIR}/observability/data/minio"
+OBS_BACKUP_DIR="${SCRIPT_DIR}/observability/backups"
+
+obs_s3_wipe() {
+    log_warn "Wiping MinIO object data under ${MINIO_DATA_DIR} (thesis durable store)"
+    grafana_compose down --remove-orphans 2>/dev/null || true
+    mkdir -p "${MINIO_DATA_DIR}"
+    # MinIO container writes as root; host user cannot always rm. Wipe as root via Docker.
+    if command -v docker >/dev/null 2>&1; then
+        # Use a cached image only (never pull): a transient registry/CloudFront timeout
+        # on `docker run <uncached>` aborts the campaign prep. minio/mc is guaranteed
+        # cached (preflight asserts it) and ships a POSIX sh; alpine is preferred if present.
+        local wipe_image=""
+        for cand in "${WIPE_IMAGE:-}" alpine:3.20 minio/mc:RELEASE.2025-04-16T18-13-26Z; do
+            [ -n "$cand" ] || continue
+            if docker image inspect "$cand" >/dev/null 2>&1; then
+                wipe_image="$cand"
+                break
+            fi
+        done
+        if [ -z "$wipe_image" ]; then
+            log_error "No cached image available for MinIO wipe (looked for WIPE_IMAGE, alpine:3.20, minio/mc). Load one offline first."
+            return 1
+        fi
+        log_info "MinIO wipe using cached image: ${wipe_image}"
+        docker run --rm --entrypoint sh \
+            -v "${MINIO_DATA_DIR}:/data" \
+            "$wipe_image" \
+            -c 'rm -rf /data/* /data/.[!.]* /data/..?* 2>/dev/null; exit 0' \
+            || {
+                log_error "Docker-based MinIO wipe failed"
+                return 1
+            }
+    else
+        find "${MINIO_DATA_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + \
+            || {
+                log_error "Host MinIO wipe failed (need docker or root for root-owned objects)"
+                return 1
+            }
+    fi
+    if [ -n "$(find "${MINIO_DATA_DIR}" -mindepth 1 -maxdepth 1 2>/dev/null | head -1)" ]; then
+        log_error "MinIO data dir not empty after wipe: ${MINIO_DATA_DIR}"
+        return 1
+    fi
+    log_success "MinIO host data wiped; next start-observability recreates buckets via minio-init"
+}
+
+# Thesis durable store only: Tempo/Loki/Mimir/Pyroscope objects under data/minio.
+# Does NOT include Prometheus/Grafana Docker named volumes (short-lived / UI state).
+obs_s3_backup() {
+    local dest=${1:-}
+    local parent data_name
+    parent="$(dirname "${MINIO_DATA_DIR}")"
+    data_name="$(basename "${MINIO_DATA_DIR}")"
+    mkdir -p "${OBS_BACKUP_DIR}" "${MINIO_DATA_DIR}"
+    if [ -z "$dest" ]; then
+        dest="${OBS_BACKUP_DIR}/obs-minio-$(date +%Y%m%d-%H%M%S).tar.gz"
+    fi
+    case "$dest" in
+        *.tar.gz|*.tgz) ;;
+        *) dest="${dest}.tar.gz" ;;
+    esac
+    log_info "Stopping observability for consistent MinIO snapshot..."
+    grafana_compose down --remove-orphans 2>/dev/null || true
+    if [ -z "$(find "${MINIO_DATA_DIR}" -mindepth 1 -maxdepth 1 2>/dev/null | head -1)" ]; then
+        log_warn "MinIO data dir empty — archive will still be created"
+    fi
+    log_info "Archiving ${MINIO_DATA_DIR} -> ${dest}"
+    tar -C "$parent" -czf "$dest" "$data_name"
+    log_success "Backup written: $dest ($(du -h "$dest" | awk '{print $1}'))"
+    log_info "Note: newest Tempo traces need flush (~max_block_duration 5m) before backup"
+    log_info "Note: Tempo block_retention is 48h (not 0); older campaign windows still GC after that"
+    log_info "Start again: $0 start-observability  (or start-dual-local)"
+}
+
+obs_s3_restore() {
+    local archive=${1:-}
+    local parent data_name
+    parent="$(dirname "${MINIO_DATA_DIR}")"
+    data_name="$(basename "${MINIO_DATA_DIR}")"
+    if [ -z "$archive" ] || [ ! -f "$archive" ]; then
+        log_error "Usage: $0 obs-s3-restore <backup.tar.gz>"
+        exit 1
+    fi
+    log_warn "Restoring MinIO from ${archive} (replaces current durable store under ${MINIO_DATA_DIR})"
+    grafana_compose down --remove-orphans 2>/dev/null || true
+    mkdir -p "$parent" "${MINIO_DATA_DIR}"
+    find "${MINIO_DATA_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    tar -C "$parent" -xzf "$archive"
+    if [ ! -d "${MINIO_DATA_DIR}" ]; then
+        log_error "Archive missing top-level '${data_name}/' (expected path after extract: ${MINIO_DATA_DIR})"
+        exit 1
+    fi
+    log_success "MinIO host data restored from ${archive}"
+    log_info "Start again: $0 start-observability  (or start-dual-local)"
 }
 
 start_observability_beyla() {
@@ -100,8 +223,15 @@ start_observability_beyla() {
     fi
 
     docker rm -f beyla-thesis >/dev/null 2>&1 || true
-    grafana_compose up -d --force-recreate beyla
-    wait_for_health "http://localhost:8999/metrics" "observability:beyla" 45
+    grafana_compose up -d --force-recreate beyla || {
+        log_warn "observability:beyla failed to recreate; continuing without eBPF metrics"
+        return 0
+    }
+    if wait_for_health "http://localhost:8999/metrics" "observability:beyla" 30; then
+        return 0
+    fi
+    log_warn "observability:beyla metrics endpoint not reachable; continuing without eBPF metrics"
+    return 0
 }
 
 stop_observability() {
@@ -109,10 +239,14 @@ stop_observability() {
 }
 
 start_choreography() {
-    docker compose -f "$COMPOSE_CHOR" up -d --build
+    # Always use dual project name so container_names match thesis dual stack
+    # and benchmark_reset can tear them down without name conflicts.
+    dual_chor_compose up -d $(app_build_flag)
+    local health_checks=()
     for port in 8081 8082 8083 8084; do
-        wait_for_health "http://localhost:${port}/actuator/health" "choreography-service:${port}" 90
+        health_checks+=("http://localhost:${port}/actuator/health|choreography-service:${port}|90")
     done
+    wait_for_health_parallel "${health_checks[@]}" || return 1
 }
 
 start_orchestration() {
@@ -129,20 +263,23 @@ start_orchestration() {
         profile_flags+=(--profile scale4)
     fi
 
-    docker compose -f "$COMPOSE_ORCH" "${profile_flags[@]}" up -d --build
-    wait_for_health "http://localhost:8091/actuator/health" "orchestration-order-service:8091" 90
+    dual_orch_compose "${profile_flags[@]}" up -d $(app_build_flag)
+    local health_checks=(
+        "http://localhost:8091/actuator/health|orchestration-order-service:8091|90"
+    )
     if [ "$scale_factor" -ge 2 ]; then
-        wait_for_health "http://localhost:8095/actuator/health" "orchestration-order-service:8095" 90
+        health_checks+=("http://localhost:8095/actuator/health|orchestration-order-service:8095|90")
     fi
     if [ "$scale_factor" -ge 3 ]; then
-        wait_for_health "http://localhost:8096/actuator/health" "orchestration-order-service:8096" 90
+        health_checks+=("http://localhost:8096/actuator/health|orchestration-order-service:8096|90")
     fi
     if [ "$scale_factor" -ge 4 ]; then
-        wait_for_health "http://localhost:8097/actuator/health" "orchestration-order-service:8097" 90
+        health_checks+=("http://localhost:8097/actuator/health|orchestration-order-service:8097|90")
     fi
     for port in 8092 8093 8094; do
-        wait_for_health "http://localhost:${port}/actuator/health" "orchestration-participant:${port}" 90
+        health_checks+=("http://localhost:${port}/actuator/health|orchestration-participant:${port}|90")
     done
+    wait_for_health_parallel "${health_checks[@]}" || return 1
 }
 
 stop_all() {
@@ -157,13 +294,15 @@ stop_all() {
 
 benchmark_reset() {
     log_info "Resetting benchmark application state (preserving observability data)..."
-    # Only reset application services and infra (Kafka/Postgres) — volumes destroyed
+    # Dual projects own the fixed container_names used by thesis/local dual stacks.
+    # Default (directory) project downs alone leave saga-dual-* containers up → name conflicts on recreate.
+    dual_orch_compose --profile scale4 down -v --remove-orphans 2>/dev/null || true
+    dual_chor_compose down -v --remove-orphans 2>/dev/null || true
     docker compose -f "$COMPOSE_ORCH" --profile scale4 down -v --remove-orphans 2>/dev/null || true
     docker compose -f "$COMPOSE_CHOR" down -v --remove-orphans 2>/dev/null || true
     docker compose -f "$COMPOSE_INFRA" down -v --remove-orphans 2>/dev/null || true
-    # Observability stack: restart containers but KEEP volumes (no -v flag)
+    # Observability: stop containers but keep volumes (mimir/prometheus series data).
     grafana_compose down --remove-orphans 2>/dev/null || true
-    grafana_compose up -d
     log_success "Benchmark stack reset complete (observability data preserved)"
 }
 
@@ -191,8 +330,8 @@ start_dual_local() {
     fail_if_isolated_running
     start_infra
     start_observability
-    dual_chor_compose up -d --build
-    dual_orch_compose up -d --build
+    dual_chor_compose up -d $(app_build_flag)
+    dual_orch_compose up -d $(app_build_flag)
     for port in 8081 8082 8083 8084 8091 8092 8093 8094; do
         wait_for_health "http://localhost:${port}/actuator/health" "dual-service:${port}" 90
     done
@@ -286,6 +425,9 @@ Usage: $0 <command>
 
 Commands:
   start-infra, start-observability, start-observability-beyla, stop-observability
+  obs-s3-wipe
+  obs-s3-backup [path.tar.gz]     # default: observability/backups/obs-minio-<ts>.tar.gz
+  obs-s3-restore <path.tar.gz>    # replaces data/minio; does not auto-start stack
   start-choreography, start-orchestration
   start-dual-local, stop-dual-local, status-dual-local
   benchmark-reset, benchmark-start <pattern> [scale-factor]
@@ -299,6 +441,9 @@ case "${1:-}" in
     start-observability) start_observability ;;
     start-observability-beyla) start_observability_beyla ;;
     stop-observability)  stop_observability ;;
+    obs-s3-wipe)         obs_s3_wipe ;;
+    obs-s3-backup)       obs_s3_backup "$2" ;;
+    obs-s3-restore)      obs_s3_restore "$2" ;;
     start-choreography)  start_choreography ;;
     start-orchestration) start_orchestration "$2" ;;
     start-dual-local)    start_dual_local ;;

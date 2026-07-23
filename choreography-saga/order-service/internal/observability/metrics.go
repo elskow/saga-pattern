@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"os"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,6 +22,17 @@ const (
 	labelValueService = "choreography"
 )
 
+// suiteLabel is captured once at process start (empty string is a valid value).
+var suiteLabel = os.Getenv("SUITE_LABEL")
+
+// sagaDurationBuckets extends prometheus.DefBuckets past 10s to cover
+// choreography compensation cascades (empirically ~65–70s, headroom to 120s).
+var sagaDurationBuckets = []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 25, 50, 75, 100, 120}
+
+func constLabels() prometheus.Labels {
+	return prometheus.Labels{"suite_label": suiteLabel}
+}
+
 type Metrics struct {
 	registry        *prometheus.Registry
 	ordersCreated   prometheus.Counter
@@ -37,12 +49,12 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 	}
 
 	labels := prometheus.Labels{labelPattern: labelValuePattern, labelService: labelValueService}
-	created := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricOrdersCreated, Help: "Total orders created."}, []string{labelPattern, labelService})
-	completed := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricOrdersCompleted, Help: "Total orders completed."}, []string{labelPattern, labelService})
-	failed := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricOrdersFailed, Help: "Total orders failed."}, []string{labelPattern, labelService})
-	compensations := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricCompensations, Help: "Total saga compensations."}, []string{labelPattern, labelService})
-	processing := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: metricProcessingTime, Help: "Saga order processing time in seconds.", Buckets: prometheus.DefBuckets}, []string{labelPattern, labelService})
-	totalDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: metricTotalDuration, Help: "End-to-end choreography saga duration in seconds.", Buckets: prometheus.DefBuckets}, []string{labelPattern, labelService})
+	created := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricOrdersCreated, Help: "Total orders created.", ConstLabels: constLabels()}, []string{labelPattern, labelService})
+	completed := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricOrdersCompleted, Help: "Total orders completed.", ConstLabels: constLabels()}, []string{labelPattern, labelService})
+	failed := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricOrdersFailed, Help: "Total orders failed.", ConstLabels: constLabels()}, []string{labelPattern, labelService})
+	compensations := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricCompensations, Help: "Total saga compensations.", ConstLabels: constLabels()}, []string{labelPattern, labelService})
+	processing := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: metricProcessingTime, Help: "Saga order processing time in seconds.", Buckets: sagaDurationBuckets, ConstLabels: constLabels()}, []string{labelPattern, labelService})
+	totalDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: metricTotalDuration, Help: "End-to-end choreography saga duration in seconds.", Buckets: sagaDurationBuckets, ConstLabels: constLabels()}, []string{labelPattern, labelService})
 
 	registered := make([]prometheus.Collector, 0, 6)
 	for _, collector := range []prometheus.Collector{created, completed, failed, compensations, processing, totalDuration} {

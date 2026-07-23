@@ -16,6 +16,8 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
+
+	"saga-pattern/common/httpcompat"
 )
 
 func Init(ctx context.Context, serviceName string, endpoint string) (func(context.Context) error, error) {
@@ -68,12 +70,8 @@ func shouldTraceHTTP(r *http.Request) bool {
 	if r == nil || r.URL == nil {
 		return true
 	}
-	switch r.URL.Path {
-	case "/actuator/health", "/actuator/prometheus", "/metrics":
-		return false
-	default:
-		return true
-	}
+	// Drop health/metrics probe spans; Prometheus still scrapes metrics.
+	return !httpcompat.IsOpsProbePath(r.URL.Path)
 }
 
 func httpSpanName(serviceName string, r *http.Request) string {

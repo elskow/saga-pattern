@@ -89,3 +89,49 @@ pyroscope.ebpf "saga" {
 	forward_to       = [pyroscope.write.local.receiver]
 	collect_interval = "15s"
 }
+
+discovery.relabel "saga_logs" {
+	targets = discovery.docker.saga.targets
+
+	rule {
+		action        = "keep"
+		regex         = "/(order|payment|inventory|shipping)-service-(choreography|orchestration).*"
+		source_labels = ["__meta_docker_container_name"]
+	}
+
+	rule {
+		action        = "replace"
+		regex         = "/(.*)"
+		replacement   = "$1"
+		source_labels = ["__meta_docker_container_name"]
+		target_label  = "container"
+	}
+
+	rule {
+		action        = "replace"
+		regex         = "/(order|payment|inventory|shipping)-service-.*"
+		replacement   = "$1"
+		source_labels = ["__meta_docker_container_name"]
+		target_label  = "service"
+	}
+
+	rule {
+		action        = "replace"
+		regex         = "/.*-(choreography|orchestration).*"
+		replacement   = "$1"
+		source_labels = ["__meta_docker_container_name"]
+		target_label  = "saga_pattern"
+	}
+}
+
+loki.source.docker "saga" {
+	host       = "unix:///var/run/docker.sock"
+	targets    = discovery.relabel.saga_logs.output
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}

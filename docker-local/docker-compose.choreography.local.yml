@@ -11,8 +11,8 @@ x-service-defaults: &service-defaults
   deploy:
     resources:
       limits:
-        cpus: '1'
-        memory: 512M
+        cpus: '2.0'
+        memory: 1G
       reservations:
         cpus: '0.25'
         memory: 256M
@@ -27,6 +27,8 @@ services:
       args:
         SERVICE_PATH: choreography-saga/order-service
     image: saga-pattern/order-service-choreography:local
+    cpus: '2.0'
+    mem_limit: 1G
     ports:
       - "8081:8081"
     environment:
@@ -42,6 +44,8 @@ services:
       KAFKA_BROKERS: kafka:29092
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4318}
       OTEL_SERVICE_NAME: choreography-order-service
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+      SUITE_LABEL: ${SUITE_LABEL:-}
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8081/actuator/health"]
@@ -63,6 +67,8 @@ services:
       args:
         SERVICE_PATH: choreography-saga/payment-service
     image: saga-pattern/payment-service-choreography:local
+    cpus: '2.0'
+    mem_limit: 1G
     ports:
       - "8082:8082"
     environment:
@@ -77,6 +83,8 @@ services:
       KAFKA_BROKERS: kafka:29092
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4318}
       OTEL_SERVICE_NAME: choreography-payment-service
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+      SUITE_LABEL: ${SUITE_LABEL:-}
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8082/actuator/health"]
@@ -98,6 +106,8 @@ services:
       args:
         SERVICE_PATH: choreography-saga/inventory-service
     image: saga-pattern/inventory-service-choreography:local
+    cpus: '2.0'
+    mem_limit: 1G
     ports:
       - "8083:8083"
     environment:
@@ -112,6 +122,8 @@ services:
       KAFKA_BROKERS: kafka:29092
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4318}
       OTEL_SERVICE_NAME: choreography-inventory-service
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+      SUITE_LABEL: ${SUITE_LABEL:-}
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       ARTIFICIAL_DELAY_ENABLED: ${ARTIFICIAL_DELAY_ENABLED:-false}
       ARTIFICIAL_DELAY_MS: ${ARTIFICIAL_DELAY_MS:-0}
@@ -135,6 +147,8 @@ services:
       args:
         SERVICE_PATH: choreography-saga/shipping-service
     image: saga-pattern/shipping-service-choreography:local
+    cpus: '2.0'
+    mem_limit: 1G
     ports:
       - "8084:8084"
     environment:
@@ -149,6 +163,8 @@ services:
       KAFKA_BROKERS: kafka:29092
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4318}
       OTEL_SERVICE_NAME: choreography-shipping-service
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+      SUITE_LABEL: ${SUITE_LABEL:-}
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8084/actuator/health"]

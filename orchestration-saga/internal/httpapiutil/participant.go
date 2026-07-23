@@ -36,7 +36,9 @@ func NewParticipantHandler(deps ParticipantHandlerDependencies) http.Handler {
 	}))
 	router.Handle(deps.Config.PrometheusPath, httpcompat.NewPrometheusHandler(deps.Registry, promhttp.HandlerOpts{}))
 	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
-		logger.Debug("route not found", "path", r.URL.Path, "method", r.Method)
+		if !httpcompat.IsOpsProbePath(r.URL.Path) {
+			logger.Debug("route not found", "path", r.URL.Path, "method", r.Method)
+		}
 		http.Error(w, "not found", http.StatusNotFound)
 	})
 

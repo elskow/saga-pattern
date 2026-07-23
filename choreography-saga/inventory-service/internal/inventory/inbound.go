@@ -11,6 +11,7 @@ import (
 
 	"saga-pattern/choreography-saga/inventory-service/internal/domain"
 	"saga-pattern/common/events"
+	commonkafka "saga-pattern/common/kafka"
 	commontracing "saga-pattern/common/tracing"
 )
 
@@ -104,27 +105,31 @@ func (s *Service) handlePaymentCompleted(ctx context.Context, event events.Payme
 		return err
 	}
 
+	// Failure-mode inject must short-circuit like orch/shipping: never reserve stock
+	// and never rely on ReserveInventory's onFail hook (only runs on real stock errors).
 	if shouldFail, failureState := s.failureMode.ShouldFail(s.now()); shouldFail {
 		err := fmt.Errorf("inventory failure mode enabled — reservation forced to fail")
 		span.SetAttributes(attribute.String("inventory.result", "failed"), attribute.String("failure.type", "failure_mode"), attribute.String("failure.run_label", failureState.RunLabel), attribute.Int("failure.remaining", failureState.Remaining))
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		failedEvent := s.buildReservationFailedEvent(event, err, s.now())
-		_, onFail := s.buildReserveHooks(event, nil, failedEvent, s.now())
+		failedAt := s.now()
+		failedEvent := s.buildReservationFailedEvent(event, err, failedAt)
 		reservationID := s.newID()
-		if _, reserveErr := s.ReservePendingOrderItems(ctx, event.OrderID, reservationID, pendingItems, s.now(), nil, onFail); reserveErr != nil {
-			span.RecordError(reserveErr)
-			span.SetStatus(codes.Error, reserveErr.Error())
-			if saveErr := s.SaveFailedReservation(ctx, reservationID, event.OrderID, pendingItems, reserveErr.Error(), s.now()); saveErr != nil {
-				return saveErr
-			}
-			return reserveErr
+		if saveErr := s.SaveFailedReservation(ctx, reservationID, event.OrderID, pendingItems, err.Error(), failedAt); saveErr != nil {
+			span.RecordError(saveErr)
+			span.SetStatus(codes.Error, saveErr.Error())
+			return saveErr
+		}
+		if enqueueErr := s.participant.EnqueueEvent(ctx, nil, commonkafka.DefaultInventoryEventsTopic, event.OrderID, failedEvent.EventType(), failedEvent); enqueueErr != nil {
+			span.RecordError(enqueueErr)
+			span.SetStatus(codes.Error, enqueueErr.Error())
+			return enqueueErr
 		}
 		span.AddEvent("inventory_reservation_failed_published", trace.WithAttributes(attribute.String("failure.type", "failure_mode")))
 		s.metrics.RecordInventoryStep(s.now().Sub(startedAt))
 		s.participant.TriggerImmediatePublish(ctx)
-		if err := s.ClearPendingReservation(ctx, event.OrderID); err != nil {
-			return err
+		if clearErr := s.ClearPendingReservation(ctx, event.OrderID); clearErr != nil {
+			return clearErr
 		}
 		return nil
 	}

@@ -6,14 +6,17 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"saga-pattern/choreography-saga/inventory-service/internal/domain"
 	"saga-pattern/choreography-saga/inventory-service/internal/observability"
 	"saga-pattern/choreography-saga/inventory-service/internal/repository"
 	"saga-pattern/common/dto"
 	"saga-pattern/common/events"
+	"saga-pattern/common/faultinjection"
 	commonkafka "saga-pattern/common/kafka"
 	"saga-pattern/common/testutil"
 )
@@ -92,8 +95,9 @@ func TestReserveInventoryPublishesReservedEvent(t *testing.T) {
 	if !ok {
 		t.Fatalf("product PROD-001 missing after reservation")
 	}
-	if product.QuantityAvailable != 98 || product.QuantityReserved != 2 {
-		t.Fatalf("product quantities = available:%d reserved:%d, want 98/2", product.QuantityAvailable, product.QuantityReserved)
+	// 005_benchmark_stock seeds PROD-001 at 10000 available for k6 load.
+	if product.QuantityAvailable != 9998 || product.QuantityReserved != 2 {
+		t.Fatalf("product quantities = available:%d reserved:%d, want 9998/2", product.QuantityAvailable, product.QuantityReserved)
 	}
 }
 
@@ -140,11 +144,12 @@ func TestInsufficientStockPublishesReservationFailed(t *testing.T) {
 		"CUST-OVER",
 		"Jl. Ketintang Wiyata, Surabaya 60231",
 		"corr-low-stock",
-		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 1000, Price: json.Number("15999000")}},
-		json.Number("15999000000"),
+		// Request more than 005_benchmark_stock (10000) so reservation fails.
+		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 20000, Price: json.Number("15999000")}},
+		json.Number("319980000000"),
 		now,
 	)
-	paymentEvent := events.NewPaymentCompletedEvent("PAY-OVER-1", orderEvent.OrderID, json.Number("15999000000"), "TX-OVER-1", now.Add(time.Minute), orderEvent.CorrelationID, now.Add(time.Minute))
+	paymentEvent := events.NewPaymentCompletedEvent("PAY-OVER-1", orderEvent.OrderID, json.Number("319980000000"), "TX-OVER-1", now.Add(time.Minute), orderEvent.CorrelationID, now.Add(time.Minute))
 
 	if err := deliverEvent(consumer, commonkafka.DefaultOrderEventsTopic, orderEvent.OrderID, orderEvent); err != nil {
 		t.Fatalf("consume order created: %v", err)
@@ -174,8 +179,8 @@ func TestInsufficientStockPublishesReservationFailed(t *testing.T) {
 	if !ok {
 		t.Fatalf("product PROD-001 missing after failed reservation")
 	}
-	if product.QuantityAvailable != 100 || product.QuantityReserved != 0 {
-		t.Fatalf("product quantities = available:%d reserved:%d, want 100/0", product.QuantityAvailable, product.QuantityReserved)
+	if product.QuantityAvailable != 10000 || product.QuantityReserved != 0 {
+		t.Fatalf("product quantities = available:%d reserved:%d, want 10000/0", product.QuantityAvailable, product.QuantityReserved)
 	}
 	reservations, err := repo.ListReservations(context.Background())
 	if err != nil {
@@ -191,8 +196,8 @@ func TestInsufficientStockPublishesReservationFailed(t *testing.T) {
 			if res.FailureReason == "" {
 				t.Fatal("failed reservation has empty failure_reason")
 			}
-			if res.Quantity != 1000 {
-				t.Fatalf("failed reservation quantity = %d, want 1000", res.Quantity)
+			if res.Quantity != 20000 {
+				t.Fatalf("failed reservation quantity = %d, want 20000", res.Quantity)
 			}
 			break
 		}
@@ -254,8 +259,9 @@ func TestReleaseCompensationIsIdempotent(t *testing.T) {
 	if !ok {
 		t.Fatalf("product PROD-002 missing after release")
 	}
-	if product.QuantityAvailable != 200 || product.QuantityReserved != 0 {
-		t.Fatalf("product quantities after release = available:%d reserved:%d, want 200/0", product.QuantityAvailable, product.QuantityReserved)
+	// 005_benchmark_stock seeds PROD-002 at 10000 available for k6 load.
+	if product.QuantityAvailable != 10000 || product.QuantityReserved != 0 {
+		t.Fatalf("product quantities after release = available:%d reserved:%d, want 10000/0", product.QuantityAvailable, product.QuantityReserved)
 	}
 }
 
@@ -284,6 +290,93 @@ func TestDuplicatePaymentCompletedReplayIsSafe(t *testing.T) {
 	}
 	if len(participant.Events()) != 1 {
 		t.Fatalf("enqueued event count = %d, want 1", len(participant.Events()))
+	}
+}
+
+// Failure-mode inject must publish InventoryReservationFailed without reserving stock.
+// Regression for gate-f-r1: old path called Reserve with onReserve=nil and pretended success.
+func TestFailureModePublishesReservationFailedWithoutReserving(t *testing.T) {
+	consumer, repo, participant, service := newTestServiceWithService(t)
+	now := time.Date(2026, 4, 13, 21, 30, 0, 0, time.UTC)
+	service.WithClock(func() time.Time { return now })
+	service.ConfigureFailureMode(faultinjection.Config{
+		Enabled:  true,
+		RunLabel: "test-inv-fail",
+		FailNext: 1,
+	})
+
+	orderEvent := events.NewOrderCreatedEvent(
+		"ORDER-INV-FAILMODE",
+		"CUST-FAILMODE",
+		"Jl. Ketintang Wiyata, Surabaya 60231",
+		"corr-failmode",
+		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 2, Price: json.Number("15999000")}},
+		json.Number("31998000"),
+		now,
+	)
+	paymentEvent := events.NewPaymentCompletedEvent("PAY-FAILMODE-1", orderEvent.OrderID, json.Number("31998000"), "TX-FAILMODE-1", now.Add(time.Minute), orderEvent.CorrelationID, now.Add(time.Minute))
+
+	if err := deliverEvent(consumer, commonkafka.DefaultOrderEventsTopic, orderEvent.OrderID, orderEvent); err != nil {
+		t.Fatalf("consume order created: %v", err)
+	}
+	if err := deliverEvent(consumer, commonkafka.DefaultPaymentEventsTopic, orderEvent.OrderID, paymentEvent); err != nil {
+		t.Fatalf("consume payment completed: %v", err)
+	}
+
+	evts := participant.Events()
+	if len(evts) != 1 {
+		t.Fatalf("enqueued event count = %d, want 1", len(evts))
+	}
+	if evts[0].EventType != events.TypeInventoryReservationFailed {
+		t.Fatalf("enqueued event type = %q, want %q", evts[0].EventType, events.TypeInventoryReservationFailed)
+	}
+	failed, ok := evts[0].Payload.(events.InventoryReservationFailedEvent)
+	if !ok {
+		t.Fatalf("enqueued payload type = %T, want InventoryReservationFailedEvent", evts[0].Payload)
+	}
+	if failed.OrderID != orderEvent.OrderID {
+		t.Fatalf("failed order id = %q, want %q", failed.OrderID, orderEvent.OrderID)
+	}
+	if failed.Reason == "" || !strings.Contains(failed.Reason, "inventory failure mode enabled") {
+		t.Fatalf("failed reason = %q, want failure-mode reason", failed.Reason)
+	}
+
+	product, ok, err := repo.Product(context.Background(), "PROD-001")
+	if err != nil {
+		t.Fatalf("lookup product: %v", err)
+	}
+	if !ok {
+		t.Fatalf("product PROD-001 missing")
+	}
+	// 005_benchmark_stock: no hold means available stays at 10000.
+	if product.QuantityAvailable != 10000 || product.QuantityReserved != 0 {
+		t.Fatalf("product quantities = available:%d reserved:%d, want 10000/0 (no stock hold)", product.QuantityAvailable, product.QuantityReserved)
+	}
+
+	reservations, err := repo.ListReservations(context.Background())
+	if err != nil {
+		t.Fatalf("list reservations: %v", err)
+	}
+	var foundFailed bool
+	for _, res := range reservations {
+		if res.OrderID != orderEvent.OrderID {
+			continue
+		}
+		if res.Status != domain.ReservationStatusFailed {
+			t.Fatalf("reservation status = %q, want FAILED (got %#v)", res.Status, res)
+		}
+		foundFailed = true
+	}
+	if !foundFailed {
+		t.Fatalf("expected FAILED reservation row for %s", orderEvent.OrderID)
+	}
+
+	pending, err := repo.LoadPendingReservationItems(context.Background(), orderEvent.OrderID)
+	if err != nil {
+		t.Fatalf("load pending: %v", err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("pending reservation items = %d, want 0 after failure-mode clear", len(pending))
 	}
 }
 
@@ -365,12 +458,13 @@ func TestRepositorySeedsCatalogProducts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new postgres repository: %v", err)
 	}
+	// 005_benchmark_stock raises catalog seed floors to 10000 for k6.
 	for _, fixture := range []struct {
 		id        string
 		available int
 	}{
-		{id: "PROD-001", available: 100},
-		{id: "PROD-005", available: 120},
+		{id: "PROD-001", available: 10000},
+		{id: "PROD-005", available: 10000},
 	} {
 		product, ok, err := repo.Product(context.Background(), fixture.id)
 		if err != nil {

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"path"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -14,9 +16,27 @@ import (
 const (
 	HealthPath     = "/actuator/health"
 	PrometheusPath = "/actuator/prometheus"
-	StatusUp       = "UP"
-	StatusDown     = "DOWN"
+	// MetricsPath is the common non-Spring scrape path some stacks expose.
+	MetricsPath = "/metrics"
+	StatusUp    = "UP"
+	StatusDown  = "DOWN"
 )
+
+// IsOpsProbePath reports paths that are health/metrics probes.
+// Drop these from traces and access logs; keep Prometheus scrape collecting metrics.
+func IsOpsProbePath(rawPath string) bool {
+	if rawPath == "" {
+		return false
+	}
+	// path.Clean needs a rooted path; trim query is caller's job (URL.Path has none).
+	clean := path.Clean("/" + strings.TrimPrefix(rawPath, "/"))
+	switch clean {
+	case HealthPath, PrometheusPath, MetricsPath:
+		return true
+	default:
+		return false
+	}
+}
 
 type HealthComponent struct {
 	Status     string                     `json:"status"`

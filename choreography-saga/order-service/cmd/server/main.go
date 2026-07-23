@@ -61,7 +61,7 @@ func run() (err error) {
 	workerCtx, stopWorkers := context.WithCancel(context.Background())
 	defer stopWorkers()
 	go app.participant.RunWorkers(workerCtx)
-	go ordersvc.RunTimeoutScanner(workerCtx, resources.Logger, app.repo, app.participantAdapter)
+	go ordersvc.RunTimeoutScanner(workerCtx, resources.Logger, app.repo, app.participantAdapter, app.metrics)
 	handler := httpapi.NewHandler(httpapi.HandlerDependencies{Config: cfg, Logger: resources.Logger, Orders: app.orders, Registry: app.metrics.Registry(), HealthProvider: httpcompat.NewDBAndKafkaHealthProvider(resources.DB, cfg.Runtime.KafkaBrokers)})
 	return serverutil.RunParticipantServer(cfg, resources.Logger, handler, app.participant.Topics(), app.consumerGroup)
 }

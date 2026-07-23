@@ -11,17 +11,32 @@ distributor:
           endpoint: 0.0.0.0:4318
 
 ingester:
+  # Flush head block to backend at least this often. Suite export and MinIO
+  # backup must wait ≥ this after the last span if newest IDs are required.
   max_block_duration: 5m
 
 compactor:
   compaction:
-    block_retention: 0
+    # Keep completed blocks for multi-phase thesis suites + post-run analysis.
+    # block_retention: 0 was observed to drop blocks within ~15–20 min: suite-end
+    # export-traces then returned empty spans.csv for early phases (comparison SO,
+    # scale-variance head) while spanmetrics in Mimir still had data.
+    # 48h covers longest local campaign day + re-export; raise if multi-day hold needed.
+    block_retention: 48h
+    # After compaction merges blocks, keep the old inputs briefly so queriers with
+    # a stale blocklist can still read them (Tempo default class; ≥ 2× blocklist_poll).
+    compacted_block_retention: 1h
 
 storage:
   trace:
-    backend: local
-    local:
-      path: /var/tempo/traces
+    backend: s3
+    s3:
+      endpoint: minio:9000
+      bucket: tempo
+      access_key: minioadmin
+      secret_key: minioadmin
+      insecure: true
+      forcepathstyle: true
     wal:
       path: /var/tempo/wal
 

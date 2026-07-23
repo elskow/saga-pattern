@@ -113,6 +113,11 @@ application-local.properties
 **/docker-data/
 **/data/
 
+# Observability MinIO object data (local thesis durable store)
+docker-local/observability/data/
+# Local MinIO tarball backups from obs-s3-backup
+docker-local/observability/backups/
+
 # ================================
 # Test outputs
 # ================================
@@ -147,6 +152,7 @@ temp/
 load-testing/results/
 load-testing/*.jtl
 load-testing/*.csv
+benchmarks/results/
 
 # ================================
 # Misc
@@ -176,4 +182,5 @@ terraform.tfstate.backup
 .gitnexus
 .claude
 test-results
-?
+__pycache__/
+.venv-analyzer/

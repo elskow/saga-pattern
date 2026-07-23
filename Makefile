@@ -28,7 +28,7 @@ BUILD_OUTPUTS := \
 
 DEFAULT_TEST_PACKAGES := ./common/... ./choreography-saga/... ./orchestration-framework/... ./orchestration-saga/...
 
-.PHONY: help tidy build test test-parity clean clean-docker clean-all up-infra up-observability up-choreography up-orchestration up-dual-local status-dual-local down-dual-local down smoke-choreography smoke-choreography-go smoke-orchestration smoke-orchestration-go k6-choreography-quick k6-orchestration-quick thesis-compare-quick thesis-compare-baseline web-install web-dev web-build web-lint
+.PHONY: help tidy build test test-parity clean clean-docker clean-all up-infra up-observability up-choreography up-orchestration up-dual-local status-dual-local down-dual-local down smoke-choreography smoke-choreography-go smoke-orchestration smoke-orchestration-go k6-choreography-quick k6-orchestration-quick thesis-compare-quick web-install web-dev web-build web-lint
 
 define RUN_GO_SHELL
 	@if command -v go >/dev/null 2>&1; then \
@@ -96,8 +96,7 @@ help:
 		'  web-dev                      Start the web app locally on port 4173' \
 		'  web-build                    Build the web app bundle into web/dist/' \
 		'  web-lint                     Run the web app ESLint checks' \
-		'  thesis-compare-quick         Run the paired quick thesis comparison protocol locally' \
-		'  thesis-compare-baseline      Run the paired thesis-baseline protocol locally'
+		'  thesis-compare-quick         Run the paired quick thesis comparison protocol locally'
 
 tidy:
 	$(call RUN_GO_SHELL,go mod tidy)
@@ -253,18 +252,14 @@ smoke-orchestration-go:
 	$(call RUN_GO_SHELL,PARITY_PATTERN=orchestration PARITY_STACK=go PARITY_BASE_URL=http://localhost:8091 go test -json ./test/parity/... > $(SMOKE_RESULTS_DIR)/smoke-orchestration.json; status=$$?; cat $(SMOKE_RESULTS_DIR)/smoke-orchestration.json; exit $$status)
 
 k6-choreography-quick:
-	bash load-testing/thesis/run-k6-thesis.sh --pattern choreography --scenario successful-order --profile quick
+	bash benchmarks/run-suite.sh --pattern choreography --scenario successful-order --profile quick
 
 k6-orchestration-quick:
-	bash load-testing/thesis/run-k6-thesis.sh --pattern orchestration --scenario successful-order --profile quick
+	bash benchmarks/run-suite.sh --pattern orchestration --scenario successful-order --profile quick
 
 thesis-compare-quick:
-	bash load-testing/thesis/run-k6-thesis.sh --pattern choreography --scenario successful-order --profile quick
-	bash load-testing/thesis/run-k6-thesis.sh --pattern orchestration --scenario successful-order --profile quick
-
-thesis-compare-baseline:
-	bash load-testing/thesis/run-k6-thesis.sh --pattern choreography --scenario successful-order --profile thesis-baseline
-	bash load-testing/thesis/run-k6-thesis.sh --pattern orchestration --scenario successful-order --profile thesis-baseline
+	bash benchmarks/run-suite.sh --pattern choreography --scenario successful-order --profile quick
+	bash benchmarks/run-suite.sh --pattern orchestration --scenario successful-order --profile quick
 
 web-install:
 	$(call RUN_NODE_SHELL,npm install)

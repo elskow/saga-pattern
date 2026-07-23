@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"saga-pattern/choreography-saga/order-service/internal/domain"
+	"saga-pattern/choreography-saga/order-service/internal/observability"
 	"saga-pattern/choreography-saga/order-service/internal/repository"
 	"saga-pattern/common/events"
 )
@@ -41,7 +42,7 @@ func initFromEnv() {
 // RunTimeoutScanner periodically scans for orders stuck in non-terminal states
 // and cancels them with an OrderCancelledEvent emitted atomically. Blocks until
 // ctx is cancelled.
-func RunTimeoutScanner(ctx context.Context, logger *slog.Logger, repo repository.Repository, participant participantAdapter) {
+func RunTimeoutScanner(ctx context.Context, logger *slog.Logger, repo repository.Repository, participant participantAdapter, metrics *observability.Metrics) {
 	interval := time.Duration(SagaTimeoutInterval.Load()) * time.Millisecond
 	logger.Info("timeout scanner started",
 		"thresholdMs", SagaTimeoutThreshold.Load(),
@@ -52,13 +53,13 @@ func RunTimeoutScanner(ctx context.Context, logger *slog.Logger, repo repository
 			logger.Info("timeout scanner stopped")
 			return
 		case <-time.After(interval):
-			scanAndCancel(ctx, logger, repo, participant)
+			scanAndCancel(ctx, logger, repo, participant, metrics)
 			interval = time.Duration(SagaTimeoutInterval.Load()) * time.Millisecond
 		}
 	}
 }
 
-func scanAndCancel(ctx context.Context, logger *slog.Logger, repo repository.Repository, participant participantAdapter) {
+func scanAndCancel(ctx context.Context, logger *slog.Logger, repo repository.Repository, participant participantAdapter, metrics *observability.Metrics) {
 	threshold := time.Duration(SagaTimeoutThreshold.Load()) * time.Millisecond
 	cutoff := time.Now().UTC().Add(-threshold)
 
@@ -73,11 +74,11 @@ func scanAndCancel(ctx context.Context, logger *slog.Logger, repo repository.Rep
 	logger.Info("timeout scanner: found stuck orders", "count", len(stuck))
 
 	for i := range stuck {
-		cancelTimeoutOrder(ctx, logger, repo, participant, &stuck[i])
+		cancelTimeoutOrder(ctx, logger, repo, participant, metrics, &stuck[i])
 	}
 }
 
-func cancelTimeoutOrder(ctx context.Context, logger *slog.Logger, repo repository.Repository, participant participantAdapter, order *domain.Order) {
+func cancelTimeoutOrder(ctx context.Context, logger *slog.Logger, repo repository.Repository, participant participantAdapter, metrics *observability.Metrics, order *domain.Order) {
 	now := time.Now().UTC()
 	previousStatus := order.Status
 	order.MarkCancelled("saga timeout", now)
@@ -97,6 +98,10 @@ func cancelTimeoutOrder(ctx context.Context, logger *slog.Logger, repo repositor
 		return
 	}
 	participant.TriggerImmediatePublish(ctx)
+	// Match foldTerminalFailure: timeout cancel is still a terminal saga failure for thesis metrics.
+	if metrics != nil {
+		metrics.RecordOrderFailed(order.UpdatedAt.Sub(order.CreatedAt))
+	}
 
 	logger.Info("timeout scanner: cancelled stuck order",
 		"orderId", order.OrderID,

@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"os"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,6 +18,13 @@ const (
 	labelValueService = "orchestration"
 )
 
+// suiteLabel is captured once at process start (empty string is a valid value).
+var suiteLabel = os.Getenv("SUITE_LABEL")
+
+func constLabels() prometheus.Labels {
+	return prometheus.Labels{"suite_label": suiteLabel}
+}
+
 type Metrics struct {
 	registry      *prometheus.Registry
 	stepDuration  prometheus.Observer
@@ -30,11 +38,11 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 
 	labels := prometheus.Labels{labelPattern: labelValuePattern, labelService: labelValueService}
 	stepDuration := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{Name: metricStepInventoryDuration, Help: "Inventory step duration in seconds.", Buckets: prometheus.DefBuckets},
+		prometheus.HistogramOpts{Name: metricStepInventoryDuration, Help: "Inventory step duration in seconds.", Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 25, 50, 75, 100, 120}, ConstLabels: constLabels()},
 		[]string{labelPattern, labelService},
 	)
 	compensations := prometheus.NewCounterVec(
-		prometheus.CounterOpts{Name: metricCompensations, Help: "Total inventory compensations."},
+		prometheus.CounterOpts{Name: metricCompensations, Help: "Total inventory compensations.", ConstLabels: constLabels()},
 		[]string{labelPattern, labelService},
 	)
 

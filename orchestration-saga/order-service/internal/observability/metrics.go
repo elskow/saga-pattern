@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"os"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,6 +22,13 @@ const (
 	labelValueService            = "orchestration"
 )
 
+// suiteLabel is captured once at process start (empty string is a valid value).
+var suiteLabel = os.Getenv("SUITE_LABEL")
+
+func constLabels() prometheus.Labels {
+	return prometheus.Labels{"suite_label": suiteLabel}
+}
+
 type Metrics struct {
 	registry               *prometheus.Registry
 	ordersCreated          prometheus.Counter
@@ -38,14 +46,14 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 		registry = prometheus.NewRegistry()
 	}
 	labels := prometheus.Labels{labelPattern: labelValuePattern, labelService: labelValueService}
-	created := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricOrdersCreated, Help: "Total orders created."}, []string{labelPattern, labelService})
-	completed := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricOrdersCompleted, Help: "Total orders completed."}, []string{labelPattern, labelService})
-	failed := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricOrdersFailed, Help: "Total orders failed."}, []string{labelPattern, labelService})
-	totalDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: metricSagaTotalDuration, Help: "End-to-end orchestration saga duration in seconds.", Buckets: prometheus.DefBuckets}, []string{labelPattern, labelService})
-	compTotal := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricCompensationsTotal, Help: "Total compensated orchestration sagas."}, []string{labelPattern, labelService})
-	compPayment := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricCompensationsPayment, Help: "Total payment compensations."}, []string{labelPattern, labelService})
-	compInventory := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricCompensationsInventory, Help: "Total inventory compensations."}, []string{labelPattern, labelService})
-	compShipping := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricCompensationsShipping, Help: "Total shipping compensations."}, []string{labelPattern, labelService})
+	created := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricOrdersCreated, Help: "Total orders created.", ConstLabels: constLabels()}, []string{labelPattern, labelService})
+	completed := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricOrdersCompleted, Help: "Total orders completed.", ConstLabels: constLabels()}, []string{labelPattern, labelService})
+	failed := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricOrdersFailed, Help: "Total orders failed.", ConstLabels: constLabels()}, []string{labelPattern, labelService})
+	totalDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: metricSagaTotalDuration, Help: "End-to-end orchestration saga duration in seconds.", Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 25, 50, 75, 100, 120}, ConstLabels: constLabels()}, []string{labelPattern, labelService})
+	compTotal := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricCompensationsTotal, Help: "Total compensated orchestration sagas.", ConstLabels: constLabels()}, []string{labelPattern, labelService})
+	compPayment := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricCompensationsPayment, Help: "Total payment compensations.", ConstLabels: constLabels()}, []string{labelPattern, labelService})
+	compInventory := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricCompensationsInventory, Help: "Total inventory compensations.", ConstLabels: constLabels()}, []string{labelPattern, labelService})
+	compShipping := prometheus.NewCounterVec(prometheus.CounterOpts{Name: metricCompensationsShipping, Help: "Total shipping compensations.", ConstLabels: constLabels()}, []string{labelPattern, labelService})
 
 	registered := make([]prometheus.Collector, 0, 8)
 	for _, collector := range []prometheus.Collector{created, completed, failed, totalDuration, compTotal, compPayment, compInventory, compShipping} {

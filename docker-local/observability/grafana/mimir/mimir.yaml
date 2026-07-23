@@ -1,13 +1,18 @@
 multitenancy_enabled: false
 
 blocks_storage:
-  backend: filesystem
+  backend: s3
   bucket_store:
     sync_dir: /data/tsdb-sync
-  filesystem:
-    dir: /data/tsdb
   tsdb:
     dir: /data/ingester
+  s3:
+    endpoint: minio:9000
+    bucket_name: mimir-blocks
+    access_key_id: minioadmin
+    secret_access_key: minioadmin
+    insecure: true
+    bucket_lookup_type: path
 
 compactor:
   data_dir: /data/compactor
@@ -29,9 +34,14 @@ ingester:
     replication_factor: 1
 
 ruler_storage:
-  backend: filesystem
-  filesystem:
-    dir: /data/rules
+  backend: s3
+  s3:
+    endpoint: minio:9000
+    bucket_name: mimir-rules
+    access_key_id: minioadmin
+    secret_access_key: minioadmin
+    insecure: true
+    bucket_lookup_type: path
 
 server:
   http_listen_port: 9009
@@ -42,5 +52,12 @@ store_gateway:
     replication_factor: 1
 
 limits:
+  # Local thesis/dev: default max_global_series_per_user=150000 rejects Prom remote_write
+  # under multi-phase k6 campaigns (err-mimir-max-series-per-user HTTP 400 non-recoverable).
+  # See docs/archive/p1-rw-pipeline-dig.md. 0 = unlimited for local single-tenant stack.
+  max_global_series_per_user: 0
   max_global_exemplars_per_user: 100000
+  # Mimir: 0 = disable block deletion (keep forever on local MinIO). Not the same as
+  # Tempo block_retention: 0, which dropped trace blocks in minutes. Metrics export
+  # (export-metrics.py → Mimir) is the durable path for thr/lat/spanmetrics claims.
   compactor_blocks_retention_period: 0

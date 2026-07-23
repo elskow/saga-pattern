@@ -11,8 +11,8 @@ x-service-defaults: &service-defaults
   deploy:
     resources:
       limits:
-        cpus: '1'
-        memory: 512M
+        cpus: '2.0'
+        memory: 1G
       reservations:
         cpus: '0.25'
         memory: 256M
@@ -50,11 +50,15 @@ services:
   order-service-orchestration:
     <<: *order-service-base
     container_name: order-service-orchestration
+    cpus: '2.0'
+    mem_limit: 1G
     ports:
       - "8091:8091"
     environment:
       <<: *order-service-env
       SERVER_PORT: 8091
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+      SUITE_LABEL: ${SUITE_LABEL:-}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8091/actuator/health"]
       interval: 10s
@@ -69,11 +73,15 @@ services:
   order-service-orchestration-2:
     <<: *order-service-base
     container_name: order-service-orchestration-2
+    cpus: '2.0'
+    mem_limit: 1G
     ports:
       - "8095:8095"
     environment:
       <<: *order-service-env
       SERVER_PORT: 8095
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+      SUITE_LABEL: ${SUITE_LABEL:-}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8095/actuator/health"]
       interval: 10s
@@ -92,11 +100,15 @@ services:
   order-service-orchestration-3:
     <<: *order-service-base
     container_name: order-service-orchestration-3
+    cpus: '2.0'
+    mem_limit: 1G
     ports:
       - "8096:8096"
     environment:
       <<: *order-service-env
       SERVER_PORT: 8096
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+      SUITE_LABEL: ${SUITE_LABEL:-}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8096/actuator/health"]
       interval: 10s
@@ -114,11 +126,15 @@ services:
   order-service-orchestration-4:
     <<: *order-service-base
     container_name: order-service-orchestration-4
+    cpus: '2.0'
+    mem_limit: 1G
     ports:
       - "8097:8097"
     environment:
       <<: *order-service-env
       SERVER_PORT: 8097
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+      SUITE_LABEL: ${SUITE_LABEL:-}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8097/actuator/health"]
       interval: 10s
@@ -141,6 +157,8 @@ services:
       args:
         SERVICE_PATH: orchestration-saga/payment-service
     image: saga-pattern/payment-service-orchestration:local
+    cpus: '2.0'
+    mem_limit: 1G
     ports:
       - "8092:8092"
     environment:
@@ -155,6 +173,8 @@ services:
       KAFKA_BROKERS: kafka:29092
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4318}
       OTEL_SERVICE_NAME: orchestration-payment-service
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+      SUITE_LABEL: ${SUITE_LABEL:-}
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8092/actuator/health"]
@@ -176,6 +196,8 @@ services:
       args:
         SERVICE_PATH: orchestration-saga/inventory-service
     image: saga-pattern/inventory-service-orchestration:local
+    cpus: '2.0'
+    mem_limit: 1G
     ports:
       - "8093:8093"
     environment:
@@ -190,6 +212,8 @@ services:
       KAFKA_BROKERS: kafka:29092
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4318}
       OTEL_SERVICE_NAME: orchestration-inventory-service
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+      SUITE_LABEL: ${SUITE_LABEL:-}
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       ARTIFICIAL_DELAY_ENABLED: ${ARTIFICIAL_DELAY_ENABLED:-false}
       ARTIFICIAL_DELAY_MS: ${ARTIFICIAL_DELAY_MS:-0}
@@ -213,6 +237,8 @@ services:
       args:
         SERVICE_PATH: orchestration-saga/shipping-service
     image: saga-pattern/shipping-service-orchestration:local
+    cpus: '2.0'
+    mem_limit: 1G
     ports:
       - "8094:8094"
     environment:
@@ -227,6 +253,8 @@ services:
       KAFKA_BROKERS: kafka:29092
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4318}
       OTEL_SERVICE_NAME: orchestration-shipping-service
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+      SUITE_LABEL: ${SUITE_LABEL:-}
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8094/actuator/health"]

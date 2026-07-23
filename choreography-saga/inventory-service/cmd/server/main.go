@@ -77,7 +77,7 @@ func run() (err error) {
 		return fmt.Errorf("create choreography framework participant: %w", err)
 	}
 
-	inventoryParticipant := &inventoryParticipant{participant: participant}
+	inventoryParticipant := &inventoryParticipant{participant: participant, db: resources.DB}
 	service, err := inventory.NewService(repo, inventoryParticipant, metrics)
 	if err != nil {
 		return fmt.Errorf("create inventory service: %w", err)
@@ -102,10 +102,24 @@ func run() (err error) {
 
 type inventoryParticipant struct {
 	participant *choreoruntime.Participant
+	db          *sql.DB
 }
 
+// EnqueueEvent writes to the outbox. When tx is nil (failure-mode short-circuit),
+// open a standalone transaction — matches shippingParticipant.
 func (p *inventoryParticipant) EnqueueEvent(ctx context.Context, tx *sql.Tx, topic, key, eventType string, payload any) error {
-	return p.participant.EnqueueEvent(ctx, choreoruntime.WrapSQLTx(tx), topic, key, eventType, payload)
+	if tx != nil {
+		return p.participant.EnqueueEvent(ctx, choreoruntime.WrapSQLTx(tx), topic, key, eventType, payload)
+	}
+	ownTx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx for standalone enqueue: %w", err)
+	}
+	defer ownTx.Rollback()
+	if err := p.participant.EnqueueEvent(ctx, choreoruntime.WrapSQLTx(ownTx), topic, key, eventType, payload); err != nil {
+		return err
+	}
+	return ownTx.Commit()
 }
 
 func (p *inventoryParticipant) TriggerImmediatePublish(ctx context.Context) {

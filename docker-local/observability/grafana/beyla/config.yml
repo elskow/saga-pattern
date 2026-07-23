@@ -1,0 +1,9 @@
+# Drop ops probe paths from Beyla eBPF traces/metrics.
+# Align with common/httpcompat.IsOpsProbePath — app OTel filter alone
+# does not cover Beyla (telemetry.sdk.name=beyla).
+routes:
+  ignored_patterns:
+    - /actuator/health
+    - /actuator/prometheus
+    - /metrics
+  ignore_mode: all

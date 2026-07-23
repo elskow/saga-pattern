@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	commoncontext "saga-pattern/common/context"
+	"saga-pattern/common/httpcompat"
 )
 
 type Options struct {
@@ -61,6 +62,11 @@ func Wrap(next http.Handler, opts Options) http.Handler {
 		recorder := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
 
 		next.ServeHTTP(recorder, r)
+
+		// Probe paths: serve health/metrics, but no access log / span noise (metrics scrape stays).
+		if httpcompat.IsOpsProbePath(r.URL.Path) {
+			return
+		}
 
 		duration := time.Since(start)
 		route := routePattern(r)

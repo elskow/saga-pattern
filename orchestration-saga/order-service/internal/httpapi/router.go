@@ -60,7 +60,9 @@ func NewHandler(deps HandlerDependencies) http.Handler {
 	router.Put("/api/admin/saga-timeout", sagaTimeoutHandler(logger, deps.SagaTimeoutConfigurer))
 	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-		logger.Debug("route not found", "path", r.URL.Path, "method", r.Method)
+		if !httpcompat.IsOpsProbePath(r.URL.Path) {
+			logger.Debug("route not found", "path", r.URL.Path, "method", r.Method)
+		}
 	})
 
 	return router

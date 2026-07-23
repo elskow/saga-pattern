@@ -13,6 +13,26 @@ import (
 	"saga-pattern/common/httpcompat"
 )
 
+func TestIsOpsProbePath(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{
+		"/actuator/health",
+		"/actuator/prometheus",
+		"/metrics",
+		"/actuator/health/",
+		"actuator/prometheus",
+	} {
+		if !httpcompat.IsOpsProbePath(path) {
+			t.Fatalf("IsOpsProbePath(%q) = false, want true", path)
+		}
+	}
+	for _, path := range []string{"", "/api/orders", "/actuator/info", "/health"} {
+		if httpcompat.IsOpsProbePath(path) {
+			t.Fatalf("IsOpsProbePath(%q) = true, want false", path)
+		}
+	}
+}
+
 func TestActuatorCompatibilityHandlers(t *testing.T) {
 	t.Parallel()
 

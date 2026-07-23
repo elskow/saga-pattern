@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"os"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,6 +22,17 @@ const (
 	labelResult                 = "result"
 )
 
+// suiteLabel is captured once at process start (empty string is a valid value).
+var suiteLabel = os.Getenv("SUITE_LABEL")
+
+// sagaDurationBuckets extends prometheus.DefBuckets past 10s to cover
+// choreography compensation cascades (empirically ~65–70s, headroom to 120s).
+var sagaDurationBuckets = []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 25, 50, 75, 100, 120}
+
+func constLabels() prometheus.Labels {
+	return prometheus.Labels{"suite_label": suiteLabel}
+}
+
 type Metrics struct {
 	registry              *prometheus.Registry
 	eventsConsumed        *prometheus.CounterVec
@@ -40,39 +52,47 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 	metrics := &Metrics{
 		registry: registry,
 		eventsConsumed: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: metricEventsConsumed,
-			Help: "Number of choreography events consumed by the framework.",
+			Name:        metricEventsConsumed,
+			Help:        "Number of choreography events consumed by the framework.",
+			ConstLabels: constLabels(),
 		}, []string{labelService, labelTopic, labelEventType, labelResult}),
 		eventsPublished: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: metricEventsPublished,
-			Help: "Number of choreography events published from the outbox.",
+			Name:        metricEventsPublished,
+			Help:        "Number of choreography events published from the outbox.",
+			ConstLabels: constLabels(),
 		}, []string{labelService, labelTopic, labelEventType}),
 		outboxPublishFailed: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: metricOutboxPublishFailed,
-			Help: "Number of outbox publish failures.",
+			Name:        metricOutboxPublishFailed,
+			Help:        "Number of outbox publish failures.",
+			ConstLabels: constLabels(),
 		}, []string{labelService, labelTopic, labelEventType}),
 		outboxAttempts: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    metricOutboxAttempts,
-			Help:    "Number of attempts made before an outbox row was sent.",
-			Buckets: []float64{1, 2, 3, 4, 5, 10},
+			Name:        metricOutboxAttempts,
+			Help:        "Number of attempts made before an outbox row was sent.",
+			Buckets:     []float64{1, 2, 3, 4, 5, 10},
+			ConstLabels: constLabels(),
 		}, []string{labelService, labelTopic, labelEventType}),
 		outboxSendDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    metricOutboxSendDuration,
-			Help:    "Latency of outbox publish operations in seconds.",
-			Buckets: prometheus.DefBuckets,
+			Name:        metricOutboxSendDuration,
+			Help:        "Latency of outbox publish operations in seconds.",
+			Buckets:     sagaDurationBuckets,
+			ConstLabels: constLabels(),
 		}, []string{labelService, labelTopic, labelEventType, labelResult}),
 		eventHandleDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    metricEventHandleDuration,
-			Help:    "Latency of choreography event handler execution in seconds.",
-			Buckets: prometheus.DefBuckets,
+			Name:        metricEventHandleDuration,
+			Help:        "Latency of choreography event handler execution in seconds.",
+			Buckets:     sagaDurationBuckets,
+			ConstLabels: constLabels(),
 		}, []string{labelService, labelTopic, labelEventType, labelResult}),
 		compensationStarted: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: metricCompensationStarted,
-			Help: "Count of compensation events started.",
+			Name:        metricCompensationStarted,
+			Help:        "Count of compensation events started.",
+			ConstLabels: constLabels(),
 		}, []string{labelService, labelEventType}),
 		compensationCompleted: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: metricCompensationCompleted,
-			Help: "Count of compensation events completed.",
+			Name:        metricCompensationCompleted,
+			Help:        "Count of compensation events completed.",
+			ConstLabels: constLabels(),
 		}, []string{labelService, labelEventType}),
 	}
 	registered := make([]prometheus.Collector, 0, 8)

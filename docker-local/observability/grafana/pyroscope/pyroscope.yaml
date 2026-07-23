@@ -1,6 +1,11 @@
 storage:
-  backend: filesystem
-  filesystem:
-    dir: /var/lib/pyroscope
+  backend: s3
+  s3:
+    endpoint: minio:9000
+    bucket_name: pyroscope
+    access_key_id: minioadmin
+    secret_access_key: minioadmin
+    insecure: true
+    force_path_style: true
 
 # No retention period set = data persists indefinitely (default behavior)
