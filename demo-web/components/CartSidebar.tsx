@@ -3,7 +3,7 @@
 import { memo, useCallback, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { formatPrice } from "@/lib/currency";
-import { Minus, Plus, ShoppingCart, Trash2, ArrowRight } from "lucide-react";
+import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { useCartStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,36 +31,36 @@ const CartRow = memo(function CartRow({
   const { product, quantity } = item;
 
   return (
-    <div className="group flex items-center gap-4 rounded-[1.25rem] border border-border/50 bg-card/40 p-3 transition-colors duration-200 hover:bg-card hover:shadow-md hover:shadow-muted/50">
-      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gradient-to-b from-muted/40 to-transparent">
+    <div className="flex items-center gap-3 border-b border-border py-3 last:border-b-0">
+      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md bg-muted/40">
         <img
           src={product.image}
           alt={product.name}
           loading="lazy"
           decoding="async"
-          className="w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-105"
+          className="h-full w-full object-contain p-1.5"
         />
       </div>
 
-      <div className="flex flex-1 flex-col justify-center min-w-0 gap-2">
-        <p className="truncate text-base font-semibold text-foreground">
+      <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
+        <p className="truncate text-sm font-medium text-foreground">
           {product.name}
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => onDecrement(product.id)}
-            className="h-7 w-7 rounded-full border border-border/60 bg-muted/30 hover:bg-muted flex items-center justify-center transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card transition-colors hover:bg-muted"
             aria-label="Decrease quantity"
           >
             <Minus className="h-3 w-3" />
           </button>
-          <span className="w-6 text-center text-sm font-semibold tabular-nums">{quantity}</span>
+          <span className="w-6 text-center text-sm tabular-nums">{quantity}</span>
           <button
             type="button"
             onClick={() => onIncrement(product.id)}
             disabled={quantity >= product.stock}
-            className="h-7 w-7 rounded-full border border-border/60 bg-muted/30 hover:bg-muted flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Increase quantity"
           >
             <Plus className="h-3 w-3" />
@@ -68,17 +68,17 @@ const CartRow = memo(function CartRow({
         </div>
       </div>
 
-      <div className="flex shrink-0 flex-col items-end gap-2">
-        <p className="text-base font-bold tabular-nums tracking-tight">
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        <p className="text-sm font-medium tabular-nums tracking-tight">
           {formatPrice(product.price * quantity)}
         </p>
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 rounded-full text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-500"
+          className="h-7 w-7 rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
           onClick={() => onRemove(product.id)}
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
     </div>
@@ -112,10 +112,10 @@ export function CartSidebar() {
     <Sheet>
       <SheetTrigger
         render={
-          <Button aria-label="Open cart" variant="ghost" size="icon" className="relative rounded-full hover:bg-muted/50 transition-colors">
+          <Button aria-label="Open cart" variant="ghost" size="icon" className="relative rounded-md transition-colors hover:bg-muted">
             <ShoppingCart className="h-5 w-5" />
             {count > 0 && (
-              <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-foreground px-1.5 text-[10px] font-bold text-background shadow-sm animate-in zoom-in">
+              <span className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-sm bg-primary px-1 text-[10px] font-medium text-primary-foreground">
                 {count}
               </span>
             )}
@@ -125,38 +125,35 @@ export function CartSidebar() {
         <span className="sr-only">Open cart</span>
       </SheetTrigger>
 
-      <SheetContent keepMounted className="flex w-full flex-col border-l border-border/60 bg-background p-0 sm:max-w-lg shadow-2xl">
-        <SheetHeader className="border-b border-border/50 p-6 text-left space-y-1">
-          <SheetTitle className="text-2xl font-bold tracking-tight text-foreground">
-            Your Cart
+      <SheetContent keepMounted className="flex w-full flex-col border-l border-border bg-card p-0 sm:max-w-md">
+        <SheetHeader className="space-y-1 border-b border-border p-4 text-left">
+          <SheetTitle className="text-base font-semibold tracking-tight text-foreground">
+            Your cart
           </SheetTitle>
-          <SheetDescription className="text-sm font-medium text-muted-foreground">
-            Review your items before checkout.
+          <SheetDescription className="text-sm text-muted-foreground">
+            Review items before checkout.
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4">
           {items.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-4 text-center pb-8 md:pb-16">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full border border-dashed border-border bg-muted/30">
-                <ShoppingCart className="h-8 w-8 text-muted-foreground/40" />
-              </div>
+            <div className="flex h-full flex-col items-center justify-center gap-3 pb-8 text-center">
               <div className="space-y-1">
-                <p className="text-lg font-semibold tracking-tight text-foreground">Cart is empty</p>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Looks like you haven't added anything yet.
+                <p className="text-sm font-medium text-foreground">Cart is empty</p>
+                <p className="text-sm text-muted-foreground">
+                  Add products from the shop to get started.
                 </p>
               </div>
               <SheetClose
                 render={
-                  <Button variant="outline" className="mt-4 rounded-full px-6 shadow-sm">
-                    Continue Shopping
+                  <Button variant="outline" className="mt-1 rounded-md px-4">
+                    Continue shopping
                   </Button>
                 }
               />
             </div>
           ) : (
-            <div className="space-y-4">
+            <div>
               {items.map((item) => (
                 <CartRow
                   key={item.product.id}
@@ -171,21 +168,20 @@ export function CartSidebar() {
         </div>
 
         {items.length > 0 && (
-          <div className="border-t border-border/50 bg-background p-6 space-y-5">
+          <div className="space-y-3 border-t border-border bg-card p-4">
             <div className="flex items-center justify-between">
-              <span className="text-base font-medium text-muted-foreground">Subtotal</span>
-              <span className="text-2xl font-bold tracking-tight tabular-nums">
+              <span className="text-sm text-muted-foreground">Subtotal</span>
+              <span className="text-base font-semibold tabular-nums tracking-tight">
                 {formatPrice(total)}
               </span>
             </div>
             <SheetClose
               render={
                 <Button
-                  className="group w-full h-12 rounded-full text-base font-semibold shadow-md transition-all hover:scale-[1.02]"
+                  className="h-10 w-full rounded-md text-sm font-medium"
                   onClick={handleCheckout}
                 >
                   Go to checkout
-                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </Button>
               }
             />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { fetchAllOrdersServer } from "@/lib/admin";
 import { Order, Pattern } from "@/types";
 import { formatPrice } from "@/lib/currency";
@@ -19,6 +19,7 @@ const STATUS_GROUPS = {
   completed: ["COMPLETED"],
   failed: ["FAILED", "PAYMENT_FAILED", "INVENTORY_FAILED", "SHIPPING_FAILED", "COMPENSATED", "COMPENSATING", "CANCELLED"],
 };
+const DISPLAY_LIMIT = 300;
 
 interface AdminOrdersClientProps {
   initialOrders: Order[];
@@ -35,7 +36,7 @@ export default function AdminOrdersClient({ initialOrders, initialError }: Admin
   const load = async () => {
     setLoading(true);
     try {
-      const data = await fetchAllOrdersServer();
+      const data = await fetchAllOrdersServer({ data: { force: true } });
       setOrders(data);
       setError(null);
     } catch (err) {
@@ -46,46 +47,54 @@ export default function AdminOrdersClient({ initialOrders, initialError }: Admin
     }
   };
 
-  const filtered = orders.filter((o) => {
-    if (patternFilter !== "all" && o.pattern !== patternFilter) return false;
-    const statuses = STATUS_GROUPS[statusFilter];
-    if (statuses && !statuses.includes(o.status)) return false;
-    return true;
-  });
+  const { displayOrders, filteredCount } = useMemo(() => {
+    const filtered = orders.filter((o) => {
+      if (patternFilter !== "all" && o.pattern !== patternFilter) return false;
+      const statuses = STATUS_GROUPS[statusFilter];
+      if (statuses && !statuses.includes(o.status)) return false;
+      return true;
+    });
+    // Newest first: reverse source order (API returns oldest-first) then cap
+    const newestFirst = filtered.length > 0 ? [...filtered].reverse() : filtered;
+    return {
+      filteredCount: filtered.length,
+      displayOrders: newestFirst.slice(0, DISPLAY_LIMIT),
+    };
+  }, [orders, patternFilter, statusFilter]);
 
   return (
-    <div className="space-y-6 max-w-6xl">
-      <div className="flex items-center justify-between">
+    <div className="max-w-6xl space-y-6">
+      <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
-          <p className="text-sm text-muted-foreground mt-1">Live order listing across choreography and orchestration</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Orders</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Live order listing across Choreography and Orchestration
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={load} className="gap-1.5 rounded-full text-xs">
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
-          </Button>
-        </div>
+        <Button variant="outline" size="sm" onClick={load} className="gap-1.5 text-xs">
+          <RefreshCw className="h-3.5 w-3.5" />
+          Refresh
+        </Button>
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+        <div className="flex items-start gap-2 rounded-md border border-amber-200/80 bg-amber-50 p-3 text-sm text-amber-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-0.5 rounded-full border border-border p-0.5">
+        <div className="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5">
           {PATTERN_FILTERS.map((p) => (
             <button
               key={p}
               onClick={() => setPatternFilter(p)}
               className={cn(
-                "rounded-full px-3 py-1 text-xs font-medium transition-colors capitalize",
+                "rounded-sm px-3 py-1 text-xs font-medium capitalize transition-colors",
                 patternFilter === p
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:text-foreground",
+                  ? "bg-secondary text-primary"
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
               {p}
@@ -93,16 +102,16 @@ export default function AdminOrdersClient({ initialOrders, initialError }: Admin
           ))}
         </div>
 
-        <div className="flex items-center gap-0.5 rounded-full border border-border p-0.5">
+        <div className="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5">
           {(Object.keys(STATUS_GROUPS) as (keyof typeof STATUS_GROUPS)[]).map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
               className={cn(
-                "rounded-full px-3 py-1 text-xs font-medium transition-colors capitalize",
+                "rounded-sm px-3 py-1 text-xs font-medium capitalize transition-colors",
                 statusFilter === s
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:text-foreground",
+                  ? "bg-secondary text-primary"
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
               {s}
@@ -110,67 +119,79 @@ export default function AdminOrdersClient({ initialOrders, initialError }: Admin
           ))}
         </div>
 
-        <span className="text-xs text-muted-foreground ml-auto">
-          {filtered.length} order{filtered.length !== 1 ? "s" : ""}
+        <span className="ml-auto text-xs text-muted-foreground">
+          {filteredCount > displayOrders.length
+            ? `Showing ${displayOrders.length} of ${filteredCount} orders`
+            : `${filteredCount} order${filteredCount !== 1 ? "s" : ""}`}
         </span>
       </div>
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="overflow-hidden rounded-md border border-border bg-card">
         {loading ? (
-          <div className="p-6 space-y-3">
+          <div className="space-y-3 p-6">
             {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-12 w-full" />
+              <Skeleton key={i} className="h-12 w-full rounded-md" />
             ))}
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="py-16 text-center text-sm text-muted-foreground">
+        ) : displayOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">
             No orders match the selected filters.
           </div>
         ) : (
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Order ID</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Pattern</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead>Payment</TableHead>
-                <TableHead>Tracking</TableHead>
-                <TableHead />
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="h-10 px-4 text-xs font-medium text-muted-foreground">
+                  Order ID
+                </TableHead>
+                <TableHead className="h-10 px-4 text-xs font-medium text-muted-foreground">
+                  Customer
+                </TableHead>
+                <TableHead className="h-10 px-4 text-xs font-medium text-muted-foreground">
+                  Pattern
+                </TableHead>
+                <TableHead className="h-10 px-4 text-xs font-medium text-muted-foreground">
+                  Status
+                </TableHead>
+                <TableHead className="h-10 px-4 text-right text-xs font-medium text-muted-foreground">
+                  Total
+                </TableHead>
+                <TableHead className="h-10 px-4 text-xs font-medium text-muted-foreground">
+                  Payment
+                </TableHead>
+                <TableHead className="h-10 px-4 text-xs font-medium text-muted-foreground">
+                  Tracking
+                </TableHead>
+                <TableHead className="h-10 px-4" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {[...filtered].reverse().map((order) => {
+              {displayOrders.map((order) => {
                 const id = order.id ?? order.orderId;
                 return (
                   <TableRow key={id}>
-                    <TableCell className="font-mono text-xs">{id}</TableCell>
-                    <TableCell className="text-sm">{order.customerId}</TableCell>
-                    <TableCell>
-                      <span className="capitalize text-xs border border-border rounded-full px-2 py-0.5 text-muted-foreground">
+                    <TableCell className="px-4 py-3 font-mono text-xs">{id}</TableCell>
+                    <TableCell className="px-4 py-3 text-sm">{order.customerId}</TableCell>
+                    <TableCell className="px-4 py-3">
+                      <span className="rounded-sm border border-primary/15 bg-secondary px-1.5 py-0.5 text-[11px] font-medium capitalize text-primary">
                         {order.pattern}
                       </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="px-4 py-3">
                       <OrderStatusBadge status={order.status} />
                     </TableCell>
-                    <TableCell className="text-right text-sm">
+                    <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
                       {order.totalAmount ? formatPrice(order.totalAmount) : "—"}
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
+                    <TableCell className="px-4 py-3 font-mono text-xs text-muted-foreground">
                       {order.paymentId ? order.paymentId.slice(0, 8) + "…" : "—"}
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
+                    <TableCell className="px-4 py-3 font-mono text-xs text-muted-foreground">
                       {order.shippingId ? order.shippingId.slice(0, 8) + "…" : "—"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="px-4 py-3">
                       <Link to="/orders/$orderId" params={{ orderId: id }} search={{ pattern: order.pattern }}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="rounded-full h-7 px-2.5 gap-1 text-xs"
-                        >
+                        <Button variant="ghost" size="sm" className="h-7 gap-1 px-2.5 text-xs">
                           Saga <ArrowRight className="h-3 w-3" />
                         </Button>
                       </Link>

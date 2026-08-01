@@ -28,10 +28,14 @@ const SERVICE_PORTS: { name: "order" | "payment" | "inventory" | "shipping"; pat
 ];
 
 const ORDERS_CACHE_TTL_MS = 5_000;
+const SHIPMENTS_CACHE_TTL_MS = 5_000;
 const SERVICE_HEALTH_CACHE_TTL_MS = 5_000;
 
 let cachedOrders: { value: Order[]; expiresAt: number } | null = null;
 let inFlightOrders: Promise<Order[]> | null = null;
+
+let cachedShipments: { value: Shipment[]; expiresAt: number } | null = null;
+let inFlightShipments: Promise<Shipment[]> | null = null;
 
 let cachedServiceHealth: { value: ServiceHealth[]; expiresAt: number } | null = null;
 let inFlightServiceHealth: Promise<ServiceHealth[]> | null = null;
@@ -51,11 +55,11 @@ const fetchOrdersFromSources = (serverSide: boolean) =>
           })
         );
       }),
-      { mode: "either" }
+      { mode: "either", concurrency: "unbounded" }
     );
 
     const errors: string[] = [];
-    const merged: Order[] = [];
+    const byId = new Map<string, Order>();
     let successfulSources = 0;
 
     results.forEach((result) => {
@@ -66,25 +70,36 @@ const fetchOrdersFromSources = (serverSide: boolean) =>
 
       successfulSources++;
       for (const order of result.right) {
-        const orderId = order.id ?? order.orderId;
-        const existingIndex = merged.findIndex((o) => (o.id ?? o.orderId) === orderId);
-        if (existingIndex >= 0) {
-          merged[existingIndex] = { ...merged[existingIndex], ...order };
-        } else {
-          merged.push(order);
-        }
+        const orderId = String(order.id ?? order.orderId ?? "");
+        if (!orderId) continue;
+        const prev = byId.get(orderId);
+        byId.set(orderId, prev ? { ...prev, ...order } : order);
       }
     });
 
+    const merged = Array.from(byId.values());
     if (merged.length > 0) return merged;
     if (successfulSources > 0) return [];
 
     return yield* Effect.fail(new Error(`Live order listing unavailable. ${errors.join("; ")}`));
   });
 
+async function loadOrdersCached(serverSide: boolean, force = false): Promise<Order[]> {
+  const now = Date.now();
+  if (!force && cachedOrders && cachedOrders.expiresAt > now) return cachedOrders.value;
+  if (!force && inFlightOrders) return inFlightOrders;
+  const run = Effect.runPromise(fetchOrdersFromSources(serverSide)).then((merged) => {
+    cachedOrders = { value: merged, expiresAt: Date.now() + ORDERS_CACHE_TTL_MS };
+    return merged;
+  }).finally(() => { inFlightOrders = null; });
+  if (!force) inFlightOrders = run;
+  return run;
+}
+
 export const fetchAllOrdersServer = createServerFn({ method: "GET" })
-  .handler(async (): Promise<Order[]> => {
-    return Effect.runPromise(fetchOrdersFromSources(true));
+  .inputValidator((data: { force?: boolean } | undefined) => data ?? {})
+  .handler(async ({ data }): Promise<Order[]> => {
+    return loadOrdersCached(true, Boolean(data?.force));
   });
 
 export async function fetchAllServiceHealth(): Promise<ServiceHealth[]> {
@@ -145,25 +160,7 @@ export const fetchAllServiceHealthServer = createServerFn({ method: "GET" })
   });
 
 export async function fetchAllOrders(): Promise<Order[]> {
-  const now = Date.now();
-  if (cachedOrders && cachedOrders.expiresAt > now) {
-    return cachedOrders.value;
-  }
-  if (inFlightOrders) {
-    return inFlightOrders;
-  }
-
-  inFlightOrders = Effect.runPromise(fetchOrdersFromSources(false)).then((merged) => {
-    cachedOrders = {
-      value: merged,
-      expiresAt: Date.now() + ORDERS_CACHE_TTL_MS,
-    };
-    return merged;
-  }).finally(() => {
-    inFlightOrders = null;
-  });
-
-  return inFlightOrders;
+  return loadOrdersCached(false, false);
 }
 
 export function computeMetrics(orders: Order[]): AdminMetrics {
@@ -364,7 +361,7 @@ const CITIES = [
   "New York Facility", "Dallas Distribution Center", "Seattle Warehouse",
 ];
 
-function progressForStatus(status: ShipmentStatus): ShipmentEvent[] {
+export function progressForStatus(status: ShipmentStatus): ShipmentEvent[] {
   const all: { status: ShipmentStatus; desc: string }[] = [
     { status: "LABEL_CREATED",    desc: "Shipping label created" },
     { status: "PICKED_UP",        desc: "Package picked up by carrier" },
@@ -426,60 +423,24 @@ const fetchRealShipments = (pattern: Pattern, serverSide: boolean) =>
         estimatedDelivery: new Date(Date.now() + dayOffset * 86400000).toISOString(),
         shippingAddress: s.ShippingAddress,
         items: [],
-        events: progressForStatus(feStatus),
+        events: [],
         createdAt: s.CreatedAt,
       };
     });
   });
 
-export const fetchRealShipmentsServer = createServerFn({ method: "POST" })
-  .inputValidator((data: Pattern) => data)
-  .handler(async ({ data }: { data: Pattern }): Promise<Shipment[]> => {
-    return Effect.runPromise(fetchRealShipments(data, true));
-  });
-
-export const fetchShipmentsServer = createServerFn({ method: "GET" })
-  .handler(async (): Promise<Shipment[]> => {
-    const program = Effect.gen(function* () {
-      const patterns: Pattern[] = ["orchestration", "choreography"];
-      const results = yield* Effect.all(
-        patterns.map((p) => fetchRealShipments(p, true)),
-        { mode: "either" }
-      );
-
-      const errors: string[] = [];
-      const shipments: Shipment[] = [];
-      let successfulSources = 0;
-
-      results.forEach((result) => {
-        if (Either.isRight(result)) {
-          successfulSources++;
-          shipments.push(...result.right);
-        } else {
-          errors.push(result.left.message);
-        }
-      });
-
-      if (shipments.length > 0) return shipments;
-      if (successfulSources > 0) return [];
-      return yield* Effect.fail(new Error(`Shipment data unavailable. ${errors.join("; ")}`));
-    });
-
-    return Effect.runPromise(program);
-  });
-
-export async function fetchShipments(): Promise<Shipment[]> {
-  const program = Effect.gen(function* () {
+const fetchShipmentsFromSources = (serverSide: boolean) =>
+  Effect.gen(function* () {
     const patterns: Pattern[] = ["orchestration", "choreography"];
     const results = yield* Effect.all(
-      patterns.map((p) => fetchRealShipments(p, false)),
-      { mode: "either" }
+      patterns.map((p) => fetchRealShipments(p, serverSide)),
+      { mode: "either", concurrency: "unbounded" }
     );
-    
+
     const errors: string[] = [];
     const shipments: Shipment[] = [];
     let successfulSources = 0;
-    
+
     results.forEach((result) => {
       if (Either.isRight(result)) {
         successfulSources++;
@@ -494,7 +455,32 @@ export async function fetchShipments(): Promise<Shipment[]> {
     return yield* Effect.fail(new Error(`Shipment data unavailable. ${errors.join("; ")}`));
   });
 
-  return Effect.runPromise(program);
+async function loadShipmentsCached(serverSide: boolean, force = false): Promise<Shipment[]> {
+  const now = Date.now();
+  if (!force && cachedShipments && cachedShipments.expiresAt > now) return cachedShipments.value;
+  if (!force && inFlightShipments) return inFlightShipments;
+  const run = Effect.runPromise(fetchShipmentsFromSources(serverSide)).then((merged) => {
+    cachedShipments = { value: merged, expiresAt: Date.now() + SHIPMENTS_CACHE_TTL_MS };
+    return merged;
+  }).finally(() => { inFlightShipments = null; });
+  if (!force) inFlightShipments = run;
+  return run;
+}
+
+export const fetchRealShipmentsServer = createServerFn({ method: "POST" })
+  .inputValidator((data: Pattern) => data)
+  .handler(async ({ data }: { data: Pattern }): Promise<Shipment[]> => {
+    return Effect.runPromise(fetchRealShipments(data, true));
+  });
+
+export const fetchShipmentsServer = createServerFn({ method: "GET" })
+  .inputValidator((data: { force?: boolean } | undefined) => data ?? {})
+  .handler(async ({ data }): Promise<Shipment[]> => {
+    return loadShipmentsCached(true, Boolean(data?.force));
+  });
+
+export async function fetchShipments(): Promise<Shipment[]> {
+  return loadShipmentsCached(false, false);
 }
 
 export const updateShipmentStatusServer = createServerFn({ method: "POST" })
@@ -508,7 +494,8 @@ export const updateShipmentStatusServer = createServerFn({ method: "POST" })
         body: JSON.stringify({ status: data.status }),
       }).pipe(Effect.timeout("5 seconds"));
     });
-    return Effect.runPromise(program);
+    await Effect.runPromise(program);
+    cachedShipments = null;
   });
 
 export async function updateShipmentStatus(pattern: Pattern, shippingId: string, status: string): Promise<void> {
@@ -520,9 +507,15 @@ export async function updateShipmentStatus(pattern: Pattern, shippingId: string,
       body: JSON.stringify({ status }),
     }).pipe(Effect.timeout("5 seconds"));
   });
-  return Effect.runPromise(program);
+  await Effect.runPromise(program);
+  cachedShipments = null;
 }
 
+function withTrackingEvents(shipment: Shipment | null | undefined): Shipment | null {
+  if (!shipment) return null;
+  if (shipment.events?.length) return shipment;
+  return { ...shipment, events: progressForStatus(shipment.status) };
+}
 
 export async function findShipmentByTracking(
   trackingId: string,
@@ -532,39 +525,25 @@ export async function findShipmentByTracking(
 ): Promise<Shipment | null> {
   const shipments = await fetchShipments();
   const scoped = pattern ? shipments.filter((shipment) => shipment.pattern === pattern) : shipments;
-  return (
+  const found =
     scoped.find((s) => s.trackingNumber === trackingId) ??
     scoped.find((s) => shipmentId != null && s.shipmentId === shipmentId) ??
     scoped.find((s) => orderId != null && s.orderId === orderId) ??
-    null
-  );
+    null;
+  return withTrackingEvents(found);
 }
 
 export const findShipmentByTrackingServer = createServerFn({ method: "POST" })
   .inputValidator((data: { trackingId: string, shipmentId: string | null, orderId: string | null, pattern: Pattern | null }) => data)
   .handler(async ({ data }: { data: { trackingId: string, shipmentId: string | null, orderId: string | null, pattern: Pattern | null } }): Promise<Shipment | null> => {
-    const program = Effect.gen(function* () {
-      const patterns: Pattern[] = ["orchestration", "choreography"];
-      const results = yield* Effect.all(
-        patterns.map((p) => fetchRealShipments(p, true)),
-        { mode: "either" }
-      );
-      
-      const shipments: Shipment[] = [];
-      results.forEach((result) => {
-        if (Either.isRight(result)) shipments.push(...result.right);
-      });
-
-      const scoped = data.pattern ? shipments.filter((shipment) => shipment.pattern === data.pattern) : shipments;
-      return (
-        scoped.find((s) => s.trackingNumber === data.trackingId) ??
-        scoped.find((s) => data.shipmentId != null && s.shipmentId === data.shipmentId) ??
-        scoped.find((s) => data.orderId != null && s.orderId === data.orderId) ??
-        null
-      );
-    });
-
-    return Effect.runPromise(program);
+    const shipments = await loadShipmentsCached(true, false);
+    const scoped = data.pattern ? shipments.filter((shipment) => shipment.pattern === data.pattern) : shipments;
+    const found =
+      scoped.find((s) => s.trackingNumber === data.trackingId) ??
+      scoped.find((s) => data.shipmentId != null && s.shipmentId === data.shipmentId) ??
+      scoped.find((s) => data.orderId != null && s.orderId === data.orderId) ??
+      null;
+    return withTrackingEvents(found);
   });
 
 const FAILURE_SERVICE_PROXY_PATHS: Record<FailureServiceKey, string> = {

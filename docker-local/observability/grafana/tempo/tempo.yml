@@ -11,21 +11,21 @@ distributor:
           endpoint: 0.0.0.0:4318
 
 ingester:
-  # Flush head block to backend at least this often. Suite export and MinIO
-  # backup must wait ≥ this after the last span if newest IDs are required.
   max_block_duration: 5m
 
 compactor:
   compaction:
-    # Keep completed blocks for multi-phase thesis suites + post-run analysis.
-    # block_retention: 0 was observed to drop blocks within ~15–20 min: suite-end
-    # export-traces then returned empty spans.csv for early phases (comparison SO,
-    # scale-variance head) while spanmetrics in Mimir still had data.
-    # 48h covers longest local campaign day + re-export; raise if multi-day hold needed.
-    block_retention: 48h
-    # After compaction merges blocks, keep the old inputs briefly so queriers with
-    # a stale blocklist can still read them (Tempo default class; ≥ 2× blocklist_poll).
-    compacted_block_retention: 1h
+    # Tempo has NO official "forever". Source (tempodb/retention.go v2.8.2):
+    #   cutoff = now.Add(-block_retention)
+    #   if block.EndTime.Before(cutoff) → mark for deletion
+    # block_retention: 0s ⇒ cutoff=now ⇒ EVERY finished block deleted next tick
+    # (empty early-phase spans.csv). Forbidden.
+    #
+    # Practical unlimited for thesis: 100 years. Compaction still merges blocks;
+    # age-based delete never fires in campaign lifetime.
+    block_retention: 876000h
+    # Keep post-compaction source inputs for querier poll lag (>= 2x blocklist_poll).
+    compacted_block_retention: 24h
 
 storage:
   trace:

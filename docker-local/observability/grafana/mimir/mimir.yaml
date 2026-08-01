@@ -16,6 +16,11 @@ blocks_storage:
 
 compactor:
   data_dir: /data/compactor
+  # Grace before hard-delete of blocks soft-marked after compaction merge.
+  # Age retention is already off (limits.compactor_blocks_retention_period: 0).
+  # Compaction still marks superseded *source* blocks; this only delays hard GC.
+  # Long delay keeps restore/query races rare on local thesis hosts.
+  deletion_delay: 720h
   sharding_ring:
     kvstore:
       store: memberlist

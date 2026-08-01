@@ -10,7 +10,7 @@ import { OrderStatusBadge } from "@/components/OrderStatusBadge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, ArrowRight, RefreshCw, Loader2, Info, XCircle } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 
@@ -118,14 +118,14 @@ export default function OrderTrackingPageClient({
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto space-y-8 w-full">
-        <Skeleton className="h-10 w-64 rounded-xl" />
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-10">
-          <div className="lg:col-span-3 space-y-4">
-            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-20 rounded-[1.5rem]" />)}
+      <div className="mx-auto w-full max-w-7xl space-y-8">
+        <Skeleton className="h-9 w-56 rounded-md" />
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
+          <div className="space-y-3 lg:col-span-3">
+            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-16 rounded-md" />)}
           </div>
           <div className="lg:col-span-2">
-            <Skeleton className="h-72 rounded-[1.5rem]" />
+            <Skeleton className="h-64 rounded-md" />
           </div>
         </div>
       </div>
@@ -134,29 +134,24 @@ export default function OrderTrackingPageClient({
 
   if (error || (!order && !awaitingProjection)) {
     return (
-      <div className="flex flex-col items-center justify-center py-32 gap-5 text-center rounded-[2rem] border border-dashed border-red-200 bg-red-50/30 max-w-7xl mx-auto">
-        <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center mb-2 shadow-sm">
-          <span className="text-red-600 font-bold text-3xl">!</span>
-        </div>
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-center gap-3 rounded-md border border-dashed border-destructive/30 bg-destructive/5 py-24 text-center">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-red-900">Order not found</h1>
-          <p className="text-sm text-red-600/80 mt-1 max-w-sm mx-auto">
-            {error ?? "The backend may not be running on the expected port or the order doesn't exist."}
+          <h1 className="text-base font-semibold tracking-tight text-foreground">Order not found</h1>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+            {error ?? "Order missing or backend unreachable."}
           </p>
         </div>
-        <div className="flex gap-3 mt-2">
+        <div className="mt-1 flex gap-2">
           <Button
             variant="outline"
-            className="rounded-full gap-2 shadow-sm border-red-200 text-red-700 hover:bg-red-50"
+            className="rounded-md"
             onClick={() => { setLoading(true); fetchOrder().finally(() => setLoading(false)); }}
           >
-            <RefreshCw className="h-4 w-4" />
-            Retry Connection
+            Retry
           </Button>
           <Link to="/orders">
-            <Button className="rounded-full gap-2 shadow-sm">
-              <ArrowLeft className="h-4 w-4" />
-              Return to Orders
+            <Button className="rounded-md">
+              Back to orders
             </Button>
           </Link>
         </div>
@@ -166,31 +161,31 @@ export default function OrderTrackingPageClient({
 
   if (!order && awaitingProjection) {
     return (
-      <div className="max-w-7xl mx-auto space-y-8 w-full">
-        <div className="flex items-center gap-4 border-b border-border/60 pb-6 mb-8 mt-2">
+      <div className="mx-auto w-full max-w-7xl space-y-8">
+        <div className="mb-6 mt-2 flex items-center gap-3 border-b border-border pb-5">
           <Link to="/orders">
-            <Button variant="outline" size="icon" className="h-10 w-10 rounded-full border-border/60 hover:bg-muted/50 transition-colors shrink-0">
+            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 rounded-md border-border">
               <ArrowLeft className="h-4 w-4 text-muted-foreground" />
             </Button>
           </Link>
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight text-foreground">Order Tracking</h1>
-              <span className="flex items-center gap-1.5 text-xs font-semibold bg-amber-500/10 text-amber-600 border border-amber-500/20 px-2.5 py-1 rounded-full">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Awaiting final projection
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">Order tracking</h1>
+              <span className="inline-flex items-center gap-1.5 rounded-sm border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Awaiting projection
               </span>
             </div>
-            <p className="text-sm text-muted-foreground font-mono mt-1">#{orderId}</p>
+            <p className="mt-0.5 font-mono text-sm text-muted-foreground">#{orderId}</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-10">
-          <div className="lg:col-span-3 space-y-4">
-            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-20 rounded-[1.5rem]" />)}
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
+          <div className="space-y-3 lg:col-span-3">
+            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-16 rounded-md" />)}
           </div>
           <div className="lg:col-span-2">
-            <Skeleton className="h-72 rounded-[1.5rem]" />
+            <Skeleton className="h-64 rounded-md" />
           </div>
         </div>
       </div>
@@ -202,94 +197,97 @@ export default function OrderTrackingPageClient({
   const canCancel = !isComplete && !resolvedOrder.trackingNumber;
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 w-full pb-12">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-border/60 pb-6 mb-8 mt-2">
-        <div className="flex items-start sm:items-center gap-4">
+    <div className="mx-auto w-full max-w-7xl space-y-8 pb-12">
+      <div className="mb-6 mt-2 flex flex-col justify-between gap-4 border-b border-border pb-5 sm:flex-row sm:items-end">
+        <div className="flex items-start gap-3 sm:items-center">
           <Link to="/orders">
             <Button
               variant="outline"
               size="icon"
-              className="h-10 w-10 mt-1 sm:mt-0 rounded-full border-border/60 hover:bg-muted/50 transition-colors shrink-0"
+              className="mt-0.5 h-9 w-9 shrink-0 rounded-md border-border sm:mt-0"
             >
               <ArrowLeft className="h-4 w-4 text-muted-foreground" />
             </Button>
           </Link>
           <div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-3xl font-bold tracking-tight text-foreground">Order Tracking</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">Order tracking</h1>
               <OrderStatusBadge status={resolvedOrder.status} />
               {polling && (
-                <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/50 border border-border/50 px-2.5 py-1 rounded-full">
+                <span className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                  Live Polling ({pollCount})
+                  Live ({pollCount})
                 </span>
               )}
             </div>
-            <p className="text-sm text-muted-foreground font-mono mt-1.5">
+            <p className="mt-0.5 font-mono text-sm text-muted-foreground">
               #{resolvedOrder.id || resolvedOrder.orderId}
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2">
           {canCancel && (
             <Button
               variant="destructive"
               onClick={handleCancel}
               disabled={cancelling}
-              className="gap-2 rounded-full text-xs font-semibold shadow-sm"
+              className="h-9 rounded-md text-xs font-medium"
             >
-              {cancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
-              {cancelling ? "Cancelling..." : "Cancel Order"}
+              {cancelling ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  Cancelling…
+                </>
+              ) : (
+                "Cancel order"
+              )}
             </Button>
           )}
           <Button
             variant="outline"
             onClick={() => fetchOrder()}
-            className="gap-2 rounded-full text-xs font-semibold shadow-sm hover:bg-muted/50"
+            className="h-9 rounded-md text-xs font-medium"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh Status
+            Refresh
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-12">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-10">
         <div className="lg:col-span-3">
-          <div className="rounded-[1.5rem] border border-border/50 bg-card/40 backdrop-blur-xl p-7 sm:p-9 shadow-xl shadow-muted/20">
-            <div className="flex items-center gap-2 mb-8">
-              <h2 className="text-lg font-bold tracking-tight text-foreground">Fulfillment Progress</h2>
-            </div>
+          <div className="rounded-md border border-border bg-card p-5 sm:p-6">
+            <h2 className="mb-6 text-base font-semibold tracking-tight text-foreground">Fulfillment progress</h2>
             <SagaTimeline order={resolvedOrder} />
           </div>
         </div>
 
-        <aside className="lg:col-span-2 space-y-6">
-          <div className="rounded-[1.5rem] border border-border/50 bg-card/40 backdrop-blur-xl p-7 shadow-xl shadow-muted/20 space-y-5">
-            <h2 className="text-lg font-bold tracking-tight text-foreground">Order Details</h2>
+        <aside className="space-y-4 lg:col-span-2">
+          <div className="space-y-4 rounded-md border border-border bg-card p-5">
+            <h2 className="text-base font-semibold tracking-tight text-foreground">Order details</h2>
 
-            <div className="space-y-4 text-sm">
+            <div className="space-y-3 text-sm">
               {[
                 { label: "Customer", value: resolvedOrder.customerId, mono: true },
-                { label: "Shipping Address", value: resolvedOrder.shippingAddress },
+                { label: "Shipping address", value: resolvedOrder.shippingAddress },
                 ...(resolvedOrder.totalAmount
-                  ? [{ label: "Total Amount", value: formatPrice(resolvedOrder.totalAmount) }]
+                  ? [{ label: "Total amount", value: formatPrice(resolvedOrder.totalAmount) }]
                   : []),
                 ...(resolvedOrder.paymentId
                   ? [{ label: "Payment ID", value: resolvedOrder.paymentId, mono: true }]
                   : []),
                 ...(resolvedOrder.reservationId
-                  ? [{ label: "Inventory Reservation", value: resolvedOrder.reservationId, mono: true }]
+                  ? [{ label: "Inventory reservation", value: resolvedOrder.reservationId, mono: true }]
                   : []),
                 ...(resolvedOrder.trackingNumber
-                  ? [{ label: "Tracking Number", value: resolvedOrder.trackingNumber, mono: true }]
+                  ? [{ label: "Tracking number", value: resolvedOrder.trackingNumber, mono: true }]
                   : resolvedOrder.shippingId
                     ? [{ label: "Shipment ID", value: resolvedOrder.shippingId, mono: true }]
                   : []),
               ].map(({ label, value, mono }) => (
                 <div key={label}>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{label}</p>
-                  <p className={`mt-1 text-foreground break-all ${mono ? "font-mono text-sm font-medium bg-muted/40 p-1.5 rounded-md inline-block border border-border/50" : "text-sm font-medium"}`}>
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className={`mt-0.5 break-all text-foreground ${mono ? "inline-block font-mono text-sm" : "text-sm font-medium"}`}>
                     {value}
                   </p>
                 </div>
@@ -298,13 +296,13 @@ export default function OrderTrackingPageClient({
 
             {resolvedOrder.items && resolvedOrder.items.length > 0 && (
               <>
-                <Separator className="bg-border/60" />
-                <div className="space-y-2.5">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Purchased Items</p>
+                <Separator />
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Purchased items</p>
                   {resolvedOrder.items.map((item, i) => (
-                    <div key={i} className="flex justify-between items-center text-sm">
-                      <span className="font-medium text-foreground">{item.productName} <span className="text-muted-foreground ml-1">× {item.quantity}</span></span>
-                      <span className="font-bold tabular-nums">{formatPrice(item.price * item.quantity)}</span>
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-foreground">{item.productName} <span className="ml-1 text-muted-foreground">× {item.quantity}</span></span>
+                      <span className="tabular-nums font-medium">{formatPrice(item.price * item.quantity)}</span>
                     </div>
                   ))}
                 </div>
@@ -312,40 +310,35 @@ export default function OrderTrackingPageClient({
             )}
           </div>
 
-          <div className="rounded-2xl border border-border/60 bg-muted/20 p-6 space-y-2.5">
-            <h3 className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-              <Info className="h-3.5 w-3.5" />
-              Order Processing System
+          <div className="space-y-2 rounded-md border border-border bg-muted/30 p-4">
+            <h3 className="text-xs font-medium text-muted-foreground">
+              Order processing
             </h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
+            <p className="text-sm leading-relaxed text-muted-foreground">
               {pattern === "choreography" ? (
-                <><strong className="font-bold text-foreground">Choreography</strong> — Our distributed
-                  warehouse systems process your order in parallel to ensure lightning-fast fulfillment.</>
+                <><strong className="font-medium text-foreground">Choreography</strong> — services react to events in parallel for faster fulfillment.</>
               ) : (
-                <><strong className="font-bold text-foreground">Orchestration</strong> — A central
-                  dispatch controller oversees your entire order journey for maximum precision and reliability.</>
+                <><strong className="font-medium text-foreground">Orchestration</strong> — a central controller drives each step for tighter control.</>
               )}
             </p>
           </div>
 
           {isComplete && resolvedOrder.status === "COMPLETED" && (
-            <div className="space-y-3 pt-2">
+            <div className="space-y-2 pt-1">
               {(resolvedOrder.trackingNumber || resolvedOrder.shippingId) && (
                 <Link
                   to="/tracking/$trackingId"
                   params={{ trackingId: resolvedOrder.trackingNumber || resolvedOrder.shippingId || "" }}
                   search={{ pattern: resolvedOrder.pattern, orderId: resolvedOrder.id || resolvedOrder.orderId, shipmentId: resolvedOrder.shippingId ?? null }}
                 >
-                  <Button variant="outline" className="w-full h-11 rounded-full gap-2 text-sm font-semibold shadow-sm hover:bg-muted/50 transition-all mb-2">
-                    Track Shipment Transit
-                    <ArrowRight className="h-4 w-4" />
+                  <Button variant="outline" className="mb-2 h-10 w-full rounded-md text-sm font-medium">
+                    Track shipment
                   </Button>
                 </Link>
               )}
               <Link to="/">
-                <Button className="w-full h-12 rounded-full gap-2 bg-foreground text-background hover:bg-foreground/90 text-sm font-bold shadow-md transition-all hover:scale-[1.02]">
-                  Continue Shopping
-                  <ArrowRight className="h-4 w-4" />
+                <Button className="h-10 w-full rounded-md bg-primary text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                  Continue shopping
                 </Button>
               </Link>
             </div>

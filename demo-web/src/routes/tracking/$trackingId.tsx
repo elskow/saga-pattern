@@ -49,8 +49,8 @@ function ShipmentTrackingPage() {
       fallback={
         <div className="max-w-2xl mx-auto space-y-6">
           <Skeleton className="h-7 w-48" />
-          <Skeleton className="h-48 rounded-xl" />
-          <Skeleton className="h-64 rounded-xl" />
+          <Skeleton className="h-48 rounded-md" />
+          <Skeleton className="h-64 rounded-md" />
         </div>
       }
     >

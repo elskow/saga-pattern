@@ -4,8 +4,6 @@ import { Product } from "@/types";
 import { formatPrice } from "@/lib/currency";
 import { useCartStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-
-import { ShoppingCart, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -13,9 +11,10 @@ import { Link } from "@tanstack/react-router";
 
 interface ProductCardProps {
     product: Product;
+    onSelect?: () => void;
 }
 
-export function ProductCard({ product }: ProductCardProps) {
+export function ProductCard({ product, onSelect }: ProductCardProps) {
     const addItem = useCartStore((s) => s.addItem);
     const quantityInCart = useCartStore((s) => s.items.find((item) => item.product.id === product.id)?.quantity ?? 0);
     const [added, setAdded] = useState(false);
@@ -45,84 +44,96 @@ export function ProductCard({ product }: ProductCardProps) {
     };
 
     return (
-        <div className="group relative flex h-full flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:shadow-muted/40">
-            
-            <Link
-                to="/products/$productId"
-                params={{ productId: product.id }}
-                className="relative block aspect-[4/3] w-full bg-gradient-to-b from-muted/30 to-transparent cursor-pointer"
-            >
-                <img
-                    src={product.image}
-                    alt={product.name}
-                    className="w-full h-full object-contain p-6 transition-transform duration-300 ease-out group-hover:scale-105"
-                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                />
+        <div className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-colors hover:border-border/80">
+            {onSelect ? (
+                <button
+                    type="button"
+                    onClick={onSelect}
+                    className="relative block aspect-[4/3] w-full cursor-pointer bg-muted/40"
+                >
+                    <img
+                        src={product.image}
+                        alt={product.name}
+                        className="h-full w-full object-contain p-6 mix-blend-multiply transition-transform duration-300 group-hover:scale-[1.03]"
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    />
 
-                {product.stock <= 0 ? (
-                    <span className="absolute left-4 top-4 rounded-full border border-destructive/20 bg-destructive/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-destructive">
-                        Out of stock
-                    </span>
-                ) : product.stock <= 10 && (
-                    <span className="absolute left-4 top-4 rounded-full border border-orange-500/20 bg-orange-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-orange-600">
-                        Low stock
-                    </span>
-                )}
-            </Link>
+                    {product.stock <= 0 ? (
+                        <span className="absolute left-2.5 top-2.5 rounded-sm border border-border bg-card px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                            Out of stock
+                        </span>
+                    ) : product.stock <= 10 && (
+                        <span className="absolute left-2.5 top-2.5 rounded-sm border border-border bg-card px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                            Low stock
+                        </span>
+                    )}
+                </button>
+            ) : (
+                <Link
+                    to="/products/$productId"
+                    params={{ productId: product.id }}
+                    className="relative block aspect-[4/3] w-full cursor-pointer bg-muted/40"
+                >
+                    <img
+                        src={product.image}
+                        alt={product.name}
+                        className="h-full w-full object-contain p-6 mix-blend-multiply transition-transform duration-300 group-hover:scale-[1.03]"
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    />
 
-            <div className="flex flex-1 flex-col space-y-4 p-5 pt-4">
-                <div className="flex-1 space-y-1.5">
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.25em]">
+                    {product.stock <= 0 ? (
+                        <span className="absolute left-2.5 top-2.5 rounded-sm border border-border bg-card px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                            Out of stock
+                        </span>
+                    ) : product.stock <= 10 && (
+                        <span className="absolute left-2.5 top-2.5 rounded-sm border border-border bg-card px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                            Low stock
+                        </span>
+                    )}
+                </Link>
+            )}
+
+            <div className="flex flex-1 flex-col space-y-3 p-4">
+                <div className="flex-1 space-y-1">
+                    <p className="text-xs font-medium uppercase tracking-wider text-primary">
                         {product.category}
                     </p>
-                    <Link to="/products/$productId" params={{ productId: product.id }}>
-                        <h3 className="line-clamp-1 text-base font-bold tracking-tight text-foreground hover:underline cursor-pointer">
-                            {product.name}
-                        </h3>
-                    </Link>
-                    <p className="line-clamp-2 text-sm text-muted-foreground leading-relaxed">
+                    {onSelect ? (
+                        <button type="button" onClick={onSelect} className="block w-full text-left">
+                            <h3 className="line-clamp-1 text-sm font-medium tracking-tight text-foreground hover:text-primary cursor-pointer">
+                                {product.name}
+                            </h3>
+                        </button>
+                    ) : (
+                        <Link to="/products/$productId" params={{ productId: product.id }}>
+                            <h3 className="line-clamp-1 text-sm font-medium tracking-tight text-foreground hover:text-primary cursor-pointer">
+                                {product.name}
+                            </h3>
+                        </Link>
+                    )}
+                    <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
                         {product.description}
                     </p>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 pt-2">
-                    <div className="min-w-0 space-y-0.5">
-                        <p className="text-base lg:text-lg font-bold tracking-tight text-foreground tabular-nums">
+                <div className="flex items-center justify-between gap-3 pt-0.5">
+                    <p className="text-sm font-bold tabular-nums tracking-tight text-primary">
                         {formatPrice(product.price)}
-                        </p>
-                        {outOfStock && (
-                            <p className="text-xs font-medium text-destructive">
-                                Out of stock
-                            </p>
-                        )}
-                    </div>
-
+                    </p>
                     <Button
-                        onClick={handleAdd}
-                        disabled={outOfStock}
                         size="sm"
+                        onClick={handleAdd}
+                        disabled={outOfStock || atLimit}
                         className={cn(
-                            "relative h-9 w-24 shrink-0 rounded-full px-0 text-xs font-semibold transition-colors duration-200 shadow-sm",
-                            added
-                                ? "bg-green-500 text-white hover:bg-green-600 shadow-green-500/20"
-                                : "bg-foreground text-background hover:bg-foreground/90 hover:shadow-md",
+                            "h-8 min-w-[4.5rem] rounded-md text-xs font-medium",
+                            outOfStock || atLimit
+                                ? "opacity-50"
+                                : added
+                                    ? "bg-muted text-foreground hover:bg-muted"
+                                    : "",
                         )}
                     >
-                        {outOfStock ? (
-                            "Out"
-                        ) : atLimit ? (
-                            "Limit"
-                        ) : added ? (
-                            <>
-                                <Check className="h-3.5 w-3.5 mr-1.5" />
-                                Added
-                            </>
-                        ) : (
-                            <>
-                                <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
-                                Add
-                            </>
-                        )}
+                        {outOfStock ? "Out" : atLimit ? "Limit" : added ? "Added" : "Add"}
                     </Button>
                 </div>
             </div>

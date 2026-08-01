@@ -132,7 +132,8 @@ obs_s3_wipe() {
         # on `docker run <uncached>` aborts the campaign prep. minio/mc is guaranteed
         # cached (preflight asserts it) and ships a POSIX sh; alpine is preferred if present.
         local wipe_image=""
-        for cand in "${WIPE_IMAGE:-}" alpine:3.20 minio/mc:RELEASE.2025-04-16T18-13-26Z; do
+        # Prefer alpine (has tar) for wipe/extract; minio/mc has no tar.
+        for cand in "${WIPE_IMAGE:-}" alpine:3.20 alpine:latest minio/mc:RELEASE.2025-04-16T18-13-26Z; do
             [ -n "$cand" ] || continue
             if docker image inspect "$cand" >/dev/null 2>&1; then
                 wipe_image="$cand"
@@ -140,7 +141,7 @@ obs_s3_wipe() {
             fi
         done
         if [ -z "$wipe_image" ]; then
-            log_error "No cached image available for MinIO wipe (looked for WIPE_IMAGE, alpine:3.20, minio/mc). Load one offline first."
+            log_error "No cached image available for MinIO wipe (looked for WIPE_IMAGE, alpine, minio/mc). Load one offline first."
             return 1
         fi
         log_info "MinIO wipe using cached image: ${wipe_image}"
@@ -194,30 +195,91 @@ obs_s3_backup() {
     log_info "Start again: $0 start-observability  (or start-dual-local)"
 }
 
+# After restore, strip Mimir/Pyroscope soft-delete marks so store-gateway does not
+# fail consistency checks on mid-compaction campaign archives. Compaction will
+# re-mark superseded sources on next live run; age retention stays off forever.
+obs_s3_strip_deletion_marks() {
+    log_info "Stripping deletion-mark.json + bucket-index under ${MINIO_DATA_DIR} (restore hygiene)"
+    local wipe_image=""
+    for cand in "${WIPE_IMAGE:-}" alpine:3.20 minio/mc:RELEASE.2025-04-16T18-13-26Z; do
+        [ -n "$cand" ] || continue
+        if docker image inspect "$cand" >/dev/null 2>&1; then
+            wipe_image="$cand"
+            break
+        fi
+    done
+    if [ -z "$wipe_image" ]; then
+        log_warn "No cached image for mark strip; trying host find"
+        find "${MINIO_DATA_DIR}" \( -name 'deletion-mark.json' -o -name '*-deletion-mark.json' \) -exec rm -rf {} + 2>/dev/null || true
+        find "${MINIO_DATA_DIR}" -name 'bucket-index.json.gz' -delete 2>/dev/null || true
+        find "${MINIO_DATA_DIR}" -type d -name 'markers' -exec rm -rf {} + 2>/dev/null || true
+        return 0
+    fi
+    docker run --rm --entrypoint sh \
+        -v "${MINIO_DATA_DIR}:/data" \
+        "$wipe_image" \
+        -c '
+            find /data \( -name deletion-mark.json -o -name "*-deletion-mark.json" \) -exec rm -rf {} + 2>/dev/null || true
+            find /data -name bucket-index.json.gz -delete 2>/dev/null || true
+            find /data -type d -name markers -exec rm -rf {} + 2>/dev/null || true
+            exit 0
+        ' || log_warn "Docker mark strip returned non-zero (continuing)"
+}
+
 obs_s3_restore() {
     local archive=${1:-}
-    local parent data_name
+    local parent data_name abs_archive extract_image=""
     parent="$(dirname "${MINIO_DATA_DIR}")"
     data_name="$(basename "${MINIO_DATA_DIR}")"
     if [ -z "$archive" ] || [ ! -f "$archive" ]; then
         log_error "Usage: $0 obs-s3-restore <backup.tar.gz>"
         exit 1
     fi
-    log_warn "Restoring MinIO from ${archive} (replaces current durable store under ${MINIO_DATA_DIR})"
-    grafana_compose down --remove-orphans 2>/dev/null || true
+    abs_archive="$(cd "$(dirname "$archive")" && pwd)/$(basename "$archive")"
+    log_warn "Restoring MinIO from ${abs_archive} (replaces current durable store under ${MINIO_DATA_DIR})"
+    obs_s3_wipe || {
+        log_error "Pre-restore wipe failed"
+        exit 1
+    }
     mkdir -p "$parent" "${MINIO_DATA_DIR}"
-    find "${MINIO_DATA_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-    tar -C "$parent" -xzf "$archive"
-    if [ ! -d "${MINIO_DATA_DIR}" ]; then
-        log_error "Archive missing top-level '${data_name}/' (expected path after extract: ${MINIO_DATA_DIR})"
+    # Extract as root via alpine so object ownership matches MinIO container.
+    for cand in "${WIPE_IMAGE:-}" alpine:3.20 alpine:latest; do
+        [ -n "$cand" ] || continue
+        if docker image inspect "$cand" >/dev/null 2>&1; then
+            extract_image="$cand"
+            break
+        fi
+    done
+    if [ -n "$extract_image" ]; then
+        log_info "Extracting archive with ${extract_image}"
+        docker run --rm --entrypoint sh \
+            -v "${MINIO_DATA_DIR}:/data" \
+            -v "${abs_archive}:/archive.tar.gz:ro" \
+            "$extract_image" \
+            -c 'set -e; tar -C /tmp -xzf /archive.tar.gz; cp -a /tmp/minio/. /data/' \
+            || {
+                log_error "Docker extract failed"
+                exit 1
+            }
+    else
+        tar -C "$parent" -xzf "$abs_archive" || {
+            log_error "Host tar extract failed"
+            exit 1
+        }
+    fi
+    if [ ! -d "${MINIO_DATA_DIR}" ] || [ -z "$(ls -A "${MINIO_DATA_DIR}" 2>/dev/null | head -1)" ]; then
+        log_error "Restore left ${MINIO_DATA_DIR} empty or missing"
         exit 1
     fi
-    log_success "MinIO host data restored from ${archive}"
+    obs_s3_strip_deletion_marks
+    log_success "MinIO host data restored from ${abs_archive}"
     log_info "Start again: $0 start-observability  (or start-dual-local)"
 }
 
 start_observability_beyla() {
-    if curl -sf "http://localhost:8999/metrics" > /dev/null 2>&1; then
+    # Bridge publish :8999 (compose); also try host-net for baremetal host mode.
+    if curl -sf "http://localhost:8999/metrics" > /dev/null 2>&1 \
+        || curl -sf "http://127.0.0.1:8999/metrics" > /dev/null 2>&1; then
         log_success "observability:beyla is healthy"
         return 0
     fi

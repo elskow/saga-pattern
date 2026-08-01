@@ -46,7 +46,7 @@ function StockBar({ value, max, reserved }: { value: number; max: number; reserv
   return (
     <div className="flex items-center gap-2">
       <div className="flex h-1.5 w-24 overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-foreground" style={{ width: `${availPct}%` }} />
+        <div className="h-full rounded-full bg-primary" style={{ width: `${availPct}%` }} />
         <div className="h-full bg-amber-400" style={{ width: `${resPct}%` }} />
       </div>
       <span className="text-xs text-muted-foreground">{value} avail</span>
@@ -126,7 +126,7 @@ function ImagePicker({
     <div className="space-y-2">
       <div
         className={cn(
-          "relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 transition-colors cursor-pointer hover:bg-muted/50",
+          "relative flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-muted/30 transition-colors cursor-pointer hover:bg-muted/50",
           value ? "h-28" : "h-20",
           disabled && "pointer-events-none opacity-50"
         )}
@@ -142,7 +142,7 @@ function ImagePicker({
           <img
             src={value}
             alt="Product"
-            className="h-full w-full rounded-xl object-cover"
+            className="h-full w-full rounded-md object-cover"
           />
         ) : (
           <>
@@ -151,7 +151,7 @@ function ImagePicker({
           </>
         )}
         {uploading && (
-          <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-background/70 backdrop-blur-sm">
+          <div className="absolute inset-0 flex items-center justify-center rounded-md bg-background/70 backdrop-blur-sm">
             <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         )}
@@ -269,7 +269,7 @@ function ProductDialog({
   return (
     // Backdrop
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-card shadow-xl overflow-hidden">
+      <div className="w-full max-w-lg overflow-hidden rounded-md border border-border bg-card">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <h2 className="text-base font-semibold tracking-tight">
@@ -336,7 +336,7 @@ function ProductDialog({
 
             {/* Stock — only shown on add */}
             {mode === "add" && (
-              <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-muted/20 p-4">
+              <div className="grid grid-cols-2 gap-3 rounded-md border border-border bg-muted/20 p-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="pf-c-stock" className="text-xs">
                     Choreography stock
@@ -371,10 +371,10 @@ function ProductDialog({
 
           {/* Footer */}
           <div className="flex items-center justify-end gap-2 border-t border-border px-6 py-4">
-            <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={onClose} disabled={saving}>
+            <Button type="button" variant="outline" size="sm" className="rounded-md" onClick={onClose} disabled={saving}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" className="rounded-full gap-1.5" disabled={saving}>
+            <Button type="submit" size="sm" className="gap-1.5 rounded-md" disabled={saving}>
               {saving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               {saving ? "Saving…" : mode === "add" ? "Add product" : "Save changes"}
             </Button>
@@ -419,26 +419,21 @@ function DeleteDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl border border-border bg-card shadow-xl p-6 space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100">
-            <Trash2 className="h-4 w-4 text-red-600" />
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">Delete product</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Remove <span className="font-medium text-foreground">"{productName}"</span> from both inventory services? This cannot be undone.
-            </p>
-          </div>
+      <div className="w-full max-w-sm space-y-4 rounded-md border border-border bg-card p-5">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Delete product</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Remove <span className="font-medium text-foreground">"{productName}"</span> from both inventory services? This cannot be undone.
+          </p>
         </div>
         {error && <p className="text-sm text-destructive font-medium">{error}</p>}
         <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" className="rounded-full" onClick={onClose} disabled={deleting}>
+          <Button variant="outline" size="sm" className="rounded-md" onClick={onClose} disabled={deleting}>
             Cancel
           </Button>
           <Button
             size="sm"
-            className="rounded-full gap-1.5 bg-red-600 hover:bg-red-700 text-white"
+            className="gap-1.5 rounded-md bg-red-600 text-white hover:bg-red-700"
             onClick={handleDelete}
             disabled={deleting}
           >
@@ -541,7 +536,7 @@ function InventoryTableRow({
       {/* Image */}
       <TableCell>
         {item.visible !== false && (
-          <div className="h-10 w-10 overflow-hidden rounded-lg border border-border bg-muted/40 shrink-0">
+          <div className="h-10 w-10 overflow-hidden rounded-md border border-border bg-muted/40 shrink-0">
             {item.image ? (
               <img src={item.image} alt={item.productName} className="h-full w-full object-cover" />
             ) : (
@@ -559,7 +554,7 @@ function InventoryTableRow({
           {lowStock && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" />}
           <span>{item.productName}</span>
           {hasChanges && (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+            <span className="rounded-md border border-amber-200/80 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
               Unsaved
             </span>
           )}
@@ -573,9 +568,9 @@ function InventoryTableRow({
       <TableCell className="align-top">
         <Button
           type="button"
-          variant={item.visible === false ? "outline" : "default"}
+          variant={item.visible === false ? "outline" : "secondary"}
           size="sm"
-          className="h-7 rounded-full px-2.5 text-xs"
+          className="h-7 rounded-md px-2.5 text-xs"
           disabled={isSavingVisibility || isSavingStock}
           onClick={handleToggleVisibility}
         >
@@ -587,7 +582,7 @@ function InventoryTableRow({
       <TableCell className="min-w-[220px] text-right align-top">
         <div className="flex flex-col items-end gap-1">
           <div className="flex items-center gap-1.5">
-            <Button variant="outline" size="icon-sm" className="rounded-full" disabled={decrementDisabled} onClick={() => handleAdjustDraft(-1)} aria-label={`Decrease ${item.productName} stock`}>
+            <Button variant="outline" size="icon-sm" className="rounded-md" disabled={decrementDisabled} onClick={() => handleAdjustDraft(-1)} aria-label={`Decrease ${item.productName} stock`}>
               <Minus className="h-3.5 w-3.5" />
             </Button>
             <Input
@@ -600,7 +595,7 @@ function InventoryTableRow({
               className="h-8 w-20 text-right font-mono"
               onChange={(e) => { setDraftValue(e.target.value); setServerError(null); }}
             />
-            <Button variant="outline" size="icon-sm" className="rounded-full" disabled={isSavingStock} onClick={() => handleAdjustDraft(1)} aria-label={`Increase ${item.productName} stock`}>
+            <Button variant="outline" size="icon-sm" className="rounded-md" disabled={isSavingStock} onClick={() => handleAdjustDraft(1)} aria-label={`Increase ${item.productName} stock`}>
               <Plus className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -624,17 +619,17 @@ function InventoryTableRow({
       {/* Actions */}
       <TableCell className="align-top">
         <div className="flex items-center justify-end gap-1.5">
-          <Button variant="outline" size="sm" className="h-7 rounded-full px-2.5 text-xs" disabled={isSavingStock || (draftValue === null && !serverError)} onClick={clearRowDraft}>
+          <Button variant="outline" size="sm" className="h-7 rounded-md px-2.5 text-xs" disabled={isSavingStock || (draftValue === null && !serverError)} onClick={clearRowDraft}>
             <X className="h-3 w-3" /> Cancel
           </Button>
-          <Button size="sm" className="h-7 rounded-full px-2.5 text-xs" disabled={isSavingStock || isAnotherRowSaving || Boolean(validationError) || !hasChanges} onClick={handleSaveStock}>
+          <Button size="sm" className="h-7 rounded-md px-2.5 text-xs" disabled={isSavingStock || isAnotherRowSaving || Boolean(validationError) || !hasChanges} onClick={handleSaveStock}>
             {isSavingStock ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
             {isSavingStock ? "Saving…" : "Save"}
           </Button>
           <Button
             variant="outline"
             size="icon-sm"
-            className="h-7 w-7 rounded-full"
+            className="h-7 w-7 rounded-md"
             onClick={() => onEditClick(item)}
             disabled={isSavingStock || isSavingVisibility}
             aria-label={`Edit ${item.productName}`}
@@ -644,7 +639,7 @@ function InventoryTableRow({
           <Button
             variant="outline"
             size="icon-sm"
-            className="h-7 w-7 rounded-full text-red-500 hover:text-red-600 hover:border-red-300"
+            className="h-7 w-7 rounded-md text-red-500 hover:border-red-300 hover:text-red-600"
             onClick={() => onDeleteClick(item)}
             disabled={isSavingStock || isSavingVisibility}
             aria-label={`Delete ${item.productName}`}
@@ -720,9 +715,9 @@ function InventoryPageInner() {
   return (
     <div className="max-w-5xl space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Inventory</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Inventory</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Live stock levels from the {pattern} service. Add, edit, or remove products across both services simultaneously.
           </p>
@@ -733,14 +728,14 @@ function InventoryPageInner() {
             size="sm"
             onClick={handleRefresh}
             disabled={globalIsSaving}
-            className="gap-1.5 rounded-full text-xs"
+            className="gap-1.5 rounded-md text-xs"
           >
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
             Refresh
           </Button>
           <Button
             size="sm"
-            className="gap-1.5 rounded-full text-xs"
+            className="gap-1.5 rounded-md text-xs"
             onClick={() => setAddOpen(true)}
           >
             <PackagePlus className="h-3.5 w-3.5" />
@@ -750,60 +745,61 @@ function InventoryPageInner() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{error}</div>
+        <div className="rounded-md border border-amber-200/80 bg-amber-50 p-3 text-sm text-amber-800">{error}</div>
       )}
 
       {/* Pattern tabs */}
-      <div className="flex items-center gap-2">
+      <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5">
         {(["orchestration", "choreography"] as Pattern[]).map((value) => (
-          <Button
+          <button
             key={value}
-            variant={pattern === value ? "default" : "outline"}
-            size="sm"
-            className="rounded-full text-xs capitalize"
+            type="button"
             disabled={globalIsSaving}
             onClick={() => handlePatternChange(value)}
+            className={cn(
+              "rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors disabled:opacity-50",
+              pattern === value
+                ? "bg-secondary text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            )}
           >
             {value}
-          </Button>
+          </button>
         ))}
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="overflow-hidden rounded-md border border-border bg-card">
         {loading ? (
           <div className="space-y-3 p-6">
-            {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-10 w-full" />)}
+            {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-10 w-full rounded-md" />)}
           </div>
         ) : error ? (
-          <div className="py-20 text-center text-sm text-muted-foreground">Live inventory data is unavailable.</div>
+          <div className="py-12 text-center text-sm text-muted-foreground">Live inventory data is unavailable.</div>
         ) : inventory.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-4">
-            <div className="h-12 w-12 rounded-full bg-muted/40 flex items-center justify-center">
-              <PackagePlus className="h-6 w-6 text-muted-foreground/50" />
-            </div>
+          <div className="flex flex-col items-center justify-center gap-3 py-12">
             <div className="text-center">
               <p className="text-sm font-medium text-foreground">No products found</p>
-              <p className="text-xs text-muted-foreground mt-1">Add your first product to get started.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Add your first product to get started.</p>
             </div>
-            <Button size="sm" className="rounded-full gap-1.5" onClick={() => setAddOpen(true)}>
+            <Button size="sm" className="gap-1.5 rounded-md" onClick={() => setAddOpen(true)}>
               <PackagePlus className="h-3.5 w-3.5" /> Add product
             </Button>
           </div>
         ) : (
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-14">Image</TableHead>
-                <TableHead>Product</TableHead>
-                <TableHead>SKU</TableHead>
-                <TableHead>Storefront</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Reserved</TableHead>
-                <TableHead className="text-right">Available</TableHead>
-                <TableHead>Stock level</TableHead>
-                <TableHead>Last restocked</TableHead>
-                <TableHead>Actions</TableHead>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-14 px-4 text-xs font-medium text-muted-foreground">Image</TableHead>
+                <TableHead className="px-4 text-xs font-medium text-muted-foreground">Product</TableHead>
+                <TableHead className="px-4 text-xs font-medium text-muted-foreground">SKU</TableHead>
+                <TableHead className="px-4 text-xs font-medium text-muted-foreground">Storefront</TableHead>
+                <TableHead className="px-4 text-right text-xs font-medium text-muted-foreground">Total</TableHead>
+                <TableHead className="px-4 text-right text-xs font-medium text-muted-foreground">Reserved</TableHead>
+                <TableHead className="px-4 text-right text-xs font-medium text-muted-foreground">Available</TableHead>
+                <TableHead className="px-4 text-xs font-medium text-muted-foreground">Stock level</TableHead>
+                <TableHead className="px-4 text-xs font-medium text-muted-foreground">Last restocked</TableHead>
+                <TableHead className="px-4 text-xs font-medium text-muted-foreground">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

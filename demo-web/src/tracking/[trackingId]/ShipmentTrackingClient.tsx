@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearch } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, MapPin, Package, RefreshCw, Truck } from "lucide-react";
 
 import { findShipmentByTrackingServer } from "@/lib/admin";
 import { Pattern, Shipment } from "@/types";
@@ -73,13 +72,13 @@ export default function ShipmentTrackingClient({
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto space-y-8 w-full py-10">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-border/60 pb-5">
-          <Skeleton className="h-10 w-64" />
+      <div className="mx-auto w-full max-w-7xl space-y-8 py-8">
+        <div className="flex flex-col justify-between gap-4 border-b border-border pb-5 sm:flex-row sm:items-end">
+          <Skeleton className="h-9 w-56 rounded-md" />
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <Skeleton className="lg:col-span-2 h-96 rounded-2xl" />
-          <Skeleton className="lg:col-span-1 h-64 rounded-2xl" />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <Skeleton className="h-80 rounded-md lg:col-span-2" />
+          <Skeleton className="h-56 rounded-md lg:col-span-1" />
         </div>
       </div>
     );
@@ -87,20 +86,17 @@ export default function ShipmentTrackingClient({
 
   if (error || !shipment) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
-        <Package className="h-12 w-12 text-muted-foreground/30" />
-        <h1 className="text-xl font-semibold">Shipment not found</h1>
-        <p className="text-sm text-muted-foreground max-w-md">
+      <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+        <h1 className="text-base font-semibold tracking-tight text-foreground">Shipment not found</h1>
+        <p className="max-w-md text-sm text-muted-foreground">
           {error ?? `Could not find tracking info for ${trackingId}. The shipment may not exist yet.`}
         </p>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="rounded-full gap-2" onClick={load}>
-            <RefreshCw className="h-3.5 w-3.5" />
+          <Button variant="outline" size="sm" className="rounded-md" onClick={load}>
             Retry
           </Button>
           <Link to="/admin/shipments">
-            <Button variant="outline" size="sm" className="rounded-full gap-2">
-              <ArrowLeft className="h-3.5 w-3.5" />
+            <Button variant="outline" size="sm" className="rounded-md">
               Shipments
             </Button>
           </Link>
@@ -110,78 +106,69 @@ export default function ShipmentTrackingClient({
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 w-full py-10 px-4 sm:px-6 lg:px-8">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-border/60 pb-5">
+    <div className="mx-auto w-full max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
+      <div className="flex flex-col justify-between gap-4 border-b border-border pb-5 sm:flex-row sm:items-end">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">Shipment Tracking</h1>
-            <Badge variant={shipment.status === "FAILED" ? "destructive" : "secondary"} className="rounded-full font-medium">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">Shipment tracking</h1>
+            <Badge variant={shipment.status === "FAILED" ? "destructive" : "secondary"} className="rounded-sm font-medium">
               {shipment.status}
             </Badge>
           </div>
-          <p className="text-sm text-muted-foreground mt-2 font-mono tracking-wide">{shipment.trackingNumber}</p>
+          <p className="mt-1 font-mono text-sm text-muted-foreground">{shipment.trackingNumber}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-2 text-xs rounded-full font-medium shadow-sm hover:bg-muted/50" onClick={load}>
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh Data
+          <Button variant="outline" size="sm" className="rounded-md text-xs font-medium" onClick={load}>
+            Refresh
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 rounded-2xl border border-border bg-card p-8 shadow-sm space-y-6">
-          <h2 className="text-lg font-semibold tracking-tight">Tracking Timeline</h2>
-          <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-5 rounded-md border border-border bg-card p-5 lg:col-span-2 sm:p-6">
+          <h2 className="text-base font-semibold tracking-tight">Tracking timeline</h2>
+          <div className="divide-y divide-border">
             {shipment.events.map((event, index) => (
-              <div key={`${event.status}-${index}`} className="flex gap-4 relative">
-                {index < shipment.events.length - 1 && (
-                  <div className="absolute left-5 top-10 bottom-[-16px] w-[2px] bg-border/50" />
-                )}
-                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/60 bg-muted/30 shadow-sm text-muted-foreground z-10">
-                  <Truck className="h-4 w-4" />
-                </div>
-                <div className="space-y-1.5 pb-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-                    <p className="text-base font-semibold tracking-tight text-foreground">{event.status}</p>
-                    <span className="text-xs text-muted-foreground font-medium">{new Date(event.timestamp).toLocaleString()}</span>
+              <div key={`${event.status}-${index}`} className="flex gap-3 py-3 first:pt-0 last:pb-0">
+                <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                <div className="min-w-0 space-y-1">
+                  <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
+                    <p className="text-sm font-medium tracking-tight text-foreground">{event.status}</p>
+                    <span className="text-xs text-muted-foreground">{new Date(event.timestamp).toLocaleString()}</span>
                   </div>
-                  <p className="text-sm text-muted-foreground/80">{event.description}</p>
-                  <p className="text-sm text-muted-foreground flex items-center gap-1.5 pt-1">
-                    <MapPin className="h-3.5 w-3.5" />
-                    {event.location}
-                  </p>
+                  <p className="text-sm text-muted-foreground">{event.description}</p>
+                  <p className="text-xs text-muted-foreground">{event.location}</p>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        <aside className="lg:col-span-1 space-y-4">
-          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-5">
-            <h2 className="text-lg font-semibold tracking-tight">Shipment Details</h2>
-            <div className="space-y-4">
+        <aside className="space-y-4 lg:col-span-1">
+          <div className="space-y-4 rounded-md border border-border bg-card p-5">
+            <h2 className="text-base font-semibold tracking-tight">Shipment details</h2>
+            <div className="space-y-3">
               <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Shipment ID</p>
-                <p className="font-mono text-sm break-all">{shipment.shipmentId}</p>
+                <p className="mb-0.5 text-xs text-muted-foreground">Shipment ID</p>
+                <p className="break-all font-mono text-sm">{shipment.shipmentId}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Order ID</p>
-                <p className="font-mono text-sm break-all">{shipment.orderId}</p>
+                <p className="mb-0.5 text-xs text-muted-foreground">Order ID</p>
+                <p className="break-all font-mono text-sm">{shipment.orderId}</p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Carrier</p>
+                  <p className="mb-0.5 text-xs text-muted-foreground">Carrier</p>
                   <p className="text-sm font-medium">{shipment.carrier}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">ETA</p>
+                  <p className="mb-0.5 text-xs text-muted-foreground">ETA</p>
                   <p className="text-sm font-medium">{new Date(shipment.estimatedDelivery).toLocaleDateString()}</p>
                 </div>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Shipping Address</p>
-                <p className="text-sm text-muted-foreground leading-relaxed">{shipment.shippingAddress}</p>
+                <p className="mb-0.5 text-xs text-muted-foreground">Shipping address</p>
+                <p className="text-sm leading-relaxed text-muted-foreground">{shipment.shippingAddress}</p>
               </div>
             </div>
           </div>

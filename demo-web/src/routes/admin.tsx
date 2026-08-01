@@ -1,103 +1,63 @@
-import { createFileRoute, Link, Outlet, redirect, useLocation, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, Outlet, redirect, useLocation } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   Package,
   ShoppingBag,
   CreditCard,
   Truck,
-  ArrowLeft,
-  LogOut,
-  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
-import { toast } from "sonner";
 
 const nav = [
-  { href: "/admin",            label: "Dashboard",  icon: LayoutDashboard },
-  { href: "/admin/inventory",  label: "Inventory",  icon: Package },
-  { href: "/admin/orders",     label: "Orders",     icon: ShoppingBag },
-  { href: "/admin/payment",    label: "Payment",    icon: CreditCard },
-  { href: "/admin/shipments",  label: "Shipments",  icon: Truck },
+  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/inventory", label: "Inventory", icon: Package },
+  { href: "/admin/orders", label: "Orders", icon: ShoppingBag },
+  { href: "/admin/payment", label: "Payment", icon: CreditCard },
+  { href: "/admin/shipments", label: "Shipments", icon: Truck },
 ];
 
 function AdminSidebar() {
   const location = useLocation();
   const pathname = location.pathname;
-  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
-
-  const handleLogout = () => {
-    logout();
-    toast.success("Signed out of admin console.");
-    void navigate({ to: "/admin/login" });
-  };
 
   return (
-    <div className="flex flex-col space-y-6 h-full">
-      {/* User badge */}
-      {user && (
-        <div className="flex items-center gap-2.5 rounded-xl border border-border bg-muted/30 px-3 py-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-background shrink-0">
-            <ShieldCheck className="h-3.5 w-3.5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-foreground truncate">{user.username}</p>
-            <p className="text-[10px] text-muted-foreground capitalize">{user.role}</p>
-          </div>
-        </div>
-      )}
-
-      <div>
-        <h2 className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-3 px-3">
-          Admin Console
-        </h2>
-        <nav className="flex flex-col space-y-1">
-          {nav.map((item) => {
-            const Icon = item.icon;
-            const exact = item.href === "/admin";
-            const active = exact ? pathname === item.href : pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                to={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all",
-                  active
-                    ? "bg-foreground text-background shadow-sm"
-                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
+    <div className="flex h-full flex-col">
+      <div className="px-1 pb-4">
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          Admin console
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{user?.username}</p>
       </div>
 
-      <div className="mt-auto flex flex-col gap-1 px-3 pt-4 border-t border-border/60">
-        <Link
-          to="/"
-          className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors group"
-        >
-          <ArrowLeft className="h-4 w-4 shrink-0 transition-transform group-hover:-translate-x-1" />
-          Back to store
-        </Link>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-destructive transition-colors group mt-1"
-        >
-          <LogOut className="h-4 w-4 shrink-0" />
-          Sign out
-        </button>
-      </div>
+      <nav className="flex flex-col gap-0.5">
+        {nav.map((item) => {
+          const Icon = item.icon;
+          const exact = item.href === "/admin";
+          const active = exact ? pathname === item.href : pathname.startsWith(item.href);
+          return (
+            <Link
+              key={item.href}
+              to={item.href}
+              className={cn(
+                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                active
+                  ? "bg-secondary font-medium text-primary"
+                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }
 
-export const Route = createFileRoute('/admin')({
+export const Route = createFileRoute("/admin")({
   beforeLoad: ({ location }) => {
     if (location.pathname === "/admin/login") {
       return;
@@ -113,7 +73,7 @@ export const Route = createFileRoute('/admin')({
     }
   },
   component: AdminLayout,
-})
+});
 
 function AdminLayout() {
   const pathname = useLocation().pathname;
@@ -123,11 +83,11 @@ function AdminLayout() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl w-full px-4 sm:px-6 py-8 flex flex-col md:flex-row gap-10">
-      <aside className="w-full md:w-52 shrink-0">
+    <div className="flex w-full flex-col gap-6 md:flex-row md:gap-8">
+      <aside className="w-full shrink-0 md:sticky md:top-20 md:w-56 md:self-start md:border-r md:border-border md:pr-6">
         <AdminSidebar />
       </aside>
-      <main className="flex-1 min-w-0 pt-4 md:pt-0">
+      <main className="min-w-0 flex-1">
         <Outlet />
       </main>
     </div>

@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchLiveCatalogServer } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
+import { ProductDetailModal } from "@/components/ProductDetailModal";
+import { HomeHero } from "@/components/HomeHero";
 import { CatalogProduct, Pattern } from "@/types";
 import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
-import { PatternToggle } from "@/components/PatternToggle";
+import { RefreshCw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCartStore } from "@/lib/store";
 
@@ -18,20 +19,17 @@ interface HomePageClientProps {
 
 function ProductCardSkeleton() {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card">
+    <div className="flex h-full flex-col overflow-hidden rounded-md border border-border bg-card">
       <Skeleton className="aspect-[4/3] w-full rounded-none bg-muted/60" />
-      <div className="flex flex-1 flex-col space-y-4 p-5 pt-4">
+      <div className="flex flex-1 flex-col space-y-3 p-3.5">
         <div className="flex-1 space-y-2">
-          <Skeleton className="h-3 w-20 rounded-full" />
-          <Skeleton className="h-5 w-3/4 rounded-full" />
-          <div className="space-y-1.5">
-            <Skeleton className="h-4 w-full rounded-full" />
-            <Skeleton className="h-4 w-5/6 rounded-full" />
-          </div>
+          <Skeleton className="h-3 w-16 rounded-sm" />
+          <Skeleton className="h-4 w-3/4 rounded-sm" />
+          <Skeleton className="h-3.5 w-full rounded-sm" />
         </div>
-        <div className="flex items-center justify-between gap-3 pt-2">
-          <Skeleton className="h-6 w-20 rounded-full" />
-          <Skeleton className="h-9 w-20 rounded-full" />
+        <div className="flex items-center justify-between gap-3 pt-0.5">
+          <Skeleton className="h-4 w-16 rounded-sm" />
+          <Skeleton className="h-8 w-[4.5rem] rounded-md" />
         </div>
       </div>
     </div>
@@ -46,6 +44,7 @@ export default function HomePageClient({ initialProducts, initialError, initialP
   const [loading, setLoading] = useState(initialProducts.length === 0 && initialError === null);
   const [error, setError] = useState<string | null>(initialError);
   const [catalogPattern, setCatalogPattern] = useState<Pattern>(initialPattern);
+  const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
 
   const load = useCallback(async (nextPattern: Pattern = pattern) => {
     setLoading(true);
@@ -78,81 +77,59 @@ export default function HomePageClient({ initialProducts, initialError, initialP
     void load(initialPattern);
   }, [initialError, initialPattern, initialProducts.length, load]);
 
-  const scrollToProducts = () => {
-    document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
-  };
-
   return (
-    <div className="space-y-12 pb-12 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <section className="relative overflow-hidden px-6 py-20 md:px-12 md:py-32 flex flex-col items-center text-center">
-        <div className="max-w-4xl space-y-6 relative z-10 flex flex-col items-center">
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tighter text-foreground text-balance leading-[1.1]">
-            Next-generation tech for <br className="hidden md:block" /> the modern workflow.
-          </h1>
-          <p className="text-base md:text-lg text-muted-foreground max-w-2xl leading-relaxed text-balance">
-            Discover our curated collection of premium gadgets. From high-fidelity audio to ultra-fast laptops, upgrade your setup today.
-          </p>
+    <div className="w-full space-y-6">
+      <div className="mb-6 md:mb-8">
+        <HomeHero />
+      </div>
 
-          <Button
-            onClick={scrollToProducts}
-            size="lg"
-            className="mt-4 rounded-full px-8 gap-2 shadow-md group"
-          >
-            Shop Collection
-            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-          </Button>
-        </div>
+      <section className="border-b border-border pb-5">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">
+          Catalog
+        </h1>
+        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+          Laptops, phones, and peripherals. Live stock for the selected processing path.
+        </p>
       </section>
 
-      <section id="products" className="space-y-10 pt-8">
-        <div className="flex flex-col gap-6 border-b border-border/40 pb-8 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <h2 className="text-4xl font-black tracking-tight text-foreground">
-              New Arrivals
-            </h2>
-            <p className="text-base font-medium text-muted-foreground mt-3 leading-relaxed">
-              Premium gadgets and technology for the modern professional. Upgrade your workflow today.
-            </p>
-          </div>
-          <div className="w-full rounded-[1.25rem] border border-border/60 bg-card/70 p-4 shadow-sm lg:w-auto lg:min-w-[24rem]">
-            <div className="mb-3 flex items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                  Processing backend
-                </p>
-                <p className="mt-1 text-xs font-medium text-muted-foreground/80">
-                  Choose which service set powers the live catalog.
-                </p>
-              </div>
-            </div>
-            <PatternToggle />
-          </div>
-        </div>
-
+      <section id="products">
         {loading ? (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-label="Loading catalog">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-label="Loading catalog">
             {Array.from({ length: 8 }).map((_, index) => (
               <ProductCardSkeleton key={index} />
             ))}
           </div>
         ) : error ? (
-          <div className="flex flex-col items-center justify-center py-32 gap-5 text-center rounded-2xl border border-dashed border-red-200 bg-red-50/30">
-            <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center">
-              <span className="text-red-600 font-bold text-xl">!</span>
-            </div>
+          <div className="flex flex-col items-start gap-3 rounded-md border border-border bg-card px-5 py-10">
             <div>
-              <p className="text-lg font-semibold tracking-tight text-red-900">Catalog unavailable</p>
-              <p className="text-sm text-red-600/80 mt-1 max-w-md mx-auto">{error}</p>
+              <p className="text-sm font-medium text-foreground">Catalog unavailable</p>
+              <p className="mt-1 max-w-md text-sm text-muted-foreground">{error}</p>
             </div>
+            <Button
+              onClick={() => void load(pattern)}
+              variant="outline"
+              className="h-9 rounded-md gap-2"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Retry
+            </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {products.map((product) => (
-              <ProductCard key={product.id} product={product} />
+              <ProductCard key={product.id} product={product} onSelect={() => setSelectedProduct(product)} />
             ))}
           </div>
         )}
       </section>
+
+      <ProductDetailModal
+        product={selectedProduct}
+        open={selectedProduct !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedProduct(null);
+        }}
+      />
     </div>
   );
 }

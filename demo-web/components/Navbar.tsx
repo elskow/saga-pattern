@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useLocation } from "@tanstack/react-router";
 import { CartSidebar } from "./CartSidebar";
+import { Logo } from "./Logo";
 import { PatternToggle } from "./PatternToggle";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
-import { LogOut, Menu, Package, ShieldCheck, ShoppingBag, User } from "lucide-react";
+import { ChevronDown, LayoutDashboard, LogOut, Menu, User } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,32 +25,52 @@ export function Navbar() {
     const user = useAuthStore((s) => s.user);
     const logout = useAuthStore((s) => s.logout);
     const [mobileOpen, setMobileOpen] = useState(false);
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const userMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!userMenuOpen) return;
+        const onPointerDown = (event: MouseEvent) => {
+            if (!userMenuRef.current?.contains(event.target as Node)) {
+                setUserMenuOpen(false);
+            }
+        };
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") setUserMenuOpen(false);
+        };
+        document.addEventListener("mousedown", onPointerDown);
+        document.addEventListener("keydown", onKeyDown);
+        return () => {
+            document.removeEventListener("mousedown", onPointerDown);
+            document.removeEventListener("keydown", onKeyDown);
+        };
+    }, [userMenuOpen]);
 
     const links = [
-        { href: "/", label: "Shop", icon: ShoppingBag },
-        { href: "/orders", label: "Orders", icon: Package },
+        { href: "/", label: "Shop" },
+        { href: "/orders", label: "Orders" },
     ];
 
     const handleLogout = () => {
         logout();
         toast.success("Signed out.");
         setMobileOpen(false);
+        setUserMenuOpen(false);
         void navigate({ to: "/" });
     };
 
     return (
-        <div className="fixed top-4 left-0 right-0 z-50 flex justify-center w-full px-4 sm:px-6 pointer-events-none">
-            <header className="flex h-16 w-full max-w-7xl items-center justify-between px-6 sm:px-8 bg-background/80 backdrop-blur-2xl border border-border/50 shadow-[0_8px_32px_0_rgba(0,0,0,0.05)] rounded-full supports-[backdrop-filter]:bg-background/50 pointer-events-auto transition-all duration-300 hover:shadow-[0_12px_40px_0_rgba(0,0,0,0.08)] hover:border-border/80">
-
+        <header className="fixed inset-x-0 top-0 z-50 h-14 border-b border-border bg-card">
+            <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-5 sm:px-8">
                 <Link
                     to="/"
                     id="nav-logo"
-                    className="flex items-center gap-2 text-xl font-black tracking-tighter text-foreground group relative"
+                    className="shrink-0 transition-opacity hover:opacity-80"
                 >
-                    SagaStore
+                    <Logo size={24} />
                 </Link>
 
-                <nav className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2 bg-muted/40 p-1.5 rounded-full border border-border/40 backdrop-blur-sm">
+                <nav className="ml-2 hidden items-center gap-5 md:flex">
                     {links.map((link) => {
                         const isActive = pathname === link.href;
                         return (
@@ -57,62 +78,102 @@ export function Navbar() {
                                 key={link.href}
                                 to={link.href}
                                 className={cn(
-                                    "relative px-5 py-1.5 rounded-full text-sm font-semibold transition-all duration-300",
+                                    "text-sm transition-colors",
                                     isActive
-                                        ? "text-background bg-foreground shadow-sm"
-                                        : "text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                                        ? "font-medium text-foreground"
+                                        : "text-muted-foreground hover:text-foreground"
                                 )}
                             >
-                                <span className="relative z-10">{link.label}</span>
+                                {link.label}
                             </Link>
                         );
                     })}
                 </nav>
 
-                <div className="flex items-center gap-2 sm:gap-3">
+                <div className="ml-auto flex items-center gap-3 sm:gap-4">
+                    <CartSidebar />
+
                     {user ? (
-                        <div className="hidden md:flex items-center overflow-hidden rounded-full border border-border/60 bg-muted/30 p-1">
-                            {user.role === "admin" ? (
-                                <Link
-                                    to="/admin"
-                                    className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
-                                >
-                                    <ShieldCheck className="h-4 w-4" />
-                                    <span>Admin</span>
-                                </Link>
-                            ) : (
-                                <Link
-                                    to="/profile"
-                                    className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
-                                >
-                                    <User className="h-4 w-4" />
-                                    <span>{user.username}</span>
-                                </Link>
-                            )}
+                        <div ref={userMenuRef} className="relative hidden md:block">
                             <button
-                                onClick={handleLogout}
-                                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                aria-label="Sign out"
+                                type="button"
+                                onClick={() => setUserMenuOpen((open) => !open)}
+                                aria-haspopup="menu"
+                                aria-expanded={userMenuOpen}
+                                className={cn(
+                                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                                    userMenuOpen
+                                        ? "bg-secondary text-primary"
+                                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                                )}
                             >
-                                <LogOut className="h-4 w-4" />
-                                <span>Sign out</span>
+                                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
+                                    {user.username.slice(0, 2).toUpperCase()}
+                                </span>
+                                <span className="font-medium text-foreground">{user.username}</span>
+                                <ChevronDown
+                                    className={cn(
+                                        "h-3.5 w-3.5 transition-transform",
+                                        userMenuOpen && "rotate-180"
+                                    )}
+                                />
                             </button>
+
+                            {userMenuOpen ? (
+                                <div
+                                    role="menu"
+                                    className="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-md border border-border bg-card py-1 shadow-card"
+                                >
+                                    <div className="px-3 pb-1 pt-2">
+                                        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                                            Saga pattern
+                                        </p>
+                                        <div className="mt-1.5 [&>div]:w-full [&_button]:flex-1">
+                                            <PatternToggle />
+                                        </div>
+                                    </div>
+                                    <div className="my-1 h-px bg-border" />
+                                    <Link
+                                        to="/profile"
+                                        role="menuitem"
+                                        onClick={() => setUserMenuOpen(false)}
+                                        className="flex items-center gap-2 px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted/60"
+                                    >
+                                        <User className="h-4 w-4 text-muted-foreground" />
+                                        Profile
+                                    </Link>
+                                    {user.role === "admin" ? (
+                                        <Link
+                                            to="/admin"
+                                            role="menuitem"
+                                            onClick={() => setUserMenuOpen(false)}
+                                            className="flex items-center gap-2 px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted/60"
+                                        >
+                                            <LayoutDashboard className="h-4 w-4 text-muted-foreground" />
+                                            Admin dashboard
+                                        </Link>
+                                    ) : null}
+                                    <div className="my-1 h-px bg-border" />
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={handleLogout}
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive/10"
+                                    >
+                                        <LogOut className="h-4 w-4" />
+                                        Sign out
+                                    </button>
+                                </div>
+                            ) : null}
                         </div>
                     ) : (
                         <Link
                             to="/login"
-                            className="hidden md:flex items-center gap-2 text-sm font-semibold bg-foreground text-background px-4 py-2 rounded-full hover:scale-105 hover:shadow-lg hover:shadow-foreground/20 transition-all duration-300"
+                            className="hidden text-sm font-medium text-foreground transition-colors hover:text-primary md:inline"
                         >
-                            <User className="h-4 w-4" />
                             Sign in
                         </Link>
                     )}
-
-                    <div className="h-6 w-px bg-foreground/10 hidden md:block mx-1" />
-
-                    <div className="hover:scale-105 transition-transform duration-300 flex items-center">
-                        <CartSidebar />
-                    </div>
 
                     <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
                         <SheetTrigger
@@ -120,7 +181,7 @@ export function Navbar() {
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="md:hidden rounded-full hover:bg-muted/50"
+                                    className="rounded-md md:hidden"
                                     aria-label="Open menu"
                                 />
                             }
@@ -128,72 +189,85 @@ export function Navbar() {
                             <Menu className="h-5 w-5" />
                         </SheetTrigger>
 
-                        <SheetContent side="left" className="flex w-72 flex-col bg-background p-0">
-                            <SheetHeader className="border-b border-border/50 px-6 py-5">
-                                <SheetTitle className="text-lg font-black tracking-tighter text-foreground">
-                                    SagaStore
+                        <SheetContent side="left" className="flex w-80 flex-col bg-card p-0">
+                            <SheetHeader className="border-b border-border px-5 py-4">
+                                <SheetTitle>
+                                    <Logo size={24} />
                                 </SheetTitle>
                             </SheetHeader>
 
-                            <nav className="flex flex-col gap-1 px-4 py-4">
-                                {links.map((link) => {
-                                    const Icon = link.icon;
-                                    const isActive = pathname === link.href;
-                                    return (
-                                        <Link
-                                            key={link.href}
-                                            to={link.href}
-                                            onClick={() => setMobileOpen(false)}
-                                            className={cn(
-                                                "flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-semibold transition-all",
-                                                isActive
-                                                    ? "bg-foreground text-background shadow-sm"
-                                                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                                            )}
-                                        >
-                                            <Icon className="h-4 w-4 shrink-0" />
-                                            {link.label}
-                                        </Link>
-                                    );
-                                })}
-                            </nav>
+                            <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-5">
+                                <nav className="flex flex-col gap-0.5">
+                                    {links.map((link) => {
+                                        const isActive = pathname === link.href;
+                                        return (
+                                            <Link
+                                                key={link.href}
+                                                to={link.href}
+                                                onClick={() => setMobileOpen(false)}
+                                                className={cn(
+                                                    "rounded-md px-3 py-2 text-sm transition-colors",
+                                                    isActive
+                                                        ? "bg-muted font-medium text-foreground"
+                                                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                                                )}
+                                            >
+                                                {link.label}
+                                            </Link>
+                                        );
+                                    })}
+                                </nav>
 
-                            <div className="mt-auto border-t border-border/50 px-6 py-5 space-y-4">
-                                <div className="space-y-1">
-                                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1 mb-2">
-                                        Backend
-                                    </p>
-                                    <PatternToggle />
+                                <div className="space-y-2">
+                                    <p className="text-xs text-muted-foreground">Order processing</p>
+                                    <div className="w-full [&_[role=radiogroup]]:flex [&_[role=radiogroup]]:h-auto [&_[role=radiogroup]]:w-full [&_button]:flex-1">
+                                        <PatternToggle />
+                                    </div>
                                 </div>
 
-                                {user ? (
-                                    <div className="space-y-2 pt-2 border-t border-border/40">
-                                        <p className="text-xs text-muted-foreground px-1">
-                                            Signed in as <span className="font-semibold text-foreground">{user.username}</span>
-                                        </p>
-                                        <button
-                                            onClick={handleLogout}
-                                            className="flex w-full items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                                <div className="mt-auto space-y-1 border-t border-border pt-4">
+                                    {user ? (
+                                        <>
+                                            {user.role === "admin" ? (
+                                                <Link
+                                                    to="/admin"
+                                                    onClick={() => setMobileOpen(false)}
+                                                    className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted/60"
+                                                >
+                                                    Admin
+                                                </Link>
+                                            ) : (
+                                                <Link
+                                                    to="/profile"
+                                                    onClick={() => setMobileOpen(false)}
+                                                    className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted/60"
+                                                >
+                                                    {user.username}
+                                                </Link>
+                                            )}
+                                            <button
+                                                onClick={handleLogout}
+                                                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
+                                            >
+                                                <LogOut className="h-4 w-4" />
+                                                Sign out
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <Link
+                                            to="/login"
+                                            onClick={() => setMobileOpen(false)}
+                                            className="block rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-muted/60"
                                         >
-                                            <LogOut className="h-4 w-4" />
-                                            Sign out
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <Link
-                                        to="/login"
-                                        onClick={() => setMobileOpen(false)}
-                                        className="flex w-full items-center justify-center gap-2 rounded-full bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition-all hover:bg-foreground/90"
-                                    >
-                                        <User className="h-4 w-4" />
-                                        Sign in
-                                    </Link>
-                                )}
+                                            Sign in
+                                        </Link>
+                                    )}
+                                </div>
                             </div>
                         </SheetContent>
                     </Sheet>
                 </div>
-            </header>
-        </div>
+            </div>
+        </header>
     );
 }

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -8,7 +8,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: 'Inter', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -50,39 +50,43 @@
 }
 
 :root {
-  /* Warm gray light theme */
-  --background: oklch(0.97 0.005 80);
-  --foreground: oklch(0.13 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.13 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.13 0 0);
-  --primary: oklch(0.13 0 0);
-  --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.94 0.005 80);
-  --secondary-foreground: oklch(0.13 0 0);
-  --muted: oklch(0.94 0.005 80);
-  --muted-foreground: oklch(0.5 0 0);
-  --accent: oklch(0.94 0.005 80);
-  --accent-foreground: oklch(0.13 0 0);
-  --destructive: oklch(0.55 0.22 27);
-  --border: oklch(0.88 0.005 80);
-  --input: oklch(0.88 0.005 80);
-  --ring: oklch(0.13 0 0);
-  --chart-1: oklch(0.55 0.18 260);
-  --chart-2: oklch(0.6 0.15 145);
-  --chart-3: oklch(0.65 0.12 60);
-  --chart-4: oklch(0.58 0.16 300);
-  --chart-5: oklch(0.62 0.18 20);
+  /* BCA Ocean Blue — cool off-white + BCA blue (#0060AF) */
+  --background: #F7FAFC;
+  --foreground: #0A2B4E;
+  --card: #FFFFFF;
+  --card-foreground: #0A2B4E;
+  --popover: #FFFFFF;
+  --popover-foreground: #0A2B4E;
+  --primary: #0060AF;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E3F2FD;
+  --secondary-foreground: #0060AF;
+  --muted: #E3F2FD;
+  --muted-foreground: #4A6B8A;
+  --accent: #E3F2FD;
+  --accent-foreground: #0060AF;
+  --destructive: #C45C5C;
+  --border: rgba(10, 43, 78, 0.10);
+  --input: rgba(10, 43, 78, 0.12);
+  --ring: rgba(0, 96, 175, 0.40);
+  --chart-1: #0060AF;
+  --chart-2: #00A6E0;
+  --chart-3: #D4A017;
+  --chart-4: #C45C5C;
+  --chart-5: #E07A3D;
   --radius: 0.5rem;
-  --sidebar: oklch(0.97 0.005 80);
-  --sidebar-foreground: oklch(0.13 0 0);
-  --sidebar-primary: oklch(0.13 0 0);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.94 0.005 80);
-  --sidebar-accent-foreground: oklch(0.13 0 0);
-  --sidebar-border: oklch(0.88 0.005 80);
-  --sidebar-ring: oklch(0.13 0 0);
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #0A2B4E;
+  --sidebar-primary: #0060AF;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E3F2FD;
+  --sidebar-accent-foreground: #0060AF;
+  --sidebar-border: rgba(10, 43, 78, 0.10);
+  --sidebar-ring: rgba(0, 96, 175, 0.40);
+
+  /* Hairline-first; almost no elevation */
+  --shadow-soft: 0 0 0 1px rgba(10, 43, 78, 0.04);
+  --shadow-card: 0 0 0 1px rgba(10, 43, 78, 0.06);
 }
 
 @layer base {
@@ -96,7 +100,7 @@
     @apply font-sans;
   }
   select {
-    @apply min-h-9 appearance-none rounded-full border border-border bg-card px-4 py-2 pr-9 text-sm font-medium text-foreground shadow-sm outline-none transition-colors;
+    @apply min-h-9 appearance-none rounded-lg border border-border bg-card px-4 py-2 pr-9 text-sm font-medium text-foreground shadow-sm outline-none transition-colors;
     background-image:
       linear-gradient(45deg, transparent 50%, currentColor 50%),
       linear-gradient(135deg, currentColor 50%, transparent 50%);
@@ -110,7 +114,7 @@
     @apply bg-muted/50;
   }
   select:focus-visible {
-    @apply border-foreground/30 ring-2 ring-foreground/10;
+    @apply border-primary/40 ring-2 ring-ring;
   }
   select:disabled {
     @apply cursor-not-allowed opacity-50;
@@ -121,6 +125,32 @@
 }
 
 @layer utilities {
+  .shadow-ocean {
+    box-shadow: var(--shadow-soft);
+  }
+  .shadow-ocean-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Very slow drift on the home hero glow — barely perceptible depth motion. */
+  @keyframes hero-drift {
+    from {
+      transform: translate3d(-2.5%, -1.5%, 0) scale(1);
+    }
+    to {
+      transform: translate3d(2.5%, 1.5%, 0) scale(1.04);
+    }
+  }
+  .hero-drift {
+    animation: hero-drift 24s ease-in-out infinite alternate;
+    will-change: transform;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-drift {
+      animation: none;
+    }
+  }
+
   /* Elegant thin scrollbar */
   ::-webkit-scrollbar {
     width: 6px;

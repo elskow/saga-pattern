@@ -8,4 +8,5 @@ storage:
     insecure: true
     force_path_style: true
 
-# No retention period set = data persists indefinitely (default behavior)
+pyroscopedb:
+  disable_enforcement: true

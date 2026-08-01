@@ -2,6 +2,7 @@ import { createRootRoute, Outlet, HeadContent, Scripts, Link, useLocation } from
 import type { ReactNode } from 'react'
 
 import { Navbar } from "@/components/Navbar";
+import { Logo } from "@/components/Logo";
 import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../globals.css?url";
@@ -17,11 +18,11 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'SagaStore | Premium Tech & Gadgets',
+        title: 'SagaStore | Laptops, phones & peripherals',
       },
       {
         name: 'description',
-        content: 'Shop the latest high-end laptops, smartphones, and premium peripherals.',
+        content: 'Shop laptops, smartphones, and peripherals. Track orders from payment through delivery.',
       }
     ],
     links: [
@@ -37,10 +38,17 @@ export const Route = createRootRoute({
     ],
   }),
   notFoundComponent: () => (
-    <div className="flex flex-col items-center justify-center py-32 gap-4">
-      <h1 className="text-4xl font-bold tracking-tight">404 - Not Found</h1>
-      <p className="text-muted-foreground">The page you're looking for doesn't exist.</p>
-      <Link to="/" className="text-primary hover:underline">Go back home</Link>
+    <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
+      <h1 className="text-3xl font-semibold tracking-tight text-foreground">Page not found</h1>
+      <p className="text-sm text-muted-foreground max-w-sm">
+        That page does not exist or was moved.
+      </p>
+      <Link
+        to="/"
+        className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+      >
+        Back to shop
+      </Link>
     </div>
   ),
   shellComponent: RootDocument,
@@ -53,8 +61,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
       <head>
         <HeadContent />
       </head>
-      <body className="flex min-h-full flex-col bg-[#f8f9fa] text-foreground antialiased selection:bg-foreground selection:text-background relative">
-        <div className="fixed inset-0 -z-10 h-full w-full bg-[radial-gradient(ellipse_100%_100%_at_50%_0%,rgba(0,0,0,0.04),transparent)]"></div>
+      <body className="flex min-h-full flex-col bg-background text-foreground antialiased selection:bg-primary/15 selection:text-foreground">
         {children}
         <Scripts />
       </body>
@@ -70,26 +77,38 @@ function RootComponent() {
     <>
       {!isAuthRoute && <Navbar />}
 
-      <main className={!isAuthRoute ? "flex-1 w-full max-w-7xl mx-auto px-6 sm:px-8 py-24 md:py-28" : "flex-1 w-full flex flex-col"}>
+      <main className={!isAuthRoute ? "flex-1 w-full max-w-7xl mx-auto px-5 sm:px-8 pt-20 pb-12 md:pt-24 md:pb-16" : "flex-1 w-full flex flex-col"}>
         <Outlet />
       </main>
 
       {!isAuthRoute && (
-        <footer className="mt-auto w-full border-t border-border/50 bg-background/50 backdrop-blur-lg">
-          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-6 py-8 text-center sm:px-8 md:flex-row md:text-left">
-            <p className="text-xs font-medium text-muted-foreground">
-              © {new Date().getFullYear()} SagaStore. All rights reserved.
-            </p>
-            <div className="flex gap-6 text-sm font-medium text-muted-foreground">
-              <Link to="/" className="hover:text-foreground transition-colors">Shop</Link>
-              <Link to="/orders" className="hover:text-foreground transition-colors">Orders</Link>
-              <Link to="/about" className="hover:text-foreground transition-colors">About</Link>
+        <footer className="mt-auto w-full border-t border-border bg-card">
+          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-5 py-6 text-center sm:px-8 md:flex-row md:text-left">
+            <div className="flex items-center gap-2">
+              <Logo size={18} withWordmark={false} />
+              <p className="text-xs text-muted-foreground">
+                © {new Date().getFullYear()} SagaStore
+              </p>
+            </div>
+            <div className="flex gap-6 text-sm text-muted-foreground">
+              <Link to="/" className="transition-colors hover:text-primary">Shop</Link>
+              <Link to="/orders" className="transition-colors hover:text-primary">Orders</Link>
             </div>
           </div>
         </footer>
       )}
 
-      <Toaster position="bottom-left" theme="light" richColors closeButton />
+      <Toaster
+        position="bottom-right"
+        theme="light"
+        closeButton
+        toastOptions={{
+          classNames: {
+            success: "!border-emerald-200 !bg-emerald-50 !text-emerald-800",
+            error: "!border-red-200 !bg-red-50 !text-red-800",
+          },
+        }}
+      />
     </>
   )
 }

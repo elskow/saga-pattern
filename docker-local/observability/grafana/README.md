@@ -64,14 +64,14 @@ Provisioned from `grafana/dashboards/`. Variables: `suite_label`, `pattern`, `sc
 
 | Store | Setting | Semantics | Thesis note |
 |---|---|---|---|
-| **Tempo** | `compactor.compaction.block_retention: 48h` | Keep completed trace blocks | Must cover longest suite wall **and** time until export/re-export. `0` dropped blocks in ~15–20 min → empty early-phase `spans.csv`. |
-| **Tempo** | `compacted_block_retention: 1h` | Keep pre-merge blocks after compact | Querier blocklist lag only; not data lifetime. |
+| **Tempo** | `block_retention: 876000h` (~100y) | Practical keep-forever | Tempo has **no** official forever. `0`/`0s` means delete finished blocks on next retention tick (empty early `spans.csv`). Use huge finite window. |
+| **Tempo** | `compacted_block_retention: 24h` | Keep pre-merge inputs after compact | Querier blocklist lag; docs require ≥ 2× `blocklist_poll`. |
 | **Tempo** | `ingester.max_block_duration: 5m` | Head-block flush cadence | Wait ≥5m after last load before MinIO backup if newest IDs required. |
-| **Mimir** | `compactor_blocks_retention_period: 0` | **Disable** deletion (keep) | Durable metrics + spanmetrics. `0` ≠ Tempo’s old `0`. |
-| **Prometheus** | `--storage.tsdb.retention.time=24h` | Local scrape/RW buffer only | k6/app series long-term live in **Mimir**. Do not re-query Prom for multi-day claims. |
+| **Mimir** | `compactor_blocks_retention_period: 0` | Disable age deletion | True forever for metrics. Compaction still soft-deletes superseded *source* ULIDs (normal). |
+| **Prometheus** | long TSDB window (compose) | Local buffer only | Durable metrics live in **Mimir**. |
 | **Loki** | `retention_enabled: false` | Keep logs | OK for thesis. |
-| **Pyroscope** | no retention set | Default keep | OK for thesis. |
+| **Pyroscope** | CLI `-compactor.blocks-retention-period=0` | Keep profiles | Default was 31d without flag. |
 
 **Harness:** `run-suite.sh` exports Tempo traces **per phase** (after phase manifest) and again at suite end. Metrics still suite-end batch from Mimir.
 
-**Do not** set Tempo `block_retention: 0` on campaign hosts.
+**Never** set Tempo `block_retention: 0` / `0s` / `0h` — that is immediate age-delete, not unlimited.

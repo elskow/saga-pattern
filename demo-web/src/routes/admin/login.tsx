@@ -4,8 +4,9 @@ import { useAuthStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Logo } from "@/components/Logo";
 import { toast } from "sonner";
-import { Eye, EyeOff, ShieldCheck, ArrowLeft } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 
 export const Route = createFileRoute("/admin/login")({
   component: AdminLoginPage,
@@ -47,54 +48,61 @@ function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-[#f8f9fa] text-foreground">
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_80%_50%_at_50%_0%,rgba(0,0,0,0.04),transparent)]" />
-
-      <div className="w-full max-w-sm space-y-8">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-foreground text-background shadow-lg">
-            <ShieldCheck className="h-6 w-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Admin Console</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Sign in with your administrator credentials.</p>
-          </div>
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
+      <div className="w-full max-w-[400px]">
+        <div className="mb-6 text-center">
+          <Link to="/" className="inline-flex transition-opacity hover:opacity-80">
+            <Logo size={32} className="mb-4" />
+          </Link>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Admin</p>
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">Sign in</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Administrator credentials required.</p>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-8 shadow-xl shadow-muted/20 space-y-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="admin-username" className="text-muted-foreground">Username</Label>
+        <div className="rounded-md border border-border bg-card">
+          <form onSubmit={handleSubmit} className="space-y-4 p-6">
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-username" className="text-sm font-medium text-foreground">
+                Username
+              </Label>
               <Input
                 id="admin-username"
                 type="text"
                 placeholder="admin"
                 value={username}
-                onChange={(e) => { setUsername(e.target.value); setError(null); }}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setError(null);
+                }}
                 disabled={loading}
                 autoComplete="username"
                 autoFocus
-                className="border-border bg-background placeholder:text-muted-foreground/60"
+                className="h-10 rounded-md bg-background"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="admin-password" className="text-muted-foreground">Password</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-password" className="text-sm font-medium text-foreground">
+                Password
+              </Label>
               <div className="relative">
                 <Input
                   id="admin-password"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => { setPassword(e.target.value); setError(null); }}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError(null);
+                  }}
                   disabled={loading}
                   autoComplete="current-password"
-                  className="pr-10 border-border bg-background placeholder:text-muted-foreground/60"
+                  className="h-10 rounded-md bg-background pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                   tabIndex={-1}
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
@@ -104,18 +112,22 @@ function AdminLoginPage() {
             </div>
 
             {error && (
-              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
             )}
 
-            <Button type="submit" className="w-full rounded-full bg-foreground text-background hover:bg-foreground/90" disabled={loading}>
+            <Button type="submit" size="lg" className="h-10 w-full rounded-md font-medium" disabled={loading}>
               {loading ? "Signing in…" : "Sign in"}
             </Button>
           </form>
 
-          <div className="pt-2 flex justify-center border-t border-border/60 mt-6">
-            <Link to="/" className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors group mt-4">
-              <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
-              Back to main page
+          <div className="border-t border-border px-6 py-4">
+            <Link
+              to="/"
+              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Back to shop
             </Link>
           </div>
         </div>
