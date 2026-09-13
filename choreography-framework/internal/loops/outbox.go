@@ -26,6 +26,7 @@ type OutboxLoop struct {
 	Publisher   kafka.Publisher
 	WorkerID    string
 	Metrics     *observability.Metrics
+	OnPublishFailed func(retryDelay time.Duration)
 }
 
 func (l *OutboxLoop) RunOnce(ctx context.Context, now time.Time) (err error) {
@@ -59,6 +60,9 @@ func (l *OutboxLoop) RunOnce(ctx context.Context, now time.Time) (err error) {
 		return err
 	}
 	span.SetAttributes(attribute.Int("outbox.claimed_count", len(rows)))
+	for _, row := range rows {
+		linkRunOnceToRowTrace(now, row.ID, row.TraceHeaders)
+	}
 	for _, row := range rows {
 		if err := l.publishRow(ctx, span, now, row); err != nil {
 			return err
@@ -114,8 +118,10 @@ func (l *OutboxLoop) publishRow(ctx context.Context, parent trace.Span, now time
 			l.Metrics.RecordOutboxSendDuration(l.ServiceName, row.Topic, row.EventType, "failed", duration)
 		}
 		if markErr := l.Store.MarkOutboxFailed(ctx, row.ID, now.Add(l.RetryDelay), err.Error(), terminal); markErr != nil {
+			l.notifyPublishFailed()
 			return markErr
 		}
+		l.notifyPublishFailed()
 		return nil
 	}
 	if err := l.Store.MarkOutboxSent(ctx, row.ID, now); err != nil {
@@ -138,6 +144,24 @@ func (l *OutboxLoop) publishRow(ctx context.Context, parent trace.Span, now time
 		l.Metrics.RecordOutboxSendDuration(l.ServiceName, row.Topic, row.EventType, "success", duration)
 	}
 	return nil
+}
+
+func (l *OutboxLoop) notifyPublishFailed() {
+	if l.OnPublishFailed != nil {
+		l.OnPublishFailed(l.RetryDelay)
+	}
+}
+
+func linkRunOnceToRowTrace(relayStart time.Time, outboxID string, traceHeaders map[string]string) {
+	rowCtx := commontracing.ExtractContext(context.Background(), traceHeaders)
+	if sc := trace.SpanContextFromContext(rowCtx); !sc.IsValid() {
+		return
+	}
+	_, child := commontracing.Tracer("choreography-framework/outbox").Start(rowCtx, "choreography.outbox.relayed",
+		trace.WithTimestamp(relayStart),
+		trace.WithAttributes(attribute.String("outbox.id", outboxID)),
+	)
+	child.End()
 }
 
 func outboxEventAttributes(row model.OutboxRow, extra ...attribute.KeyValue) []attribute.KeyValue {

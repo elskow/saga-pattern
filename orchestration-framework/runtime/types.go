@@ -384,7 +384,6 @@ type Config struct {
 	PendingCommandRetryDelay time.Duration
 	SagaTimeout              time.Duration
 	TimeoutCheckInterval     time.Duration
-	OutboxPublishInterval    time.Duration
 	ImmediateOutboxPublish   bool
 	OutboxRetryDelay         time.Duration
 	OutboxMaxAttempts        int
@@ -403,7 +402,6 @@ func DefaultConfig() Config {
 		PendingCommandRetryDelay: 10 * time.Second,
 		SagaTimeout:              30 * time.Second,
 		TimeoutCheckInterval:     10 * time.Second,
-		OutboxPublishInterval:    time.Second,
 		ImmediateOutboxPublish:   true,
 		OutboxRetryDelay:         30 * time.Second,
 		OutboxMaxAttempts:        5,

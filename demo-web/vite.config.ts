@@ -47,6 +47,7 @@ const config = defineConfig({
     viteReact(),
   ],
   server: { proxy: proxies },
+  preview: { port: 4173, proxy: proxies, allowedHosts: ["skripsi-demo.local"] },
 })
 
 export default config

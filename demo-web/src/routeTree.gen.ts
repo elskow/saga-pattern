@@ -13,11 +13,13 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as OrdersIndexRouteImport } from './routes/orders/index'
 import { Route as CheckoutIndexRouteImport } from './routes/checkout/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as TrackingTrackingIdRouteImport } from './routes/tracking/$trackingId'
+import { Route as ProxySplatRouteImport } from './routes/proxy.$'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
 import { Route as OrdersOrderIdRouteImport } from './routes/orders/$orderId'
 import { Route as AdminShipmentsRouteImport } from './routes/admin/shipments'
@@ -47,6 +49,11 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -70,6 +77,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const TrackingTrackingIdRoute = TrackingTrackingIdRouteImport.update({
   id: '/tracking/$trackingId',
   path: '/tracking/$trackingId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProxySplatRoute = ProxySplatRouteImport.update({
+  id: '/proxy/$',
+  path: '/proxy/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProductsProductIdRoute = ProductsProductIdRouteImport.update({
@@ -115,6 +127,7 @@ const ApiAdminDelayRoute = ApiAdminDelayRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/admin': typeof AdminRouteWithChildren
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
@@ -126,6 +139,7 @@ export interface FileRoutesByFullPath {
   '/admin/shipments': typeof AdminShipmentsRoute
   '/orders/$orderId': typeof OrdersOrderIdRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/proxy/$': typeof ProxySplatRoute
   '/tracking/$trackingId': typeof TrackingTrackingIdRoute
   '/admin/': typeof AdminIndexRoute
   '/checkout/': typeof CheckoutIndexRoute
@@ -134,6 +148,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
@@ -144,6 +159,7 @@ export interface FileRoutesByTo {
   '/admin/shipments': typeof AdminShipmentsRoute
   '/orders/$orderId': typeof OrdersOrderIdRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/proxy/$': typeof ProxySplatRoute
   '/tracking/$trackingId': typeof TrackingTrackingIdRoute
   '/admin': typeof AdminIndexRoute
   '/checkout': typeof CheckoutIndexRoute
@@ -153,6 +169,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/admin': typeof AdminRouteWithChildren
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
@@ -164,6 +181,7 @@ export interface FileRoutesById {
   '/admin/shipments': typeof AdminShipmentsRoute
   '/orders/$orderId': typeof OrdersOrderIdRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/proxy/$': typeof ProxySplatRoute
   '/tracking/$trackingId': typeof TrackingTrackingIdRoute
   '/admin/': typeof AdminIndexRoute
   '/checkout/': typeof CheckoutIndexRoute
@@ -174,6 +192,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/about'
     | '/admin'
     | '/login'
     | '/profile'
@@ -185,6 +204,7 @@ export interface FileRouteTypes {
     | '/admin/shipments'
     | '/orders/$orderId'
     | '/products/$productId'
+    | '/proxy/$'
     | '/tracking/$trackingId'
     | '/admin/'
     | '/checkout/'
@@ -193,6 +213,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/about'
     | '/login'
     | '/profile'
     | '/register'
@@ -203,6 +224,7 @@ export interface FileRouteTypes {
     | '/admin/shipments'
     | '/orders/$orderId'
     | '/products/$productId'
+    | '/proxy/$'
     | '/tracking/$trackingId'
     | '/admin'
     | '/checkout'
@@ -211,6 +233,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/about'
     | '/admin'
     | '/login'
     | '/profile'
@@ -222,6 +245,7 @@ export interface FileRouteTypes {
     | '/admin/shipments'
     | '/orders/$orderId'
     | '/products/$productId'
+    | '/proxy/$'
     | '/tracking/$trackingId'
     | '/admin/'
     | '/checkout/'
@@ -231,12 +255,14 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
   AdminRoute: typeof AdminRouteWithChildren
   LoginRoute: typeof LoginRoute
   ProfileRoute: typeof ProfileRoute
   RegisterRoute: typeof RegisterRoute
   OrdersOrderIdRoute: typeof OrdersOrderIdRoute
   ProductsProductIdRoute: typeof ProductsProductIdRoute
+  ProxySplatRoute: typeof ProxySplatRoute
   TrackingTrackingIdRoute: typeof TrackingTrackingIdRoute
   CheckoutIndexRoute: typeof CheckoutIndexRoute
   OrdersIndexRoute: typeof OrdersIndexRoute
@@ -273,6 +299,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -306,6 +339,13 @@ declare module '@tanstack/react-router' {
       path: '/tracking/$trackingId'
       fullPath: '/tracking/$trackingId'
       preLoaderRoute: typeof TrackingTrackingIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/proxy/$': {
+      id: '/proxy/$'
+      path: '/proxy/$'
+      fullPath: '/proxy/$'
+      preLoaderRoute: typeof ProxySplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/products/$productId': {
@@ -389,12 +429,14 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
   AdminRoute: AdminRouteWithChildren,
   LoginRoute: LoginRoute,
   ProfileRoute: ProfileRoute,
   RegisterRoute: RegisterRoute,
   OrdersOrderIdRoute: OrdersOrderIdRoute,
   ProductsProductIdRoute: ProductsProductIdRoute,
+  ProxySplatRoute: ProxySplatRoute,
   TrackingTrackingIdRoute: TrackingTrackingIdRoute,
   CheckoutIndexRoute: CheckoutIndexRoute,
   OrdersIndexRoute: OrdersIndexRoute,

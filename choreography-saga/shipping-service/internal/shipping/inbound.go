@@ -102,6 +102,7 @@ func (s *Service) handleInventoryReserved(ctx context.Context, event events.Inve
 		}
 		span.AddEvent("shipping_failed_published", trace.WithAttributes(attribute.String("failure.type", "failure_mode")))
 		s.metrics.RecordShippingStep(s.now().Sub(startedAt))
+		s.participant.TriggerImmediatePublish(ctx)
 		if err := s.ClearPendingShippingAddress(ctx, event.OrderID); err != nil {
 			return err
 		}
@@ -122,6 +123,7 @@ func (s *Service) handleInventoryReserved(ctx context.Context, event events.Inve
 		return err
 	}
 	s.metrics.RecordShippingStep(s.now().Sub(startedAt))
+	s.participant.TriggerImmediatePublish(ctx)
 	return nil
 }
 
@@ -160,6 +162,7 @@ func (s *Service) handlePaymentRefunded(ctx context.Context, event events.Paymen
 	}
 	span.AddEvent("shipping_cancelled_published", trace.WithAttributes(attribute.String("shipping.id", shipment.ShippingID)))
 	s.metrics.RecordShippingCompensation(s.now().Sub(startedAt))
+	s.participant.TriggerImmediatePublish(ctx)
 	return nil
 }
 
@@ -198,6 +201,7 @@ func (s *Service) handleInventoryReleased(ctx context.Context, event events.Inve
 	}
 	span.AddEvent("shipping_cancelled_published", trace.WithAttributes(attribute.String("shipping.id", shipment.ShippingID)))
 	s.metrics.RecordShippingCompensation(s.now().Sub(startedAt))
+	s.participant.TriggerImmediatePublish(ctx)
 	return nil
 }
 

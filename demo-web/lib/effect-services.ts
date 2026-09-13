@@ -82,5 +82,8 @@ export function getServiceUrl(
     return `/proxy/${pattern}-${service}`;
   }
 
-  return `http://127.0.0.1:${PORT_MAP[pattern][service]}`;
+  const envName = `${pattern.toUpperCase()}_${service.toUpperCase()}_URL`;
+  const envBase =
+    typeof process !== "undefined" ? process.env[envName] : undefined;
+  return envBase ?? `http://127.0.0.1:${PORT_MAP[pattern][service]}`;
 }

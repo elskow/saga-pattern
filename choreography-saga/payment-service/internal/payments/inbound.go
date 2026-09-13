@@ -79,6 +79,7 @@ func (s *Service) processOrderCreated(ctx context.Context, event events.OrderCre
 			return err
 		}
 		s.metrics.RecordPaymentStep(payment.UpdatedAt.Sub(startedAt))
+		s.participant.TriggerImmediatePublish(ctx)
 		return nil
 	}
 
@@ -91,6 +92,7 @@ func (s *Service) processOrderCreated(ctx context.Context, event events.OrderCre
 	}
 	s.metrics.RecordPaymentStep(payment.UpdatedAt.Sub(startedAt))
 	span.AddEvent("payment_completed_published")
+	s.participant.TriggerImmediatePublish(ctx)
 	return nil
 }
 
@@ -132,6 +134,7 @@ func (s *Service) compensateInventoryReservationFailure(ctx context.Context, eve
 	}
 	s.metrics.RecordPaymentCompensation(payment.UpdatedAt.Sub(startedAt))
 	span.AddEvent("payment_refunded_published")
+	s.participant.TriggerImmediatePublish(ctx)
 	return nil
 }
 
@@ -173,6 +176,7 @@ func (s *Service) compensateShippingFailure(ctx context.Context, event events.Sh
 	}
 	s.metrics.RecordPaymentCompensation(payment.UpdatedAt.Sub(startedAt))
 	span.AddEvent("payment_refunded_published")
+	s.participant.TriggerImmediatePublish(ctx)
 	return nil
 }
 

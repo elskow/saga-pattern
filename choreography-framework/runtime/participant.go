@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -39,10 +40,13 @@ type Participant struct {
 	workerID    string
 	outboxLoop  *loops.OutboxLoop
 	outboxMu    sync.Mutex
+	outboxTrigger chan struct{}
 	cleanupLoop *loops.CleanupLoop
 }
 
 type publisherAdapter struct{ publisher Publisher }
+
+var defaultOutboxIDSequence atomic.Uint64
 
 func (a publisherAdapter) Publish(ctx context.Context, message internalkafka.Message) error {
 	return a.publisher.Publish(ctx, Message{
@@ -78,7 +82,9 @@ func New(deps Dependencies) (*Participant, error) {
 	}
 	idGenerator := deps.IDGenerator
 	if idGenerator == nil {
-		idGenerator = func() string { return fmt.Sprintf("outbox-%d", clock().UnixNano()) }
+		idGenerator = func() string {
+			return fmt.Sprintf("outbox-%d-%d", clock().UnixNano(), defaultOutboxIDSequence.Add(1))
+		}
 	}
 	workerID := config.WorkerID
 	if workerID == "" {
@@ -103,6 +109,7 @@ func New(deps Dependencies) (*Participant, error) {
 		clock:       clock,
 		idGenerator: idGenerator,
 		workerID:    workerID,
+		outboxTrigger: make(chan struct{}, 1),
 	}
 	p.outboxLoop = &loops.OutboxLoop{
 		ServiceName: config.ServiceName,
@@ -115,6 +122,9 @@ func New(deps Dependencies) (*Participant, error) {
 		Publisher:   publisherAdapter{publisher: deps.Publisher},
 		WorkerID:    workerID,
 		Metrics:     metrics,
+		OnPublishFailed: func(d time.Duration) {
+			p.scheduleOutboxRetry(d)
+		},
 	}
 	p.cleanupLoop = &loops.CleanupLoop{
 		Store:                   p.store,
@@ -272,9 +282,7 @@ func (p *Participant) RunWorkers(ctx context.Context) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		p.runTickerLoop(ctx, p.config.OutboxPublishInterval, "choreography outbox worker failed", func(now time.Time) error {
-			return p.PublishPending(ctx)
-		})
+		p.runOutboxLoop(ctx)
 	}()
 	go func() {
 		defer wg.Done()
@@ -284,6 +292,26 @@ func (p *Participant) RunWorkers(ctx context.Context) {
 	}()
 	<-ctx.Done()
 	wg.Wait()
+}
+
+func (p *Participant) runOutboxLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-p.outboxTrigger:
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Default().Error("choreography outbox worker recovered from panic", "panic", r)
+					}
+				}()
+				if err := p.PublishPending(ctx); err != nil {
+					slog.Default().Error("choreography outbox worker failed", "error", err)
+				}
+			}()
+		}
+	}
 }
 
 func (p *Participant) runTickerLoop(ctx context.Context, interval time.Duration, logMessage string, run func(time.Time) error) {
@@ -307,20 +335,22 @@ func (p *Participant) PublishPending(ctx context.Context) error {
 	return p.outboxLoop.RunOnce(ctx, p.clock().UTC())
 }
 
-func (p *Participant) TryPublishPending(ctx context.Context) error {
-	if !p.outboxMu.TryLock() {
-		return nil
-	}
-	defer p.outboxMu.Unlock()
-	return p.outboxLoop.RunOnce(ctx, p.clock().UTC())
+func (p *Participant) scheduleOutboxRetry(d time.Duration) {
+	time.AfterFunc(d, func() {
+		select {
+		case p.outboxTrigger <- struct{}{}:
+		default:
+		}
+	})
 }
 
 func (p *Participant) TriggerImmediatePublish(ctx context.Context) {
 	if !p.config.ImmediateOutboxPublish {
 		return
 	}
-	if err := p.TryPublishPending(ctx); err != nil {
-		slog.Default().Warn("choreography immediate outbox publish failed", "error", err)
+	select {
+	case p.outboxTrigger <- struct{}{}:
+	default:
 	}
 }
 

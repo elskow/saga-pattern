@@ -24,6 +24,7 @@ type OutboxLoop struct {
 	Store       store.Store
 	Publisher   kafka.Publisher
 	WorkerID    string
+	OnPublishFailed func(retryDelay time.Duration)
 }
 
 func (l *OutboxLoop) RunOnce(ctx context.Context, now time.Time) (err error) {
@@ -56,6 +57,9 @@ func (l *OutboxLoop) RunOnce(ctx context.Context, now time.Time) (err error) {
 		return err
 	}
 	span.SetAttributes(attribute.Int("outbox.claimed_count", len(rows)))
+	for _, row := range rows {
+		linkRunOnceToRowTrace(now, row.ID, row.TraceHeaders)
+	}
 	for _, row := range rows {
 		publishAttrs := []attribute.KeyValue{
 			attribute.String("outbox.id", row.ID),
@@ -118,10 +122,12 @@ func (l *OutboxLoop) RunOnce(ctx context.Context, now time.Time) (err error) {
 					attribute.String("error", err.Error()),
 				)...),
 			)
-			if markErr := l.Store.MarkOutboxFailed(ctx, row.ID, now.Add(l.RetryDelay), err.Error(), terminal); markErr != nil {
-				return markErr
-			}
-			continue
+		if markErr := l.Store.MarkOutboxFailed(ctx, row.ID, now.Add(l.RetryDelay), err.Error(), terminal); markErr != nil {
+			l.notifyPublishFailed()
+			return markErr
+		}
+		l.notifyPublishFailed()
+		continue
 		}
 		if err := l.Store.MarkOutboxSent(ctx, row.ID, now); err != nil {
 			rowSpan.RecordError(err)
@@ -139,6 +145,24 @@ func (l *OutboxLoop) RunOnce(ctx context.Context, now time.Time) (err error) {
 		rowSpan.End()
 	}
 	return nil
+}
+
+func (l *OutboxLoop) notifyPublishFailed() {
+	if l.OnPublishFailed != nil {
+		l.OnPublishFailed(l.RetryDelay)
+	}
+}
+
+func linkRunOnceToRowTrace(relayStart time.Time, outboxID string, traceHeaders map[string]string) {
+	rowCtx := commontracing.ExtractContext(context.Background(), traceHeaders)
+	if sc := trace.SpanContextFromContext(rowCtx); !sc.IsValid() {
+		return
+	}
+	_, child := commontracing.Tracer("orchestration-framework/outbox").Start(rowCtx, "orchestration.outbox.relayed",
+		trace.WithTimestamp(relayStart),
+		trace.WithAttributes(attribute.String("outbox.id", outboxID)),
+	)
+	child.End()
 }
 
 func outboxEventAttributes(row model.OutboxRow, extra ...attribute.KeyValue) []attribute.KeyValue {

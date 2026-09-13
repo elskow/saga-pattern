@@ -104,8 +104,6 @@ type Config struct {
 	// WorkerID identifies this replica for lease-based outbox coordination.
 	// Defaults to hostname+pid if empty.
 	WorkerID string
-	// OutboxPublishInterval controls how often the poller wakes up.
-	OutboxPublishInterval time.Duration
 	// OutboxBatchSize caps rows claimed per tick.
 	OutboxBatchSize int
 	// OutboxMaxAttempts caps retries before an outbox row is marked failed.
@@ -130,7 +128,6 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{
-		OutboxPublishInterval:   time.Second,
 		OutboxBatchSize:         100,
 		OutboxMaxAttempts:       5,
 		OutboxRetryDelay:        5 * time.Second,
@@ -145,9 +142,6 @@ func DefaultConfig() Config {
 
 func (c Config) withDefaults() Config {
 	d := DefaultConfig()
-	if c.OutboxPublishInterval == 0 {
-		c.OutboxPublishInterval = d.OutboxPublishInterval
-	}
 	if c.OutboxBatchSize == 0 {
 		c.OutboxBatchSize = d.OutboxBatchSize
 	}
