@@ -4,7 +4,6 @@ NODE_IMAGE ?= node:20-alpine
 CACHE_ROOT := .cache
 GO_BUILD_CACHE := $(CACHE_ROOT)/go-build
 GO_MOD_CACHE := $(CACHE_ROOT)/go-mod
-SMOKE_RESULTS_DIR := test/parity/results
 
 SERVER_PACKAGES := \
 	./choreography-saga/order-service/cmd/server \
@@ -28,7 +27,7 @@ BUILD_OUTPUTS := \
 
 DEFAULT_TEST_PACKAGES := ./common/... ./choreography-saga/... ./orchestration-framework/... ./orchestration-saga/...
 
-.PHONY: help tidy build test test-parity clean clean-docker clean-all up-infra up-observability up-choreography up-orchestration up-dual-local status-dual-local down-dual-local down smoke-choreography smoke-choreography-go smoke-orchestration smoke-orchestration-go k6-choreography-quick k6-orchestration-quick thesis-compare-quick web-install web-dev web-build web-lint
+.PHONY: help tidy build test clean clean-docker clean-all up-infra up-observability up-choreography up-orchestration up-dual-local status-dual-local down-dual-local down smoke-choreography smoke-choreography-go smoke-orchestration smoke-orchestration-go web-install web-dev web-build web-lint
 
 define RUN_GO_SHELL
 	@if command -v go >/dev/null 2>&1; then \
@@ -52,12 +51,12 @@ endef
 
 define RUN_NODE_SHELL
 	@if command -v npm >/dev/null 2>&1; then \
-		/bin/sh -lc 'cd web && $(1)'; \
+		/bin/sh -lc 'cd demo-web && $(1)'; \
 	elif command -v docker >/dev/null 2>&1; then \
 		docker run --rm \
 			--network host \
 			-u "$$(id -u):$$(id -g)" \
-			-v "$(CURDIR)/web:/workspace" \
+			-v "$(CURDIR)/demo-web:/workspace" \
 			-w /workspace \
 			$(NODE_IMAGE) \
 			/bin/sh -lc '$(1)'; \
@@ -74,7 +73,6 @@ help:
 		'  tidy                         Sync go.mod and go.sum for the root Go workspace' \
 		'  build                        Build all scaffolded Go service binaries into build/bin/' \
 		'  test                         Run the default Go unit/integration suite (excludes live parity smoke)' \
-		'  test-parity                  Run the live parity suite against a running stack' \
 		'  clean                        Remove generated build and Go cache directories' \
 		'  clean-docker                  Stop all stacks and remove saga images, volumes, and build cache' \
 		'  clean-all                     Run clean + clean-docker (full reset)' \
@@ -87,16 +85,13 @@ help:
 		'  down-dual-local              Stop the dev-only dual local mode' \
 		'  down                         Stop all local stacks via local runner' \
 		'  smoke-choreography           Alias for smoke-choreography-go' \
-		'  smoke-choreography-go        Run the parity smoke harness against the Go choreography stack' \
+		'  smoke-choreography-go        Bring up the Go choreography stack and wait for a warmup order' \
 		'  smoke-orchestration          Alias for smoke-orchestration-go' \
-		'  smoke-orchestration-go       Run the parity smoke harness against the Go orchestration stack' \
-		'  k6-choreography-quick        Run the quick k6 choreography thesis smoke locally' \
-		'  k6-orchestration-quick       Run the quick k6 orchestration thesis smoke locally' \
-		'  web-install                  Install web app dependencies inside web/' \
-		'  web-dev                      Start the web app locally on port 4173' \
-		'  web-build                    Build the web app bundle into web/dist/' \
-		'  web-lint                     Run the web app ESLint checks' \
-		'  thesis-compare-quick         Run the paired quick thesis comparison protocol locally'
+		'  smoke-orchestration-go       Bring up the Go orchestration stack and wait for a warmup order' \
+		'  web-install                  Install web app dependencies inside demo-web/' \
+		'  web-dev                      Start the web app locally on port 6173' \
+		'  web-build                    Build the web app bundle into demo-web/dist/' \
+		'  web-lint                     Run the web app ESLint checks'
 
 tidy:
 	$(call RUN_GO_SHELL,go mod tidy)
@@ -107,9 +102,6 @@ build: tidy
 
 test: tidy
 	$(call RUN_GO_SHELL,go test $(DEFAULT_TEST_PACKAGES))
-
-test-parity:
-	$(call RUN_GO_SHELL,go test ./test/parity/...)
 
 clean:
 	rm -rf build $(CACHE_ROOT)
@@ -198,9 +190,6 @@ smoke-choreography-go:
 		fi; \
 		sleep 3; \
 	done
-	@mkdir -p $(SMOKE_RESULTS_DIR)
-	$(call RUN_GO_SHELL,PARITY_PATTERN=choreography PARITY_STACK=go PARITY_BASE_URL=http://localhost:8081 go test -json ./test/parity/... > $(SMOKE_RESULTS_DIR)/smoke-choreography.json; status=$$?; cat $(SMOKE_RESULTS_DIR)/smoke-choreography.json; exit $$status)
-
 smoke-orchestration: smoke-orchestration-go
 
 smoke-orchestration-go:
@@ -248,19 +237,6 @@ smoke-orchestration-go:
 		fi; \
 		sleep 3; \
 	done
-	@mkdir -p $(SMOKE_RESULTS_DIR)
-	$(call RUN_GO_SHELL,PARITY_PATTERN=orchestration PARITY_STACK=go PARITY_BASE_URL=http://localhost:8091 go test -json ./test/parity/... > $(SMOKE_RESULTS_DIR)/smoke-orchestration.json; status=$$?; cat $(SMOKE_RESULTS_DIR)/smoke-orchestration.json; exit $$status)
-
-k6-choreography-quick:
-	bash benchmarks/run-suite.sh --pattern choreography --scenario successful-order --profile quick
-
-k6-orchestration-quick:
-	bash benchmarks/run-suite.sh --pattern orchestration --scenario successful-order --profile quick
-
-thesis-compare-quick:
-	bash benchmarks/run-suite.sh --pattern choreography --scenario successful-order --profile quick
-	bash benchmarks/run-suite.sh --pattern orchestration --scenario successful-order --profile quick
-
 web-install:
 	$(call RUN_NODE_SHELL,npm install)
 
