@@ -10,8 +10,6 @@ import (
 	commonkafka "saga-pattern/common/kafka"
 )
 
-// Closure captures the payment pointer so it reads mutated state
-// (FailureReason, UpdatedAt) at hook execution time.
 func (s *Service) buildPaymentFailedHook(payment *domain.Payment) repository.TxHook {
 	return func(hctx context.Context, tx *sql.Tx) error {
 		failedEvent := events.NewPaymentFailedEvent(payment.PaymentID, payment.OrderID, payment.FailureReason, payment.UpdatedAt, payment.CorrelationID, payment.CreatedAt)

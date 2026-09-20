@@ -330,9 +330,6 @@ func newTestServerWithCatalog(t *testing.T, catalog fakeCatalogResolver) (http.H
 	return handler, service, recording
 }
 
-// eventHandlerHolder breaks the circular dependency between the service
-// (needs participantAdapter) and the participant (needs EventHandler).
-// Wired post-construction.
 type eventHandlerHolder struct {
 	handler choreoruntime.EventHandler
 }
@@ -344,8 +341,6 @@ func (h *eventHandlerHolder) HandleEvent(ctx context.Context, event events.Chore
 	return h.handler.HandleEvent(ctx, event)
 }
 
-// testFrameworkPublisher implements choreoruntime.Publisher and records
-// messages for test assertions.
 type testFrameworkPublisher struct {
 	mu       sync.Mutex
 	messages []choreoruntime.Message

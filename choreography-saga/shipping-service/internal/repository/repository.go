@@ -7,8 +7,6 @@ import (
 	"saga-pattern/choreography-saga/shipping-service/internal/domain"
 )
 
-// TxHook is invoked inside repo transactions to let callers write additional
-// rows atomically. Used by the service to enqueue outbox events.
 type TxHook func(context.Context, *sql.Tx) error
 
 type Repository interface {

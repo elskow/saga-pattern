@@ -38,8 +38,6 @@ type Order struct {
 	UpdatedAt        time.Time
 }
 
-// FinalizedFromRuntimeView materializes the public queryable order projection
-// once the orchestration runtime reaches a terminal state.
 func FinalizedFromRuntimeView(view sagaRuntime.View[ordersaga.Data], now time.Time) Order {
 	return Order{
 		OrderID:          view.Data.OrderID,
@@ -61,9 +59,6 @@ func FinalizedFromRuntimeView(view sagaRuntime.View[ordersaga.Data], now time.Ti
 	}
 }
 
-// InProgressFromRuntimeView builds an order projection for a saga that has not
-// yet reached a terminal state. The status is mapped to choreography-equivalent
-// values so API consumers see familiar intermediate states.
 func InProgressFromRuntimeView(view sagaRuntime.View[ordersaga.Data], now time.Time) Order {
 	return Order{
 		OrderID:         view.Data.OrderID,
@@ -167,9 +162,6 @@ func finalizedStatusFromRuntimeView(view sagaRuntime.View[ordersaga.Data]) strin
 	}
 }
 
-// inProgressStatusFromRuntimeState maps a non-terminal saga state to a
-// choreography-equivalent order status so API consumers see familiar
-// intermediate states.
 func inProgressStatusFromRuntimeState(state string) string {
 	switch state {
 	case ordersaga.StatePaymentPending:
@@ -187,8 +179,6 @@ func inProgressStatusFromRuntimeState(state string) string {
 	}
 }
 
-// currentStepFromRuntimeView returns the normalized name of the step the saga
-// is currently executing (forward or compensation).
 func currentStepFromRuntimeView(view sagaRuntime.View[ordersaga.Data]) string {
 	if view.CurrentStep == "" {
 		return ""
@@ -196,8 +186,6 @@ func currentStepFromRuntimeView(view sagaRuntime.View[ordersaga.Data]) string {
 	return normalizeStep(view.CurrentStep)
 }
 
-// forwardCompletedStepsFromRuntimeView returns the normalized names of all
-// forward steps that have succeeded (i.e., completed their forward action).
 func forwardCompletedStepsFromRuntimeView(view sagaRuntime.View[ordersaga.Data]) []string {
 	seen := make(map[string]struct{})
 	steps := make([]string, 0)

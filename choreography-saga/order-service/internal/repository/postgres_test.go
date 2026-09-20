@@ -66,10 +66,6 @@ func TestCreateIfAbsentHandlesConcurrentSameIdempotencyKey(t *testing.T) {
 	}
 }
 
-// TestClaimPendingOrderEventsClaimsRowsOnce was removed. The outbox now lives
-// in the choreography-framework, which has its own store tests. See
-// choreography-framework/internal/store for framework-level outbox coverage.
-
 func newOrderForTest(t *testing.T, orderID, idempotencyKey string, now time.Time) domain.Order {
 	t.Helper()
 	request := dto.ChoreographyCreateOrderRequest{

@@ -16,8 +16,8 @@ import (
 )
 
 var (
-	SagaTimeoutThreshold atomic.Int64 // milliseconds, default 60000
-	SagaTimeoutInterval  atomic.Int64 // milliseconds, default 30000
+	SagaTimeoutThreshold atomic.Int64
+	SagaTimeoutInterval  atomic.Int64
 )
 
 func init() {
@@ -39,9 +39,6 @@ func initFromEnv() {
 	}
 }
 
-// RunTimeoutScanner periodically scans for orders stuck in non-terminal states
-// and cancels them with an OrderCancelledEvent emitted atomically. Blocks until
-// ctx is cancelled.
 func RunTimeoutScanner(ctx context.Context, logger *slog.Logger, repo repository.Repository, participant participantAdapter, metrics *observability.Metrics) {
 	interval := time.Duration(SagaTimeoutInterval.Load()) * time.Millisecond
 	logger.Info("timeout scanner started",
@@ -98,7 +95,7 @@ func cancelTimeoutOrder(ctx context.Context, logger *slog.Logger, repo repositor
 		return
 	}
 	participant.TriggerImmediatePublish(ctx)
-	// Match foldTerminalFailure: timeout cancel is still a terminal saga failure for thesis metrics.
+
 	if metrics != nil {
 		metrics.RecordOrderFailed(order.UpdatedAt.Sub(order.CreatedAt))
 	}

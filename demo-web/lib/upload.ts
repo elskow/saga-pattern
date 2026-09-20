@@ -8,13 +8,11 @@ export const uploadImageServer = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ url: string }> => {
     const { base64, filename, mimeType } = data;
 
-    // Validate mime type
     const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
     if (!allowed.includes(mimeType)) {
       throw new Error("Only JPEG, PNG, WebP, and GIF images are supported.");
     }
 
-    // Sanitise filename and add timestamp to avoid collisions
     const ext = filename.split(".").pop()?.toLowerCase() ?? "jpg";
     const safeName = filename
       .replace(/[^a-zA-Z0-9._-]/g, "-")
@@ -23,7 +21,6 @@ export const uploadImageServer = createServerFn({ method: "POST" })
     const timestamp = Date.now();
     const uniqueName = `${timestamp}-${safeName}`;
 
-    // Resolve public/uploads relative to the process cwd (project root at runtime)
     const uploadsDir = join(process.cwd(), "public", "uploads");
     await mkdir(uploadsDir, { recursive: true });
 

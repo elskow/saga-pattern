@@ -23,9 +23,6 @@ func NewPostgresRepository(db *sql.DB) (*PostgresRepository, error) {
 	return &PostgresRepository{db: db}, nil
 }
 
-// AcknowledgeAcceptedLifecycle keeps the accepted-vs-finalized lifecycle explicit
-// without creating a public orders row. The runtime remains the source of truth
-// until terminal state is materialized into the finalized order projection.
 func (r *PostgresRepository) AcknowledgeAcceptedLifecycle(context.Context) error {
 	return nil
 }

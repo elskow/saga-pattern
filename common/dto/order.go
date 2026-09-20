@@ -23,9 +23,6 @@ const (
 	OrderStatusCompleted         OrderStatus = "COMPLETED"
 	OrderStatusCancelled         OrderStatus = "CANCELLED"
 
-	// OrchestrationAcceptedStatus is the immediate create-order acknowledgement for
-	// an accepted orchestration request. It is distinct from the internal accepted
-	// order lifecycle state and from the later terminal order response statuses.
 	OrchestrationAcceptedStatus = "SAGA_STARTED"
 )
 

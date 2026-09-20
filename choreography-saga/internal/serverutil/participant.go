@@ -31,9 +31,6 @@ func BootstrapParticipant(cfg commonconfig.ServiceConfig, migrationScope string,
 	return BootstrapParticipantWithExtraMigrations(cfg, migrationScope, migrationDir, nil)
 }
 
-// ExtraMigration describes an additional migration scope run after the primary
-// service migrations. Used to run choreography-framework migrations alongside
-// service-owned migrations.
 type ExtraMigration struct {
 	Scope string
 	Dir   string

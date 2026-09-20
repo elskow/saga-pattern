@@ -18,11 +18,8 @@ const (
 	labelDirection      = "direction"
 )
 
-// suiteLabel is captured once at process start (empty string is a valid value).
 var suiteLabel = os.Getenv("SUITE_LABEL")
 
-// sagaDurationBuckets extends prometheus.DefBuckets past 10s to cover
-// choreography compensation cascades (empirically ~65–70s, headroom to 120s).
 var sagaDurationBuckets = []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 25, 50, 75, 100, 120}
 
 func constLabels() prometheus.Labels {

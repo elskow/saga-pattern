@@ -191,7 +191,6 @@ func TestAcceptedOrderShowsInProgressSagaProgress(t *testing.T) {
 		t.Fatalf("in-progress currentStep = %q, want payment", inProgress.CurrentStep)
 	}
 
-	// Advance through payment and check intermediate state
 	assertPublishStep(t, service, publisher, 0, commonkafka.DefaultPaymentCommandsTopic, "PROCESS_PAYMENT")
 	deliverReply(t, service, accepted.OrderID, "reply-payment", commonkafka.DefaultPaymentRepliesTopic, commonreplies.NewPaymentCompletedReply("PAY-1", accepted.OrderID))
 
@@ -214,7 +213,6 @@ func TestAcceptedOrderShowsInProgressSagaProgress(t *testing.T) {
 		t.Fatalf("after-payment completedSteps = %v, want [payment]", paid.CompletedSteps)
 	}
 
-	// Complete the remaining steps
 	assertPublishStep(t, service, publisher, 1, commonkafka.DefaultInventoryCommandsTopic, "RESERVE_INVENTORY")
 	deliverReply(t, service, accepted.OrderID, "reply-inventory", commonkafka.DefaultInventoryRepliesTopic, commonreplies.NewInventoryReservedReply("RES-1", accepted.OrderID))
 	assertPublishStep(t, service, publisher, 2, commonkafka.DefaultShippingCommandsTopic, "SCHEDULE_SHIPPING")

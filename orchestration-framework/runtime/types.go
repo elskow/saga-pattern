@@ -45,8 +45,6 @@ type BootstrapDependencies struct {
 
 type PostgresDependencies = BootstrapDependencies
 
-// AdvancedDependencies exposes the raw store-backed constructor path.
-// Most application code should use NewPostgres instead.
 type AdvancedDependencies = Dependencies
 
 type Codec[D any] interface {

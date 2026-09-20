@@ -10,7 +10,6 @@ import (
 	commonkafka "saga-pattern/common/kafka"
 )
 
-// If reservedEvent is nil, onReserve is returned as nil (used for failure-mode-only paths).
 func (s *Service) buildReserveHooks(
 	sourceEvent events.PaymentCompletedEvent,
 	reservedEvent *events.InventoryReservedEvent,
@@ -20,14 +19,11 @@ func (s *Service) buildReserveHooks(
 	if reservedEvent != nil {
 		ev := *reservedEvent
 		onReserve = func(hctx context.Context, tx *sql.Tx, resID string, _ error) error {
-			// The event was built with a placeholder reservationID. The repo
-			// passes the real resID after insert — rebuild with correct ID.
 			actual := events.NewInventoryReservedEvent(resID, ev.OrderID, ev.ReservedItems, ev.ReservedAt, ev.CorrelationID, ev.CreatedAt)
 			return s.participant.EnqueueEvent(hctx, tx, commonkafka.DefaultInventoryEventsTopic, sourceEvent.OrderID, actual.EventType(), actual)
 		}
 	}
 	onFail = func(hctx context.Context, tx *sql.Tx, _ string, cause error) error {
-		// If cause is provided (repo-level failure), rebuild event with real reason.
 		ev := failedEvent
 		if cause != nil {
 			ev = s.buildReservationFailedEvent(sourceEvent, cause, ev.FailedAt)

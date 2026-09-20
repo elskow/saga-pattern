@@ -34,7 +34,6 @@ func (s *Service) HandleReserveInventory(ctx context.Context, command commands.R
 		return s.publishReply(ctx, command.OrderID, existingReserveReply(existing, command.OrderID))
 	}
 
-	// Failure mode injection
 	if shouldFail, failureState := s.failureMode.ShouldFail(s.now()); shouldFail {
 		reason := "inventory failure mode enabled — reservation forced to fail"
 		span.SetAttributes(attribute.String("inventory.result", "failed"), attribute.String("failure.type", "failure_mode"), attribute.String("failure.run_label", failureState.RunLabel), attribute.Int("failure.remaining", failureState.Remaining))

@@ -93,7 +93,6 @@ export const getOrderServer = createServerFn({ method: "POST" })
     return Effect.runPromise(program);
   });
 
-// Derive saga steps from order status for visualization
 export function deriveSteps(order: Order) {
   const status = order.status;
   const compensatedSteps = new Set(order.compensatedSteps ?? []);

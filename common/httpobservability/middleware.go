@@ -63,7 +63,6 @@ func Wrap(next http.Handler, opts Options) http.Handler {
 
 		next.ServeHTTP(recorder, r)
 
-		// Probe paths: serve health/metrics, but no access log / span noise (metrics scrape stays).
 		if httpcompat.IsOpsProbePath(r.URL.Path) {
 			return
 		}

@@ -105,8 +105,6 @@ type inventoryParticipant struct {
 	db          *sql.DB
 }
 
-// EnqueueEvent writes to the outbox. When tx is nil (failure-mode short-circuit),
-// open a standalone transaction — matches shippingParticipant.
 func (p *inventoryParticipant) EnqueueEvent(ctx context.Context, tx *sql.Tx, topic, key, eventType string, payload any) error {
 	if tx != nil {
 		return p.participant.EnqueueEvent(ctx, choreoruntime.WrapSQLTx(tx), topic, key, eventType, payload)

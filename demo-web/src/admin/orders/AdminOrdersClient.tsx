@@ -54,7 +54,6 @@ export default function AdminOrdersClient({ initialOrders, initialError }: Admin
       if (statuses && !statuses.includes(o.status)) return false;
       return true;
     });
-    // Newest first: reverse source order (API returns oldest-first) then cap
     const newestFirst = filtered.length > 0 ? [...filtered].reverse() : filtered;
     return {
       filteredCount: filtered.length,

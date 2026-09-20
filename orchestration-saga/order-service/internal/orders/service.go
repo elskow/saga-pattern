@@ -153,7 +153,6 @@ func (s *Service) GetOrder(ctx context.Context, orderID string) (dto.OrderRespon
 	if ok {
 		return order.Response(), nil
 	}
-	// Finalized projection not found — check the runtime for an in-flight saga.
 	view, found, err := s.runtime.View(ctx, orderID)
 	if err != nil {
 		return dto.OrderResponse{}, err

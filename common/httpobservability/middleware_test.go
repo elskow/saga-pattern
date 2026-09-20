@@ -115,7 +115,6 @@ func TestWrapDefaultsStatusToOK(t *testing.T) {
 		Logger:      slog.New(slog.NewTextHandler(&logs, nil)),
 	})
 
-	// Use a business path — ops probe paths intentionally skip access logs.
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/orders", nil))
 
 	if logLine := logs.String(); !strings.Contains(logLine, "status=200") {

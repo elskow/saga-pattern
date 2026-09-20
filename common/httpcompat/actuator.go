@@ -16,19 +16,16 @@ import (
 const (
 	HealthPath     = "/actuator/health"
 	PrometheusPath = "/actuator/prometheus"
-	// MetricsPath is the common non-Spring scrape path some stacks expose.
-	MetricsPath = "/metrics"
-	StatusUp    = "UP"
-	StatusDown  = "DOWN"
+	MetricsPath    = "/metrics"
+	StatusUp       = "UP"
+	StatusDown     = "DOWN"
 )
 
-// IsOpsProbePath reports paths that are health/metrics probes.
-// Drop these from traces and access logs; keep Prometheus scrape collecting metrics.
 func IsOpsProbePath(rawPath string) bool {
 	if rawPath == "" {
 		return false
 	}
-	// path.Clean needs a rooted path; trim query is caller's job (URL.Path has none).
+
 	clean := path.Clean("/" + strings.TrimPrefix(rawPath, "/"))
 	switch clean {
 	case HealthPath, PrometheusPath, MetricsPath:
@@ -73,8 +70,6 @@ func NewHealthHandler(provider func(*http.Request) HealthResponse) http.Handler 
 	})
 }
 
-// NewDBPingHealthProvider returns a HealthProvider that pings the database
-// on each health check request. Returns UP if ping succeeds, DOWN otherwise.
 func NewDBPingHealthProvider(db *sql.DB) func(context.Context) HealthResponse {
 	return func(ctx context.Context) HealthResponse {
 		if err := db.PingContext(ctx); err != nil {
@@ -94,8 +89,6 @@ func NewDBPingHealthProvider(db *sql.DB) func(context.Context) HealthResponse {
 	}
 }
 
-// NewDBAndKafkaHealthProvider returns a HealthProvider that pings the database
-// and reports Kafka broker connectivity status.
 func NewDBAndKafkaHealthProvider(db *sql.DB, kafkaBrokers string) func(context.Context) HealthResponse {
 	return func(ctx context.Context) HealthResponse {
 		response := HealthResponse{

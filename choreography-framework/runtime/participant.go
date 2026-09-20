@@ -28,20 +28,20 @@ import (
 )
 
 type Participant struct {
-	config      Config
-	registry    EventRegistry
-	allowed     map[string]map[string]struct{}
-	handler     EventHandler
-	store       store.Store
-	publisher   Publisher
-	metrics     *observability.Metrics
-	clock       func() time.Time
-	idGenerator func() string
-	workerID    string
-	outboxLoop  *loops.OutboxLoop
-	outboxMu    sync.Mutex
+	config        Config
+	registry      EventRegistry
+	allowed       map[string]map[string]struct{}
+	handler       EventHandler
+	store         store.Store
+	publisher     Publisher
+	metrics       *observability.Metrics
+	clock         func() time.Time
+	idGenerator   func() string
+	workerID      string
+	outboxLoop    *loops.OutboxLoop
+	outboxMu      sync.Mutex
 	outboxTrigger chan struct{}
-	cleanupLoop *loops.CleanupLoop
+	cleanupLoop   *loops.CleanupLoop
 }
 
 type publisherAdapter struct{ publisher Publisher }
@@ -57,8 +57,6 @@ func (a publisherAdapter) Publish(ctx context.Context, message internalkafka.Mes
 	})
 }
 
-// New constructs a Participant from a caller-provided store.
-// Most application code should prefer NewPostgres.
 func New(deps Dependencies) (*Participant, error) {
 	if err := deps.Registry.Validate(); err != nil {
 		return nil, err
@@ -99,16 +97,16 @@ func New(deps Dependencies) (*Participant, error) {
 		return nil, err
 	}
 	p := &Participant{
-		config:      config,
-		registry:    deps.Registry,
-		allowed:     deps.Registry.allowedMap(),
-		handler:     deps.Handler,
-		store:       deps.Store,
-		publisher:   deps.Publisher,
-		metrics:     metrics,
-		clock:       clock,
-		idGenerator: idGenerator,
-		workerID:    workerID,
+		config:        config,
+		registry:      deps.Registry,
+		allowed:       deps.Registry.allowedMap(),
+		handler:       deps.Handler,
+		store:         deps.Store,
+		publisher:     deps.Publisher,
+		metrics:       metrics,
+		clock:         clock,
+		idGenerator:   idGenerator,
+		workerID:      workerID,
 		outboxTrigger: make(chan struct{}, 1),
 	}
 	p.outboxLoop = &loops.OutboxLoop{
@@ -159,7 +157,6 @@ func (p *Participant) WorkerID() string {
 	return p.workerID
 }
 
-// Suitable for use as a kafka subscriber callback.
 func (p *Participant) Consume(ctx context.Context, envelope internalkafka.Envelope) error {
 	ctx, span := commontracing.Tracer("choreography-framework/consume").Start(ctx, "choreography.event.consume",
 		trace.WithAttributes(
@@ -224,7 +221,6 @@ func (p *Participant) ConsumeRaw(ctx context.Context, topic string, key string, 
 	return p.Consume(ctx, internalkafka.Envelope{Topic: topic, Key: key, Value: value})
 }
 
-// Choreography analog of orchestration's transactional command enqueue.
 func (p *Participant) EnqueueEvent(ctx context.Context, tx store.Tx, topic, key, eventType string, payload any) error {
 	if topic == "" {
 		return fmt.Errorf("topic is required")
@@ -258,7 +254,6 @@ func (p *Participant) EnqueueEvent(ctx context.Context, tx store.Tx, topic, key,
 	return nil
 }
 
-// Analogous to orchestration-framework's InsertProcessedReply.
 func (p *Participant) TryMarkProcessedEvent(ctx context.Context, tx store.Tx, key string) (bool, error) {
 	return tx.TryMarkProcessedEvent(ctx, key)
 }
@@ -267,12 +262,10 @@ func (p *Participant) DeleteProcessedEvent(ctx context.Context, tx store.Tx, key
 	return tx.DeleteProcessedEvent(ctx, key)
 }
 
-// For services that also touch domain tables, use WrapSQLTx instead.
 func (p *Participant) WithinTx(ctx context.Context, fn func(store.Tx) error) error {
 	return p.store.WithinTx(ctx, fn)
 }
 
-// Primary integration point for transactional outbox on top of domain writes.
 func WrapSQLTx(tx *sql.Tx) store.Tx {
 	return store.WrapSQLTx(tx)
 }

@@ -31,7 +31,7 @@ type Runtime[D any] struct {
 	idGenerator         func() string
 	workerID            string
 	config              Config
-	sagaTimeoutOverride atomic.Int64 // nanoseconds; 0 means use config default
+	sagaTimeoutOverride atomic.Int64
 	outboxLoop          *loops.OutboxLoop
 	outboxMu            sync.Mutex
 	outboxTrigger       chan struct{}
@@ -56,8 +56,6 @@ func (a publisherAdapter) Publish(ctx context.Context, message internalkafka.Mes
 func newRuntimeID() string {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
-		// Preserve availability if the OS random source fails while retaining
-		// process-local uniqueness for concurrent calls.
 		return fmt.Sprintf("saga-%d-%d", time.Now().UnixNano(), fallbackIDSequence.Add(1))
 	}
 	return hex.EncodeToString(buf)
@@ -65,8 +63,6 @@ func newRuntimeID() string {
 
 var fallbackIDSequence atomic.Uint64
 
-// New constructs a runtime from a caller-provided store.
-// Most application code should prefer NewPostgres.
 func New[D any](def Definition[D], deps Dependencies) (*Runtime[D], error) {
 	if err := def.Validate(); err != nil {
 		return nil, err
@@ -103,14 +99,14 @@ func New[D any](def Definition[D], deps Dependencies) (*Runtime[D], error) {
 		workerID = idGenerator()
 	}
 	r := &Runtime[D]{
-		definition:  def,
-		store:       deps.Store,
-		publisher:   deps.Publisher,
-		metrics:     metrics,
-		clock:       clock,
-		idGenerator: idGenerator,
-		workerID:    workerID,
-		config:      config,
+		definition:    def,
+		store:         deps.Store,
+		publisher:     deps.Publisher,
+		metrics:       metrics,
+		clock:         clock,
+		idGenerator:   idGenerator,
+		workerID:      workerID,
+		config:        config,
 		outboxTrigger: make(chan struct{}, 1),
 	}
 	internalPublisher := publisherAdapter{publisher: deps.Publisher}
@@ -246,12 +242,10 @@ func (r *Runtime[D]) Cleanup(ctx context.Context) error {
 	return r.cleanupLoop.RunOnce(ctx, r.clock().UTC())
 }
 
-// SetSagaTimeout overrides the saga timeout for new sagas at runtime.
 func (r *Runtime[D]) SetSagaTimeout(d time.Duration) {
 	r.sagaTimeoutOverride.Store(int64(d))
 }
 
-// GetSagaTimeout returns the effective saga timeout.
 func (r *Runtime[D]) GetSagaTimeout() time.Duration {
 	if override := r.sagaTimeoutOverride.Load(); override > 0 {
 		return time.Duration(override)

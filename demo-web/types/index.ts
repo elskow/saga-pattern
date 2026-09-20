@@ -80,7 +80,7 @@ export interface Product {
   image: string;
   category: string;
   stock: number;
-  productId: string; // matches backend PROD-xxx format
+  productId: string;
 }
 
 export interface CatalogProduct extends Product {
@@ -104,7 +104,7 @@ export interface CreateOrderPayload {
   customerId: string;
   shippingAddress: string;
   items: OrderItem[];
-  totalAmount?: number; // required for orchestration, omitted for choreography
+  totalAmount?: number;
 }
 
 export type SagaStepStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "COMPENSATING" | "COMPENSATED";

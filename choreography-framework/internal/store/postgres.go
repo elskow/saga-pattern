@@ -10,7 +10,6 @@ import (
 	"saga-pattern/choreography-framework/internal/model"
 )
 
-// Uses FOR UPDATE SKIP LOCKED, lease-based claiming, terminal failure status, and backoff.
 type PostgresStore struct {
 	db *sql.DB
 }
@@ -181,7 +180,6 @@ func (s *PostgresStore) ListOutbox(ctx context.Context) ([]model.OutboxRow, erro
 	return items, rows.Err()
 }
 
-// Required for the transactional outbox pattern to be atomic.
 func WrapSQLTx(tx *sql.Tx) Tx {
 	return postgresTx{tx: tx}
 }

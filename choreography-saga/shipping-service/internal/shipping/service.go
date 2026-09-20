@@ -77,7 +77,6 @@ func (s *Service) ConfigureFailureMode(config faultinjection.Config) faultinject
 	return s.failureMode.Configure(config, s.now())
 }
 
-// CreateShipment buildHook is called with the created shipment to produce the outbox TxHook; pass nil to skip.
 func (s *Service) CreateShipment(ctx context.Context, orderID, address string, buildHook func(domain.Shipment) repository.TxHook) (domain.Shipment, error) {
 	shippingID := s.newID()
 	scheduledAt := s.now()

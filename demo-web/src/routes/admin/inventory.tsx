@@ -36,9 +36,6 @@ export const Route = createFileRoute('/admin/inventory')({
   component: InventoryPage,
 })
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function StockBar({ value, max, reserved }: { value: number; max: number; reserved: number }) {
   const availPct = max > 0 ? (value / max) * 100 : 0;
@@ -72,9 +69,6 @@ function parseDraftStock(value: string): number | null {
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
-// ---------------------------------------------------------------------------
-// Image upload helper (client → server fn via base64)
-// ---------------------------------------------------------------------------
 
 async function uploadFile(file: File): Promise<string> {
   const reader = new FileReader();
@@ -89,9 +83,6 @@ async function uploadFile(file: File): Promise<string> {
   return url;
 }
 
-// ---------------------------------------------------------------------------
-// Image picker sub-component
-// ---------------------------------------------------------------------------
 
 function ImagePicker({
   value,
@@ -179,9 +170,6 @@ function ImagePicker({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Add / Edit product dialog (inline modal)
-// ---------------------------------------------------------------------------
 
 interface ProductFormData {
   name: string;
@@ -267,10 +255,9 @@ function ProductDialog({
   };
 
   return (
-    // Backdrop
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
       <div className="w-full max-w-lg overflow-hidden rounded-md border border-border bg-card">
-        {/* Header */}
+
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <h2 className="text-base font-semibold tracking-tight">
             {mode === "add" ? "Add product" : "Edit product"}
@@ -285,16 +272,16 @@ function ProductDialog({
           </button>
         </div>
 
-        {/* Body */}
+
         <form onSubmit={handleSubmit}>
           <div className="px-6 py-5 space-y-4 max-h-[65vh] overflow-y-auto">
-            {/* Name */}
+
             <div className="space-y-1.5">
               <Label htmlFor="pf-name">Product name *</Label>
               <Input id="pf-name" value={form.name} onChange={(e) => set("name", e.target.value)} disabled={saving} placeholder="e.g. Wireless Earbuds Pro" />
             </div>
 
-            {/* Description */}
+
             <div className="space-y-1.5">
               <Label htmlFor="pf-desc">Description</Label>
               <textarea
@@ -308,7 +295,7 @@ function ProductDialog({
               />
             </div>
 
-            {/* Price + Category row */}
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="pf-price">Price (IDR) *</Label>
@@ -328,13 +315,13 @@ function ProductDialog({
               </div>
             </div>
 
-            {/* Image */}
+
             <div className="space-y-1.5">
               <Label>Product image</Label>
               <ImagePicker value={form.image} onChange={(url) => set("image", url)} disabled={saving} />
             </div>
 
-            {/* Stock — only shown on add */}
+
             {mode === "add" && (
               <div className="grid grid-cols-2 gap-3 rounded-md border border-border bg-muted/20 p-4">
                 <div className="space-y-1.5">
@@ -369,7 +356,7 @@ function ProductDialog({
             {error && <p className="text-sm text-destructive font-medium">{error}</p>}
           </div>
 
-          {/* Footer */}
+
           <div className="flex items-center justify-end gap-2 border-t border-border px-6 py-4">
             <Button type="button" variant="outline" size="sm" className="rounded-md" onClick={onClose} disabled={saving}>
               Cancel
@@ -385,9 +372,6 @@ function ProductDialog({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Delete confirmation dialog
-// ---------------------------------------------------------------------------
 
 function DeleteDialog({
   productName,
@@ -446,9 +430,6 @@ function DeleteDialog({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Inventory table row (existing stock/visibility controls, + new edit/delete)
-// ---------------------------------------------------------------------------
 
 const DEFAULT_PATTERN: Pattern = "orchestration";
 
@@ -533,7 +514,7 @@ function InventoryTableRow({
 
   return (
     <TableRow className={cn(hasChanges && "bg-amber-50/60")}>
-      {/* Image */}
+
       <TableCell>
         {item.visible !== false && (
           <div className="h-10 w-10 overflow-hidden rounded-md border border-border bg-muted/40 shrink-0">
@@ -548,7 +529,7 @@ function InventoryTableRow({
         )}
       </TableCell>
 
-      {/* Name */}
+
       <TableCell className="font-medium">
         <div className="flex items-center gap-2">
           {lowStock && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" />}
@@ -561,10 +542,10 @@ function InventoryTableRow({
         </div>
       </TableCell>
 
-      {/* SKU */}
+
       <TableCell className="font-mono text-xs text-muted-foreground">{item.sku}</TableCell>
 
-      {/* Visibility */}
+
       <TableCell className="align-top">
         <Button
           type="button"
@@ -578,7 +559,7 @@ function InventoryTableRow({
         </Button>
       </TableCell>
 
-      {/* Stock editor */}
+
       <TableCell className="min-w-[220px] text-right align-top">
         <div className="flex flex-col items-end gap-1">
           <div className="flex items-center gap-1.5">
@@ -616,7 +597,7 @@ function InventoryTableRow({
         {new Date(item.lastRestocked).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
       </TableCell>
 
-      {/* Actions */}
+
       <TableCell className="align-top">
         <div className="flex items-center justify-end gap-1.5">
           <Button variant="outline" size="sm" className="h-7 rounded-md px-2.5 text-xs" disabled={isSavingStock || (draftValue === null && !serverError)} onClick={clearRowDraft}>
@@ -652,9 +633,6 @@ function InventoryTableRow({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
 
 function InventoryPageInner() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -664,7 +642,6 @@ function InventoryPageInner() {
   const [globalIsSaving, setGlobalIsSaving] = useState(false);
   const latestLoadRequestId = useRef(0);
 
-  // Dialog state
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<InventoryItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InventoryItem | null>(null);
@@ -714,7 +691,7 @@ function InventoryPageInner() {
 
   return (
     <div className="max-w-5xl space-y-6">
-      {/* Header */}
+
       <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Inventory</h1>
@@ -748,7 +725,7 @@ function InventoryPageInner() {
         <div className="rounded-md border border-amber-200/80 bg-amber-50 p-3 text-sm text-amber-800">{error}</div>
       )}
 
-      {/* Pattern tabs */}
+
       <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5">
         {(["orchestration", "choreography"] as Pattern[]).map((value) => (
           <button
@@ -768,7 +745,7 @@ function InventoryPageInner() {
         ))}
       </div>
 
-      {/* Table */}
+
       <div className="overflow-hidden rounded-md border border-border bg-card">
         {loading ? (
           <div className="space-y-3 p-6">
@@ -820,7 +797,6 @@ function InventoryPageInner() {
         )}
       </div>
 
-      {/* Add dialog */}
       {addOpen && (
         <ProductDialog
           mode="add"
@@ -829,7 +805,6 @@ function InventoryPageInner() {
         />
       )}
 
-      {/* Edit dialog */}
       {editTarget && (
         <ProductDialog
           mode="edit"
@@ -846,7 +821,7 @@ function InventoryPageInner() {
         />
       )}
 
-      {/* Delete dialog */}
+
       {deleteTarget && (
         <DeleteDialog
           productName={deleteTarget.productName}

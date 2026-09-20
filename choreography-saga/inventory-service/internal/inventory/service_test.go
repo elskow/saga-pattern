@@ -95,7 +95,7 @@ func TestReserveInventoryPublishesReservedEvent(t *testing.T) {
 	if !ok {
 		t.Fatalf("product PROD-001 missing after reservation")
 	}
-	// 005_benchmark_stock seeds PROD-001 at 10000 available for k6 load.
+
 	if product.QuantityAvailable != 9998 || product.QuantityReserved != 2 {
 		t.Fatalf("product quantities = available:%d reserved:%d, want 9998/2", product.QuantityAvailable, product.QuantityReserved)
 	}
@@ -144,7 +144,7 @@ func TestInsufficientStockPublishesReservationFailed(t *testing.T) {
 		"CUST-OVER",
 		"Jl. Ketintang Wiyata, Surabaya 60231",
 		"corr-low-stock",
-		// Request more than 005_benchmark_stock (10000) so reservation fails.
+
 		[]dto.OrderItemRequest{{ProductID: "PROD-001", ProductName: "Laptop", Quantity: 20000, Price: json.Number("15999000")}},
 		json.Number("319980000000"),
 		now,
@@ -259,7 +259,7 @@ func TestReleaseCompensationIsIdempotent(t *testing.T) {
 	if !ok {
 		t.Fatalf("product PROD-002 missing after release")
 	}
-	// 005_benchmark_stock seeds PROD-002 at 10000 available for k6 load.
+
 	if product.QuantityAvailable != 10000 || product.QuantityReserved != 0 {
 		t.Fatalf("product quantities after release = available:%d reserved:%d, want 10000/0", product.QuantityAvailable, product.QuantityReserved)
 	}
@@ -293,8 +293,6 @@ func TestDuplicatePaymentCompletedReplayIsSafe(t *testing.T) {
 	}
 }
 
-// Failure-mode inject must publish InventoryReservationFailed without reserving stock.
-// Regression for gate-f-r1: old path called Reserve with onReserve=nil and pretended success.
 func TestFailureModePublishesReservationFailedWithoutReserving(t *testing.T) {
 	consumer, repo, participant, service := newTestServiceWithService(t)
 	now := time.Date(2026, 4, 13, 21, 30, 0, 0, time.UTC)
@@ -348,7 +346,7 @@ func TestFailureModePublishesReservationFailedWithoutReserving(t *testing.T) {
 	if !ok {
 		t.Fatalf("product PROD-001 missing")
 	}
-	// 005_benchmark_stock: no hold means available stays at 10000.
+
 	if product.QuantityAvailable != 10000 || product.QuantityReserved != 0 {
 		t.Fatalf("product quantities = available:%d reserved:%d, want 10000/0 (no stock hold)", product.QuantityAvailable, product.QuantityReserved)
 	}
@@ -408,13 +406,16 @@ func newTestServiceWithService(t *testing.T) (*recordingConsumer, repository.Rep
 	return consumer, repo, participant, service
 }
 
-// recordingConsumer wraps the service as an event consumer for tests.
 type recordingConsumer struct {
-	handler interface{ HandleEvent(context.Context, events.ChoreographyEvent) error }
-	logger  *slog.Logger
+	handler interface {
+		HandleEvent(context.Context, events.ChoreographyEvent) error
+	}
+	logger *slog.Logger
 }
 
-func newRecordingConsumer(handler interface{ HandleEvent(context.Context, events.ChoreographyEvent) error }, logger *slog.Logger) *recordingConsumer {
+func newRecordingConsumer(handler interface {
+	HandleEvent(context.Context, events.ChoreographyEvent) error
+}, logger *slog.Logger) *recordingConsumer {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
@@ -428,7 +429,6 @@ func (c *recordingConsumer) Consume(ctx context.Context, topic, key string, even
 	return c.handler.HandleEvent(ctx, event)
 }
 
-// simulatedDelayMsForTest mirrors domain.SimulatedDelayMs for test consumer.
 var simulatedDelayMsForTest atomicInt32
 
 type atomicInt32 struct{ v int32 }
@@ -458,7 +458,7 @@ func TestRepositorySeedsCatalogProducts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new postgres repository: %v", err)
 	}
-	// 005_benchmark_stock raises catalog seed floors to 10000 for k6.
+
 	for _, fixture := range []struct {
 		id        string
 		available int

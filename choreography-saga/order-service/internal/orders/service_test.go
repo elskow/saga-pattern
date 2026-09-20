@@ -192,8 +192,6 @@ func (r *recordingRepo) DeleteProcessedEvent(_ context.Context, key string) erro
 	return nil
 }
 
-// stubParticipant is a no-op participantAdapter for service tests that don't
-// exercise the publishing path.
 type stubParticipant struct{}
 
 func (stubParticipant) EnqueueOrderCreated(context.Context, *sql.Tx, string, events.OrderCreatedEvent) error {

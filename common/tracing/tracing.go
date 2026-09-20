@@ -70,7 +70,6 @@ func shouldTraceHTTP(r *http.Request) bool {
 	if r == nil || r.URL == nil {
 		return true
 	}
-	// Drop health/metrics probe spans; Prometheus still scrapes metrics.
 	return !httpcompat.IsOpsProbePath(r.URL.Path)
 }
 

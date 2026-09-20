@@ -22,7 +22,6 @@ const (
 	labelValueService            = "orchestration"
 )
 
-// suiteLabel is captured once at process start (empty string is a valid value).
 var suiteLabel = os.Getenv("SUITE_LABEL")
 
 func constLabels() prometheus.Labels {

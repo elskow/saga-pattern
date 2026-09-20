@@ -105,8 +105,6 @@ func (s *Service) handlePaymentCompleted(ctx context.Context, event events.Payme
 		return err
 	}
 
-	// Failure-mode inject must short-circuit like orch/shipping: never reserve stock
-	// and never rely on ReserveInventory's onFail hook (only runs on real stock errors).
 	if shouldFail, failureState := s.failureMode.ShouldFail(s.now()); shouldFail {
 		err := fmt.Errorf("inventory failure mode enabled — reservation forced to fail")
 		span.SetAttributes(attribute.String("inventory.result", "failed"), attribute.String("failure.type", "failure_mode"), attribute.String("failure.run_label", failureState.RunLabel), attribute.Int("failure.remaining", failureState.Remaining))

@@ -11,7 +11,6 @@ import (
 	commonkafka "saga-pattern/common/kafka"
 )
 
-// The hook builder captures the correlationID; the TxHook captures the shipment.
 func (s *Service) buildScheduledShippingHook(correlationID string) func(domain.Shipment) repository.TxHook {
 	return func(shipment domain.Shipment) repository.TxHook {
 		scheduledEvent := events.NewShippingScheduledEvent(

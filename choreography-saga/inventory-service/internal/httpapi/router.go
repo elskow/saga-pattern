@@ -35,12 +35,10 @@ func NewHandler(deps HandlerDependencies) http.Handler {
 		HealthProvider: deps.HealthProvider,
 	})
 
-	// If no repo provided (e.g. in tests), return the base handler only
 	if deps.Repo == nil {
 		return base
 	}
 
-	// Wrap with a mux that handles the new query endpoints
 	return newMuxWithQueryRoutes(base, deps, deps.Service)
 }
 
@@ -60,7 +58,6 @@ func newMuxWithQueryRoutes(base http.Handler, deps HandlerDependencies, svc fail
 	mux.HandleFunc("GET /api/admin/delay", getDelayHandler())
 	mux.HandleFunc("PUT /api/admin/delay", putDelayHandler(deps.Logger))
 
-	// Fall through everything else to the base handler
 	mux.Handle("/", base)
 	return mux
 }

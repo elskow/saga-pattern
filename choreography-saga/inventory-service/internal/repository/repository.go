@@ -9,10 +9,6 @@ import (
 	"saga-pattern/choreography-saga/inventory-service/internal/domain"
 )
 
-// TxHook is invoked inside repo transactions to let callers write additional
-// rows atomically. Used by the service to enqueue outbox events.
-// id is the reservation ID (for ReserveInventory/ReleaseInventory).
-// hookErr is non-nil when the hook is called on the failure path.
 type TxHook func(ctx context.Context, tx *sql.Tx, id string, hookErr error) error
 
 type Repository interface {
