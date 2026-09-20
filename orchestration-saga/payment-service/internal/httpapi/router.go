@@ -13,10 +13,9 @@ import (
 	"saga-pattern/common/httpcompat"
 	"saga-pattern/orchestration-saga/internal/httpapiutil"
 	serviceconfig "saga-pattern/orchestration-saga/payment-service/internal/config"
-	"saga-pattern/orchestration-saga/payment-service/internal/repository"
 	"saga-pattern/orchestration-saga/payment-service/internal/domain"
+	"saga-pattern/orchestration-saga/payment-service/internal/repository"
 )
-
 
 type depositBalanceManager interface {
 	GetDepositBalance() *big.Rat

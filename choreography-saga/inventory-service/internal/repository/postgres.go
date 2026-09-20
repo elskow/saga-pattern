@@ -609,4 +609,3 @@ func (r *PostgresRepository) DeleteProduct(ctx context.Context, productId string
 }
 
 var _ Repository = (*PostgresRepository)(nil)
-

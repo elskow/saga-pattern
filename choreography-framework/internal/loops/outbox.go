@@ -16,16 +16,16 @@ import (
 )
 
 type OutboxLoop struct {
-	ServiceName string
-	LeaseName   string
-	LeaseTTL    time.Duration
-	RetryDelay  time.Duration
-	BatchSize   int
-	SendTimeout time.Duration
-	Store       store.Store
-	Publisher   kafka.Publisher
-	WorkerID    string
-	Metrics     *observability.Metrics
+	ServiceName     string
+	LeaseName       string
+	LeaseTTL        time.Duration
+	RetryDelay      time.Duration
+	BatchSize       int
+	SendTimeout     time.Duration
+	Store           store.Store
+	Publisher       kafka.Publisher
+	WorkerID        string
+	Metrics         *observability.Metrics
 	OnPublishFailed func(retryDelay time.Duration)
 }
 

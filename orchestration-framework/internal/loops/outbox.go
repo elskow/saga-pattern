@@ -16,14 +16,14 @@ import (
 )
 
 type OutboxLoop struct {
-	LeaseName   string
-	LeaseTTL    time.Duration
-	RetryDelay  time.Duration
-	BatchSize   int
-	SendTimeout time.Duration
-	Store       store.Store
-	Publisher   kafka.Publisher
-	WorkerID    string
+	LeaseName       string
+	LeaseTTL        time.Duration
+	RetryDelay      time.Duration
+	BatchSize       int
+	SendTimeout     time.Duration
+	Store           store.Store
+	Publisher       kafka.Publisher
+	WorkerID        string
 	OnPublishFailed func(retryDelay time.Duration)
 }
 
@@ -122,12 +122,12 @@ func (l *OutboxLoop) RunOnce(ctx context.Context, now time.Time) (err error) {
 					attribute.String("error", err.Error()),
 				)...),
 			)
-		if markErr := l.Store.MarkOutboxFailed(ctx, row.ID, now.Add(l.RetryDelay), err.Error(), terminal); markErr != nil {
+			if markErr := l.Store.MarkOutboxFailed(ctx, row.ID, now.Add(l.RetryDelay), err.Error(), terminal); markErr != nil {
+				l.notifyPublishFailed()
+				return markErr
+			}
 			l.notifyPublishFailed()
-			return markErr
-		}
-		l.notifyPublishFailed()
-		continue
+			continue
 		}
 		if err := l.Store.MarkOutboxSent(ctx, row.ID, now); err != nil {
 			rowSpan.RecordError(err)
